@@ -1,0 +1,40 @@
+agent:
+  name: collector-01
+  state_dir: ../state
+controller:
+  address: localhost:9443
+  connect_timeout: 5s
+  send_timeout: 10s
+  reconnect_initial: 1s
+  reconnect_max: 30s
+security:
+  # Explicit plaintext mode for a loopback-only development controller.
+  # Production requires mode: production and ca_file/cert_file/key_file.
+  mode: development
+local:
+  enabled: true
+telemetry:
+  fast_interval: 3s
+  medium_interval: 30s
+  inventory_interval: 5m
+  topology_interval: 5m
+  heartbeat_interval: 10s
+  collect_timeout: 2s
+queue:
+  max_messages: 256
+  max_bytes: 8388608
+  max_message_bytes: 1048576
+scheduler:
+  concurrency: 4
+logging:
+  level: info
+location:
+  site: demo-dc
+  room: server-room-1
+  rack: rack-01
+commands:
+  enabled: false
+  protected_interfaces: [eth0]
+  protected_devices: []
+  protected_services: []
+devices: []

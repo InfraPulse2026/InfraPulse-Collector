@@ -1,0 +1,306 @@
+syntax = "proto3";
+
+package infrapulse.v1;
+
+option go_package = "InfraPulseAgent/api/gen/infrapulse/v1;infrapulsev1";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// The agent initiates one outbound HTTP/2 stream. No agent management listener
+// is required. Certificates are provisioned out of band in P0.
+service AgentService {
+  rpc Connect(stream AgentEnvelope) returns (stream ControllerEnvelope);
+}
+
+message AgentEnvelope {
+  string message_id = 1;
+  string agent_id = 2;
+  string session_id = 3;
+  uint64 sequence = 4;
+  google.protobuf.Timestamp sent_at = 5;
+  oneof payload {
+    AgentHello hello = 10;
+    Heartbeat heartbeat = 11;
+    TelemetryBatch telemetry = 12;
+    InventoryUpdate inventory = 13;
+    EventBatch events = 16;
+    CommandResult command_result = 18;
+    ErrorReport error = 20;
+  }
+}
+
+message ControllerEnvelope {
+  oneof payload {
+    HelloAck hello_ack = 1;
+    Command command = 2;
+  }
+}
+
+message BuildInfo {
+  string version = 1;
+  string commit = 2;
+  string build_time = 3;
+}
+
+message AgentHello {
+  string agent_id = 1;
+  string session_id = 2;
+  string name = 3;
+  BuildInfo build = 4;
+  google.protobuf.Timestamp started_at = 5;
+  Device device = 6;
+  uint32 protocol_version = 7;
+}
+
+message HelloAck {
+  bool accepted = 1;
+  uint32 protocol_version = 2;
+}
+
+message Capability {
+  string name = 1;
+  bool supported = 2;
+  string reason = 3;
+}
+
+message PhysicalLocation {
+  string site = 1;
+  string datacenter = 2;
+  string building = 3;
+  string room = 4;
+  string rack = 5;
+  int32 rack_unit = 6;
+  string position = 7;
+  string comment = 8;
+}
+
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  DEVICE_TYPE_SERVER = 1;
+  DEVICE_TYPE_WORKSTATION = 2;
+  DEVICE_TYPE_ROUTER = 3;
+  DEVICE_TYPE_SWITCH = 4;
+  DEVICE_TYPE_FIREWALL = 5;
+  DEVICE_TYPE_GATEWAY = 6;
+  DEVICE_TYPE_ACCESS_POINT = 7;
+  DEVICE_TYPE_VOICE_GATEWAY = 8;
+  DEVICE_TYPE_PBX = 9;
+  DEVICE_TYPE_HYPERVISOR = 10;
+  DEVICE_TYPE_UNKNOWN = 11;
+}
+
+message Device {
+  string id = 1;
+  string name = 2;
+  string hostname = 3;
+  string management_address = 4;
+  string vendor = 5;
+  string model = 6;
+  DeviceType type = 7;
+  string serial_number = 8;
+  string hardware_revision = 9;
+  string software_version = 10;
+  string firmware_version = 11;
+  string os = 12;
+  string distribution = 13;
+  string kernel = 14;
+  string architecture = 15;
+  string chassis_id = 16;
+  string driver = 17;
+  double uptime_seconds = 18;
+  string boot_id = 19;
+  bool online = 20;
+  google.protobuf.Timestamp last_seen = 21;
+  PhysicalLocation location = 22;
+  repeated Capability capabilities = 23;
+}
+
+message CPUStats {
+  int32 logical_cpus = 1;
+  int32 physical_cores = 2;
+  string model = 3;
+  optional double usage_percent = 4;
+  double load1 = 5;
+  double load5 = 6;
+  double load15 = 7;
+}
+
+message MemoryStats {
+  uint64 total_bytes = 1;
+  uint64 used_bytes = 2;
+  uint64 available_bytes = 3;
+  uint64 free_bytes = 4;
+  uint64 swap_total_bytes = 5;
+  uint64 swap_used_bytes = 6;
+  optional double pressure_some_avg10 = 7;
+}
+
+message InterfaceCounters {
+  uint64 rx_bytes = 1;
+  uint64 tx_bytes = 2;
+  uint64 rx_packets = 3;
+  uint64 tx_packets = 4;
+  uint64 rx_errors = 5;
+  uint64 tx_errors = 6;
+  uint64 rx_dropped = 7;
+  uint64 tx_dropped = 8;
+}
+
+message InterfaceRates {
+  double rx_bytes_per_second = 1;
+  double tx_bytes_per_second = 2;
+  double rx_packets_per_second = 3;
+  double tx_packets_per_second = 4;
+  double rx_errors_per_second = 5;
+  double tx_errors_per_second = 6;
+  double rx_dropped_per_second = 7;
+  double tx_dropped_per_second = 8;
+}
+
+message Interface {
+  string id = 1;
+  int32 index = 2;
+  string name = 3;
+  string mac = 4;
+  int32 mtu = 5;
+  bool admin_up = 6;
+  string oper_state = 7;
+  optional uint64 speed_bits_per_second = 8;
+  repeated string addresses = 9;
+  InterfaceCounters counters = 10;
+  InterfaceRates rates = 11;
+}
+
+message Metric {
+  string name = 1;
+  double value = 2;
+  string unit = 3;
+}
+
+message TelemetrySample {
+  string device_id = 1;
+  google.protobuf.Timestamp observed_at = 2;
+  google.protobuf.Timestamp collected_at = 3;
+  string source = 4;
+  string boot_id = 5;
+  double uptime_seconds = 6;
+  CPUStats cpu = 7;
+  MemoryStats memory = 8;
+  repeated Interface interfaces = 9;
+  repeated Metric metrics = 10;
+}
+
+// P0 emits a single sample in each batch. The wire contract can batch multiple
+// local and remote devices without changing the normalized device models.
+message TelemetryBatch {
+  repeated TelemetrySample samples = 1;
+}
+
+message QueueState {
+  uint64 messages = 1;
+  uint64 bytes = 2;
+  uint64 dropped_telemetry = 3;
+  uint64 dropped_other = 4;
+}
+
+message Heartbeat {
+  google.protobuf.Timestamp timestamp = 1;
+  double uptime_seconds = 2;
+  BuildInfo build = 3;
+  string health = 4;
+  uint32 remote_device_count = 5;
+  QueueState queue = 6;
+}
+
+message InventoryUpdate {
+  google.protobuf.Timestamp observed_at = 1;
+  repeated Device devices = 2;
+}
+
+message Event {
+  string id = 1;
+  string type = 2;
+  string device_id = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  string severity = 5;
+  string message = 6;
+  string source = 7;
+}
+
+message EventBatch {
+  repeated Event events = 1;
+}
+
+message ErrorReport {
+  string component = 1;
+  string code = 2;
+  string message = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+enum CommandInitiator {
+  COMMAND_INITIATOR_UNSPECIFIED = 0;
+  COMMAND_INITIATOR_HUMAN = 1;
+  COMMAND_INITIATOR_AI_SUGGESTED = 2;
+  COMMAND_INITIATOR_AUTOMATION = 3;
+}
+
+enum InterfaceOperation {
+  INTERFACE_OPERATION_UNSPECIFIED = 0;
+  INTERFACE_OPERATION_ENABLE = 1;
+  INTERFACE_OPERATION_DISABLE = 2;
+}
+
+message InterfaceAction {
+  string interface_id = 1;
+  InterfaceOperation operation = 2;
+}
+
+enum ServiceOperation {
+  SERVICE_OPERATION_UNSPECIFIED = 0;
+  SERVICE_OPERATION_START = 1;
+  SERVICE_OPERATION_STOP = 2;
+  SERVICE_OPERATION_RESTART = 3;
+}
+
+message ServiceAction {
+  string service = 1;
+  ServiceOperation operation = 2;
+}
+
+// A command cannot carry a shell string, arbitrary argv, or free-form CLI.
+// Additional safe actions must extend this typed oneof and agent policy.
+message Command {
+  string id = 1;
+  string target_device_id = 2;
+  google.protobuf.Timestamp requested_at = 3;
+  google.protobuf.Duration timeout = 4;
+  CommandInitiator initiator = 5;
+  string idempotency_key = 6;
+  oneof action {
+    InterfaceAction interface = 10;
+    ServiceAction service = 11;
+  }
+}
+
+enum CommandStatus {
+  COMMAND_STATUS_UNSPECIFIED = 0;
+  COMMAND_STATUS_ACCEPTED = 1;
+  COMMAND_STATUS_RUNNING = 2;
+  COMMAND_STATUS_SUCCESS = 3;
+  COMMAND_STATUS_FAILED = 4;
+  COMMAND_STATUS_REJECTED = 5;
+  COMMAND_STATUS_TIMEOUT = 6;
+  COMMAND_STATUS_UNSUPPORTED = 7;
+}
+
+message CommandResult {
+  string command_id = 1;
+  CommandStatus status = 2;
+  google.protobuf.Timestamp started_at = 3;
+  google.protobuf.Timestamp finished_at = 4;
+  bool changed = 5;
+  string error_code = 6;
+  string error_message = 7;
+}

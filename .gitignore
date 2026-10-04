@@ -1,0 +1,7 @@
+/.idea/
+/.cache/
+/.tools/
+/bin/
+/state/
+*.log
+/configs/config.local.yaml

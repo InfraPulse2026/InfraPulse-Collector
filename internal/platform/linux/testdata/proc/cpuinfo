@@ -1,0 +1,9 @@
+processor : 0
+model name : Fixture CPU
+physical id : 0
+core id : 0
+
+processor : 1
+model name : Fixture CPU
+physical id : 0
+core id : 0

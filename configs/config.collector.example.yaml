@@ -1,0 +1,11 @@
+# For development on Windows/macOS: no local metrics are fabricated.
+agent:
+  name: collector-dev
+  state_dir: ../state
+controller:
+  address: localhost:9443
+security:
+  mode: development
+local:
+  enabled: false
+devices: []

@@ -1,0 +1,23 @@
+[Unit]
+Description=InfraPulse monitoring agent and network collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=infrapulse
+Group=infrapulse
+StateDirectory=infrapulse-agent
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/infrapulse-agent run --config /etc/infrapulse/config.yaml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
