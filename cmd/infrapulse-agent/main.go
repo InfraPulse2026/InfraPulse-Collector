@@ -87,7 +87,11 @@ func run(args []string) error {
 		if fs.NArg() != 1 {
 			return errors.New("usage: probe-device --config path device-id")
 		}
-		return errors.New("remote SNMP/RouterOS probe is unsupported in P0; scheduled for P1")
+		device, err := agent.ProbeDevice(context.Background(), cfg, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(device)
 	case "run":
 		if fs.NArg() != 0 {
 			return errors.New("run takes no positional arguments")

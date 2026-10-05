@@ -1,0 +1,57 @@
+# Set these environment variables before running Agent. No secrets belong in YAML:
+# INFRAPULSE_SNMP_COMMUNITY
+# INFRAPULSE_ROUTEROS_USERNAME
+# INFRAPULSE_ROUTEROS_PASSWORD
+agent:
+  name: network-collector
+  state_dir: ../state
+controller:
+  address: localhost:9443
+security:
+  mode: development
+local:
+  enabled: false
+telemetry:
+  fast_interval: 3s
+  medium_interval: 30s
+  inventory_interval: 5m
+  topology_interval: 5m
+  heartbeat_interval: 10s
+  collect_timeout: 5s
+remote:
+  concurrency: 4
+  max_rows: 4096
+  max_response_bytes: 1048576
+  topology_ttl: 15m
+credentials:
+  switch-snmp:
+    community_env: INFRAPULSE_SNMP_COMMUNITY
+  routeros-main:
+    username_env: INFRAPULSE_ROUTEROS_USERNAME
+    password_env: INFRAPULSE_ROUTEROS_PASSWORD
+commands:
+  enabled: false
+  protected_interfaces: [ether1]
+devices:
+  - id: switch-01
+    name: Access switch
+    driver: snmp
+    address: 192.0.2.10
+    credential_ref: switch-snmp
+    snmp:
+      port: 161
+      retries: 1
+    location:
+      datacenter: dc-1
+      room: network
+      rack: rack-01
+      rack_unit: 12
+  - id: router-01
+    name: Edge router
+    driver: routeros
+    address: https://router.example.net
+    credential_ref: routeros-main
+    enable_mutations: false
+    # By default use system trusted CA. For a private CA, uncomment:
+    # tls:
+    #   ca_file: ../state/routeros-ca.pem

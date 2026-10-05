@@ -1,67 +1,131 @@
-# Физическая топология
+# Физическая topology observations
 
-Физическая карта — обязательный результат следующего этапа InfraPulse Agent. Текущий P0 передаёт локальную inventory и interface telemetry. Topology collector, normalized edges, `TopologyUpdate` protobuf payload и graph reconciliation ещё не реализованы. `topology_interval` зарезервирован в конфигурации; его наличие не означает сбор LLDP. Mock Controller P0 не показывает обнаруженные связи.
+Agent собирает LLDP-MIB через Generic SNMP и RouterOS neighbor discovery,
+нормализует observations и передаёт `TopologyUpdate` через outbound gRPC.
+Mock Controller показывает их в JSON. Global reconciliation графа, история
+и Web UI остаются Backend responsibilities.
 
-## Целевой pipeline P1
+## Реальный pipeline
 
 ```text
-SNMP LLDP / RouterOS neighbor observations
-                    |
-                    v
-     bounded protocol collection + timestamp
-                    |
-                    v
-   raw identifiers/subtypes + local port mapping
-                    |
-                    v
- normalized nodes/edges + evidence + completeness
-                    |
-                    v
-   sanitizer -> bounded outbox -> outbound gRPC
-                    |
-                    v
-       Backend reconciliation and graph UI
+SNMP LLDP-MIB / RouterOS HTTPS neighbors
+                  |
+                  v
+bounded collection + timestamps + completeness
+                  |
+                  v
+raw identifiers/subtypes + evidence local port mapping
+                  |
+                  v
+TopologyUpdate -> sanitizer -> RAM outbox -> gRPC
+                  |
+                  v
+Mock JSON / future Backend reconciliation
 ```
 
-Agent собирает evidence; Backend связывает observations разных collectors, хранит историю и строит graph. Для UI не требуется изменение конкретных vendor drivers.
+Topology использует отдельный slow interval (default 5m), не выполняет полный
+neighbor walk каждые 3s. Remote scheduler ограничивает workers; каждый probe
+имеет timeout, table/response limits и per-device exclusion с commands.
 
-## Целевой normalized edge
+## Normalized contract
 
-Следующие поля — проектируемый контракт, а не существующий P0 protobuf message:
+`TopologyUpdate`: stable local device ID, observed/collected timestamp, source,
+complete/partial/failed, collector TTL seconds, expiry assumption и observations.
+Каждый Neighbor сохраняет:
 
 | Поле | Смысл |
 |---|---|
-| localDeviceID | Стабильный ID устройства из Agent identity или config/Backend |
-| localInterface | Канонический локальный interface ID плюс raw port evidence |
-| remoteDeviceIdentifier | Известный remote ID либо unresolved advertised identifier |
-| remoteChassisID | Chassis identifier с исходным subtype/bytes |
-| remoteInterface | Advertised remote port ID с subtype |
-| discoveryProtocol | Реально наблюдаемый LLDP/CDP/MNDP либо иной protocol |
-| observedAt / collectedAt | UTC время observation и сбора |
-| source | `lldp`, `cdp`, `routeros-neighbor`, `arp`, `fdb`, `manual`, `simulated` |
-| confidence / evidence | Качество привязки и основание вывода о связи |
-| optional VLAN/network | Данные логического сегмента, когда они доступны |
+| Local device/interface ID/name | Configured device и доказанный canonical interface; пустой interface допустим |
+| Local port number/ID/subtype | Исходные LLDP local port сведения; number не ifIndex |
+| Remote chassis bytes/subtype | Исходный advertised identifier; RouterOS MAC имеет unknown subtype |
+| Remote port bytes/subtype | Advertised port identifier, если protocol/API его реально предоставляет |
+| Remote system name/port description | Необязательные данные соседа |
+| Protocol/source | LLDP, CDP, MNDP или unknown и фактический collector |
+| ObservedAt/ExpiresAt | Время наблюдения и expiry по явно указанному предположению |
+| Evidence/confidence | Основание mapping и high/medium/low/unresolved |
 
-Raw chassis/port subtypes сохраняются: MAC, network address и locally assigned identifier нельзя сравнивать как одну неразличимую строку. Device hostname не является глобальным уникальным ID. Remote, который ещё не сопоставлен с inventory, остаётся unresolved node.
+Raw bytes и subtypes не сводятся к одной строке: MAC, network address и locally
+assigned identifier имеют разные значения. Remote hostname не stable unique ID;
+неизвестный сосед остаётся unresolved advertised node.
 
-## Источники и корректность
+## LLDP-MIB collection и local mapping
 
-LLDP — основной планируемый источник физического соседства через LLDP-MIB. Local LLDP port number не обязан совпадать с ifIndex. Driver должен сопоставить local port ID/subtype с interface name/description/MAC и сохранять unresolved mapping, если уверенного соответствия нет. Индексы remote table должны разбираться целиком, чтобы разные neighbors и port observations не объединялись случайно.
+Driver читает local port table и remote table стандартной
+[IEEE LLDP-MIB](https://www.ieee802.org/1/files/public/MIBs/LLDP-MIB-200505060000Z.mib).
+Remote rows индексируются полным `timeMark.localPortNum.remIndex`, поэтому
+несколько neighbors на одном port не объединяются случайно. `lldpStatsRemTablesLastChangeTime`
+проверяется до/после collection; изменившаяся таблица даёт partial.
 
-RouterOS neighbor discovery будет сохранять фактический protocol и raw interface evidence. MNDP или discovery на общем bridged сегменте могут указывать доступность устройства в сегменте без доказательства одного прямого кабеля. Такие observations нельзя автоматически выдавать за достоверную point-to-point физическую связь.
+`lldpLocPortNum` не приравнивается `ifIndex`. Возможные mappings:
 
-ARP/ND и forwarding/MAC tables пригодны для дополнительных логических relationships. ARP entry сам по себе не доказывает физическое соединение. Источник и confidence всегда сопровождают observation; manual и simulated edges остаются явно помеченными.
+| LLDP evidence | Interface evidence | Confidence |
+|---|---|---|
+| interfaceName port subtype/ID | ifName | high |
+| interfaceAlias port subtype/ID | ifAlias | high |
+| macAddress port subtype/ID | ifPhysAddress | high |
+| local port description | ifDescr | medium |
 
-## Обновления, ошибки и lifetime
+Mapping принимается только при единственном candidate. Коллизия, отсутствие
+подходящего subtype/ID или metadata оставляют LocalInterfaceID пустым и
+confidence=unresolved. Raw evidence сохраняется, interface не придумывается.
+Complete empty snapshot требует доказательства доступной LLDP-MIB: local ports
+или доступного last-change scalar. Отсутствие MIB не превращается в complete
+empty graph. Missing/malformed identifiers и прерванный walk сохраняют partial
+или failed semantics.
 
-Сбор topology работает по отдельному configurable slow interval, по умолчанию 5 минут. Он не повторяет полный neighbor walk каждые 3 секунды. Responses, nodes/edges и parallel device requests ограничиваются по размеру и concurrency.
+## RouterOS neighbors
 
-Будущий `TopologyUpdate` должен различать полный успешный snapshot и partial observation. Timeout, unsupported MIB или ошибка части walk не означают исчезновение всех предыдущих links. Link removal определяется успешными полными observations и expiry/TTL; timestamps сохраняются для работы с устаревшими данными. Backend дедуплицирует оба направления одной связи и сопоставляет remote identifiers с inventory.
+Fixed GET `/rest/ip/neighbor` сохраняет `discovered-by` для LLDP/CDP/MNDP;
+при отсутствии/неизвестном protocol применяется unknown. Несколько protocols
+дают отдельные observations. `age` корректирует observed time, если доступен.
+Unique interface name связывается с canonical RouterOS `.id`; неоднозначный
+master/slave string остаётся unresolved.
 
-PhysicalLocation задаётся config/Backend. Agent не выводит room/rack из LLDP system description и не придумывает отсутствующие значения.
+Neighbor `mac-address` не гарантированно LLDP chassis ID: raw MAC сохраняется
+с unknown subtype и отдельным слабым evidence. `interface-name` документирован
+как CDP field и используется как remote port только для CDP. Отсутствующий
+LLDP/MNDP port ID остаётся отсутствующим. LLDP/CDP mapped observations получают
+medium confidence, MNDP — low: discovery на общем segment/bridge не доказывает
+один point-to-point кабель. Details —
+[RouterOS Neighbor discovery](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery).
 
-## Демонстрация и тесты
+ARP/ND/FDB не являются источниками P1 physical observations и не кодируются
+как discovery protocols. Они не доказывают прямой физический кабель.
+PhysicalLocation задаётся config; LLDP/sysLocation не создают rack/room metadata.
 
-Цель P1: MikroTik router → Eltex switch → server/AP. Реальные LLDP/neighbor observations показываются Mock Controller текстово: local device/port, remote chassis/port, protocol, timestamp и confidence. При отсутствии оборудования development Simulator может формировать такой graph только с `source=simulated`; production collector не использует synthetic neighbors.
+## Completeness и lifetime
 
-Обязательные mapping tests следующего этапа: localPortNum≠ifIndex, chassis/port subtypes, несколько neighbors на port, неизвестный remote, partial walk, empty complete snapshot, TTL/removal и ошибочная попытка считать ARP физической связью. Hardware integration tests требуют явного запуска. Web graph и логическая topology относятся к будущему Backend; P0 их не реализует.
+Complete означает успешный bounded snapshot; partial — есть observations,
+но часть collection/mapping не подтверждена; failed — успешный snapshot
+не получен. Все состояния передаются явно. Partial/failed не удаляют прежние
+links. Complete empty означает отсутствие наблюдаемых neighbors на этом poll,
+но сам по себе не отменяет collector TTL.
+
+LLDP-MIB не предоставляет received neighbor TTL. `remote.topology_ttl`
+(default 15m) — collector assumption, записанная в payload; это не advertised
+LLDP TTL. RouterOS observation age и collector TTL также не подтверждают
+remote protocol lifetime. Backend учитывает source/completeness/expiry
+и выполняет global reconciliation.
+
+Registry выдаёт `topology.link.observed` при появлении нового observation;
+`topology.link.expired` — лишь когда complete snapshot не содержит ранее
+наблюдавшийся link и его ExpiresAt уже наступил. Partial/failed не инициируют
+expiry. Local dedup history ограничена `remote.max_rows`; при memory eviction
+expiry event не выдаётся. История volatile, после restart/eviction observed
+событие может повториться. Outbox best effort; timestamp сохранён даже после
+ожидания в очереди, durable delivery отсутствует.
+
+## Проверка и ограничения
+
+Unit/fixture tests покрывают localPortNum≠ifIndex, unique ifName/MAC mappings,
+unresolved port, raw subtypes, несколько neighbors, неизвестный remote,
+partial/failed и complete empty. Registry tests проверяют expiry только после
+complete snapshot и bounds history. Wire tests проверяют binary IDs, enums,
+presence и реальную gRPC передачу в Mock Controller. Обычные tests не требуют
+SNMP/MikroTik hardware. Фактические команды и результаты записаны в
+[validation](validation.md).
+
+Реальный equipment graph MikroTik→Eltex→server/AP отдельно не подтверждён.
+SNMP Generic MIB fixtures не означают vendor-specific support; Simulator
+не реализован. Неизвестные remote devices не объединяются по имени,
+взаимное подтверждение observations и graph reconciliation выполняет Backend.

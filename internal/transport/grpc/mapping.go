@@ -77,6 +77,8 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 			update.Devices = append(update.Devices, deviceToProto(device))
 		}
 		message.Payload = &pb.AgentEnvelope_Inventory{Inventory: update}
+	case envelope.Topology != nil:
+		message.Payload = &pb.AgentEnvelope_Topology{Topology: topologyToProto(*envelope.Topology)}
 	case len(envelope.Events) > 0:
 		batch := &pb.EventBatch{}
 		for _, event := range envelope.Events {
@@ -93,6 +95,7 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 			CommandId: r.CommandID, Status: commandStatuses[r.Status],
 			StartedAt: optionalTimestamp(r.StartedAt), FinishedAt: optionalTimestamp(r.FinishedAt),
 			Changed: r.Changed, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
+			Verification: verificationToProto(r.Verification), Uncertain: r.Uncertain,
 		}}
 	case envelope.Error != nil:
 		e := envelope.Error
@@ -199,6 +202,15 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 				Timestamp: at, Severity: event.Severity, Message: event.Message, Source: event.Source,
 			})
 		}
+	case *pb.AgentEnvelope_Topology:
+		if payload == nil || payload.Topology == nil {
+			return e, errors.New("topology payload is nil")
+		}
+		update, err := topologyFromProto(payload.Topology)
+		if err != nil {
+			return e, err
+		}
+		e.Topology = &update
 	case *pb.AgentEnvelope_CommandResult:
 		if payload == nil || payload.CommandResult == nil {
 			return e, errors.New("command result is nil")
@@ -216,9 +228,14 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 		if err != nil {
 			return e, err
 		}
+		verification, err := verificationFromProto(r.Verification)
+		if err != nil {
+			return e, err
+		}
 		e.CommandResult = &model.CommandResult{
 			CommandID: r.CommandId, Status: status, StartedAt: startedAt, FinishedAt: finishedAt,
 			Changed: r.Changed, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
+			Verification: verification, Uncertain: r.Uncertain,
 		}
 	case *pb.AgentEnvelope_Error:
 		if payload == nil || payload.Error == nil {
@@ -351,7 +368,7 @@ func validateEnvelope(e model.Envelope) error {
 		return err
 	}
 	payloads := 0
-	for _, present := range []bool{e.Hello != nil, e.Heartbeat != nil, e.Telemetry != nil, e.Inventory != nil, len(e.Events) > 0, e.CommandResult != nil, e.Error != nil} {
+	for _, present := range []bool{e.Hello != nil, e.Heartbeat != nil, e.Telemetry != nil, e.Inventory != nil, e.Topology != nil, len(e.Events) > 0, e.CommandResult != nil, e.Error != nil} {
 		if present {
 			payloads++
 		}
@@ -417,6 +434,9 @@ func validateEnvelope(e model.Envelope) error {
 			if iface.Index < 0 || iface.Index > math.MaxInt32 || iface.MTU < 0 || iface.MTU > math.MaxInt32 {
 				return errors.New("interface index or MTU is invalid")
 			}
+			if err := validateCounterMetadata(iface); err != nil {
+				return err
+			}
 			if iface.Rates != nil {
 				r := iface.Rates
 				if err := finite(r.RXBytesPerSecond, r.TXBytesPerSecond, r.RXPacketsPerSecond, r.TXPacketsPerSecond, r.RXErrorsPerSecond, r.TXErrorsPerSecond, r.RXDroppedPerSecond, r.TXDroppedPerSecond); err != nil {
@@ -438,6 +458,8 @@ func validateEnvelope(e model.Envelope) error {
 				return err
 			}
 		}
+	case e.Topology != nil:
+		return validateTopology(*e.Topology)
 	case len(e.Events) > 0:
 		for _, event := range e.Events {
 			if err := validateTime(event.Timestamp, "event.timestamp"); err != nil {
@@ -462,6 +484,7 @@ func validateEnvelope(e model.Envelope) error {
 				return err
 			}
 		}
+		return validateVerification(r.Verification)
 	case e.Error != nil:
 		return validateTime(e.Error.Timestamp, "error.timestamp")
 	}
@@ -481,6 +504,17 @@ func validateDevice(device model.Device) error {
 	if !device.LastSeen.IsZero() {
 		if err := validateTime(device.LastSeen, "device.last_seen"); err != nil {
 			return err
+		}
+	}
+	if len(device.Components) > maxRemoteEntries {
+		return errors.New("inventory component limit exceeded")
+	}
+	if err := validateEvidence(device.VendorEvidence); err != nil {
+		return err
+	}
+	for _, component := range device.Components {
+		if component.ID == "" {
+			return errors.New("inventory component ID is required")
 		}
 	}
 	return finite(device.UptimeSeconds)
@@ -564,11 +598,20 @@ func deviceToProto(d model.Device) *pb.Device {
 		Os: d.OS, Distribution: d.Distribution, Kernel: d.Kernel, Architecture: d.Architecture,
 		ChassisId: d.ChassisID, Driver: d.Driver, UptimeSeconds: d.UptimeSeconds, BootId: d.BootID,
 		Online: d.Online, LastSeen: optionalTimestamp(d.LastSeen),
+		SystemDescription: d.SystemDescription, SysObjectId: d.SysObjectID,
+		SystemLocation: d.SystemLocation, SystemContact: d.SystemContact,
+		VendorHint: d.VendorHint, VendorEvidence: evidenceToProto(d.VendorEvidence),
+		UptimeAvailable: d.UptimeAvailable, UptimeSource: d.UptimeSource,
 		Location: &pb.PhysicalLocation{Site: location.Site, Datacenter: location.Datacenter, Building: location.Building,
 			Room: location.Room, Rack: location.Rack, RackUnit: int32(location.RackUnit), Position: location.Position, Comment: location.Comment},
 	}
 	for _, capability := range d.Capabilities {
 		result.Capabilities = append(result.Capabilities, &pb.Capability{Name: capability.Name, Supported: capability.Supported, Reason: capability.Reason})
+	}
+	for _, c := range d.Components {
+		result.Components = append(result.Components, &pb.InventoryComponent{Id: c.ID, ParentId: c.ParentID, Class: c.Class,
+			Name: c.Name, Description: c.Description, Manufacturer: c.Manufacturer, Model: c.Model, SerialNumber: c.SerialNumber,
+			HardwareRevision: c.HardwareRevision, FirmwareVersion: c.FirmwareVersion, SoftwareVersion: c.SoftwareVersion})
 	}
 	return result
 }
@@ -585,6 +628,10 @@ func deviceFromProto(d *pb.Device) (model.Device, error) {
 	if err != nil {
 		return model.Device{}, err
 	}
+	vendorEvidence, err := evidenceFromProto(d.VendorEvidence)
+	if err != nil {
+		return model.Device{}, err
+	}
 	result := model.Device{
 		ID: d.Id, Name: d.Name, Hostname: d.Hostname, ManagementAddress: d.ManagementAddress,
 		Vendor: d.Vendor, Model: d.Model, Type: typeName, SerialNumber: d.SerialNumber,
@@ -592,6 +639,10 @@ func deviceFromProto(d *pb.Device) (model.Device, error) {
 		OS: d.Os, Distribution: d.Distribution, Kernel: d.Kernel, Architecture: d.Architecture,
 		ChassisID: d.ChassisId, Driver: d.Driver, UptimeSeconds: d.UptimeSeconds, BootID: d.BootId,
 		Online: d.Online, LastSeen: lastSeen,
+		SystemDescription: d.SystemDescription, SysObjectID: d.SysObjectId,
+		SystemLocation: d.SystemLocation, SystemContact: d.SystemContact,
+		VendorHint: d.VendorHint, VendorEvidence: vendorEvidence,
+		UptimeAvailable: d.UptimeAvailable, UptimeSource: d.UptimeSource,
 	}
 	if location := d.Location; location != nil {
 		result.Location = model.PhysicalLocation{Site: location.Site, Datacenter: location.Datacenter, Building: location.Building,
@@ -603,6 +654,17 @@ func deviceFromProto(d *pb.Device) (model.Device, error) {
 		}
 		result.Capabilities = append(result.Capabilities, model.Capability{Name: capability.Name, Supported: capability.Supported, Reason: capability.Reason})
 	}
+	if len(d.Components) > maxRemoteEntries {
+		return model.Device{}, errors.New("inventory component limit exceeded")
+	}
+	for _, c := range d.Components {
+		if c == nil {
+			return model.Device{}, errors.New("inventory component is nil")
+		}
+		result.Components = append(result.Components, model.InventoryComponent{ID: c.Id, ParentID: c.ParentId, Class: c.Class,
+			Name: c.Name, Description: c.Description, Manufacturer: c.Manufacturer, Model: c.Model, SerialNumber: c.SerialNumber,
+			HardwareRevision: c.HardwareRevision, FirmwareVersion: c.FirmwareVersion, SoftwareVersion: c.SoftwareVersion})
+	}
 	return result, nil
 }
 
@@ -610,6 +672,7 @@ func sampleToProto(s model.TelemetrySample) *pb.TelemetrySample {
 	result := &pb.TelemetrySample{
 		DeviceId: s.DeviceID, ObservedAt: timestamp(s.ObservedAt), CollectedAt: timestamp(s.CollectedAt),
 		Source: s.Source, BootId: s.BootID, UptimeSeconds: s.UptimeSeconds,
+		UptimeAvailable: s.UptimeAvailable, UptimeSource: s.UptimeSource,
 	}
 	if c := s.CPU; c != nil {
 		result.Cpu = &pb.CPUStats{LogicalCpus: int32(c.LogicalCPUs), PhysicalCores: int32(c.PhysicalCores),
@@ -627,11 +690,15 @@ func sampleToProto(s model.TelemetrySample) *pb.TelemetrySample {
 				RxBytes: c.RXBytes, TxBytes: c.TXBytes, RxPackets: c.RXPackets, TxPackets: c.TXPackets,
 				RxErrors: c.RXErrors, TxErrors: c.TXErrors, RxDropped: c.RXDropped, TxDropped: c.TXDropped,
 			}}
+		item.Description, item.Alias, item.Type = iface.Description, iface.Alias, iface.Type
+		item.Metadata = interfaceMetadataToProto(iface.Metadata)
+		item.CounterMetadata = counterMetadataToProto(iface.CounterMetadata)
 		if r := iface.Rates; r != nil {
 			item.Rates = &pb.InterfaceRates{RxBytesPerSecond: r.RXBytesPerSecond, TxBytesPerSecond: r.TXBytesPerSecond,
 				RxPacketsPerSecond: r.RXPacketsPerSecond, TxPacketsPerSecond: r.TXPacketsPerSecond,
 				RxErrorsPerSecond: r.RXErrorsPerSecond, TxErrorsPerSecond: r.TXErrorsPerSecond,
 				RxDroppedPerSecond: r.RXDroppedPerSecond, TxDroppedPerSecond: r.TXDroppedPerSecond}
+			item.Rates.Available = availabilityToProto(r.Available)
 		}
 		result.Interfaces = append(result.Interfaces, item)
 	}
@@ -654,7 +721,7 @@ func sampleFromProto(s *pb.TelemetrySample) (model.TelemetrySample, error) {
 		return model.TelemetrySample{}, err
 	}
 	result := model.TelemetrySample{DeviceID: s.DeviceId, ObservedAt: observedAt, CollectedAt: collectedAt,
-		Source: s.Source, BootID: s.BootId, UptimeSeconds: s.UptimeSeconds}
+		Source: s.Source, BootID: s.BootId, UptimeSeconds: s.UptimeSeconds, UptimeAvailable: s.UptimeAvailable, UptimeSource: s.UptimeSource}
 	if c := s.Cpu; c != nil {
 		result.CPU = &model.CPUStats{LogicalCPUs: int(c.LogicalCpus), PhysicalCores: int(c.PhysicalCores),
 			Model: c.Model, UsagePercent: c.UsagePercent, Load1: c.Load1, Load5: c.Load5, Load15: c.Load15}
@@ -672,11 +739,18 @@ func sampleFromProto(s *pb.TelemetrySample) (model.TelemetrySample, error) {
 			AdminUp: iface.AdminUp, OperState: iface.OperState, SpeedBitsPerSecond: iface.SpeedBitsPerSecond,
 			Addresses: append([]string(nil), iface.Addresses...), Counters: model.Counters{RXBytes: c.RxBytes, TXBytes: c.TxBytes,
 				RXPackets: c.RxPackets, TXPackets: c.TxPackets, RXErrors: c.RxErrors, TXErrors: c.TxErrors, RXDropped: c.RxDropped, TXDropped: c.TxDropped}}
+		item.Description, item.Alias, item.Type = iface.Description, iface.Alias, iface.Type
+		item.Metadata = interfaceMetadataFromProto(iface.Metadata)
+		item.CounterMetadata, err = counterMetadataFromProto(iface.CounterMetadata)
+		if err != nil {
+			return model.TelemetrySample{}, err
+		}
 		if r := iface.Rates; r != nil {
 			item.Rates = &model.Rates{RXBytesPerSecond: r.RxBytesPerSecond, TXBytesPerSecond: r.TxBytesPerSecond,
 				RXPacketsPerSecond: r.RxPacketsPerSecond, TXPacketsPerSecond: r.TxPacketsPerSecond,
 				RXErrorsPerSecond: r.RxErrorsPerSecond, TXErrorsPerSecond: r.TxErrorsPerSecond,
 				RXDroppedPerSecond: r.RxDroppedPerSecond, TXDroppedPerSecond: r.TxDroppedPerSecond}
+			item.Rates.Available = availabilityFromProto(r.Available)
 		}
 		result.Interfaces = append(result.Interfaces, item)
 	}

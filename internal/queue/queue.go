@@ -24,13 +24,15 @@ type entry struct {
 }
 
 type Queue struct {
-	mu              sync.Mutex
-	entries         []entry
-	changed         chan struct{}
-	maxMessages     int
-	maxBytes        int
-	maxMessageBytes int
-	state           model.QueueState
+	mu               sync.Mutex
+	entries          []entry
+	changed          chan struct{}
+	maxMessages      int
+	maxBytes         int
+	maxMessageBytes  int
+	state            model.QueueState
+	reservedMessages int
+	reservedBytes    int
 }
 
 func New(maxMessages, maxBytes, maxMessageBytes int) (*Queue, error) {
@@ -65,7 +67,7 @@ func (q *Queue) Push(envelope model.Envelope) error {
 	// Plan all removals before mutation: a rejected push preserves existing data.
 	removed := make([]bool, len(q.entries))
 	count, size := len(q.entries), q.state.Bytes
-	for count+1 > q.maxMessages || len(data) > q.maxBytes-size {
+	for count+q.reservedMessages+1 > q.maxMessages || len(data)+q.reservedBytes > q.maxBytes-size {
 		candidate := -1
 		for i, existing := range q.entries {
 			if removed[i] || existing.priority == 0 || existing.priority < priority {
@@ -170,6 +172,10 @@ func envelopePriority(e model.Envelope) (int, error) {
 		priority = 1
 	}
 	if e.Inventory != nil {
+		count++
+		priority = 3
+	}
+	if e.Topology != nil {
 		count++
 		priority = 3
 	}

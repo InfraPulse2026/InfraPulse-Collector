@@ -52,3 +52,12 @@ func TestCapabilityAndP0CannotMutate(t *testing.T) {
 		t.Fatal("P0 allowed mutation")
 	}
 }
+func TestProtectedMACCanonicalForms(t *testing.T) {
+	c := command()
+	for _, protected := range []string{"02:aB:00:00:00:01", "02ab.0000.0001", "02-AB-00-00-00-01"} {
+		p := Policy{Enabled: true, ProtectedInterfaces: []string{protected}}
+		if !errors.Is(p.Check(c, "02:ab:00:00:00:01"), ErrProtected) {
+			t.Fatal("MAC alias bypass", protected)
+		}
+	}
+}

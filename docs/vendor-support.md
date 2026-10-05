@@ -1,42 +1,83 @@
 # Поддержка платформ и производителей
 
-Документ отражает текущий P0. Наличие архитектурного плана, поля конфигурации или типа команды не означает работающую интеграцию. Реализован локальный Linux collector; удалённые SNMP/RouterOS drivers и vendor profiles относятся к следующему этапу.
+Матрица отражает реализованные collectors и способ проверки. Generic MIB
+support не подтверждает работу каждой модели/firmware vendor. Наличие
+config hint, action в protobuf или driver package не объявляет capability:
+remote capabilities появляются после наблюдения реальных операций.
 
-## Текущее состояние
+## Реализованные пути
 
-| Платформа / vendor | Detection | Inventory | Interfaces | Telemetry | Physical topology | Commands |
-|---|---|---|---|---|---|---|
-| Local Linux | Runtime OS, hostname, os-release, kernel | OS/version/architecture/uptime/boot ID; DMI vendor/model/serial/revision при доступности | Реальные counters, index/name/MAC/MTU/admin/oper/speed/IP | CPU/load, RAM/swap, optional PSI, traffic rates | Unsupported | Unsupported; mutations не выполняются |
-| Local OpenWrt | Native adapter planned P2 | Native ubus/UCI inventory planned P2 | Общий Linux путь потенциально применим; runtime на OpenWrt не проверен | Общий Linux путь потенциально применим; native adapter не реализован | Unsupported | Unsupported |
-| Local Windows | Unsupported; collector-only hosting архитектурно допустим | Unsupported | Unsupported | Unsupported | Unsupported | Unsupported |
-| Generic SNMP | Planned P1 | Planned P1 | Planned P1 | Planned P1 | LLDP planned P1 | Read-only target; write unsupported |
-| MikroTik RouterOS | HTTPS REST planned P1 | Planned P1 | Planned P1 | Planned P1 | Neighbor discovery planned P1 | Typed interface enable/disable planned P1 |
-| Cisco | SNMP profile planned | Standard MIB collection planned | Planned | Planned | LLDP where available, planned | Unsupported |
-| Huawei | SNMP profile planned | Standard MIB collection planned | Planned | Planned | LLDP where available, planned | Unsupported |
-| Juniper | SNMP profile planned | Standard MIB collection planned | Planned | Planned | LLDP where available, planned | Unsupported |
-| Eltex | SNMP profile planned | Standard MIB collection planned | Planned | Planned | LLDP where available, planned | Unsupported |
-| QTECH | SNMP profile planned | Standard MIB collection planned | Planned | Planned | LLDP where available, planned | Unsupported |
+| Платформа / driver | Inventory / interfaces | Telemetry | Topology | Commands | Проверка |
+|---|---|---|---|---|---|
+| Local Linux | OS/kernel/architecture/boot identity; доступные DMI; interfaces/IP | CPU/load, RAM/swap/optional PSI; counters/rates | Unsupported | Unsupported | Procfs/sysfs fixtures и P0 WSL Linux amd64 runtime |
+| Generic SNMP v2c | SYSTEM; optional ENTITY components; IF/IF-X index/name/description/alias/MAC/state/speed | HC counters при наличии, Counter32 fallback; availability/rates | LLDP-MIB, local mapping и unresolved evidence | Read-only, writes unsupported | Mapping fixtures и локальный UDP SNMP server |
+| MikroTik RouterOS HTTPS REST | Identity/resource; optional RouterBOARD model/serial/firmware; interfaces и IPv4/IPv6 addresses | Interface counters/rates; реально возвращённые CPU/RAM metrics | Neighbor LLDP/CDP/MNDP/unknown observations | Typed interface enable/disable при permissions/policy/protection/verification | JSON fixtures и локальный HTTPS server; hardware не проверен |
+| Local Windows | LocalPlatform unsupported | Unsupported | Unsupported | Unsupported | Collector hosting `local.enabled: false`; это не Windows monitoring |
+| Local OpenWrt | Native adapter отсутствует | Native adapters отсутствуют | Native topology отсутствует | Unsupported | Linux cross-build не доказывает runtime конкретной firmware |
 
-MikroTik также может использовать общий SNMP driver после его реализации. Сейчас ни один из шести remote vendors не объявляется поддержанным production collector. Mock Controller получает реальные локальные данные; Simulator и synthetic vendor demonstrations пока не реализованы.
+Current RouterOS REST рассчитан на RouterOS 7 с `www-ssl` и verified certificate.
+Availability endpoints/properties зависит от версии и устройства; например,
+`discovered-by` появился в RouterOS 7.7. Отсутствующие поля не угадываются.
+Linux/SNMP/RouterOS interfaces используют один normalized model; RouterOS
+CPU/RAM values передаются как typed Metric entries, без выдуманных Linux
+load/swap/PSI semantics.
 
-## Linux capabilities и ограничения
+## Vendor evidence и profiles
 
-Локальная implementation объявляет `system.read`, `inventory.read`, `cpu.read`, `memory.read`, `interfaces.read`, `telemetry.read`. Поддержка write, services, firewall, logs, telephony и topology не объявляется. Agent не превращает наличие Linux в доказательство типа оборудования: device type остаётся `unknown`, если надёжной классификации нет.
+| Vendor | Реальная P1 detection | Vendor-specific profile / hardware support |
+|---|---|---|
+| MikroTik | Verified SNMP PEN `.1.3.6.1.4.1.14988`; слабый literal MikroTik sysDescr; RouterOS REST response evidence | RouterOS driver реализован с fixtures; семейства hardware отдельно не подтверждены |
+| Cisco | Только configured hint/raw sysObjectID evidence; автоматический profile отсутствует | P2 |
+| Huawei | Только configured hint/raw sysObjectID evidence; автоматический profile отсутствует | P2 |
+| Juniper | Только configured hint/raw sysObjectID evidence; автоматический profile отсутствует | P2 |
+| Eltex | Только configured hint/raw sysObjectID evidence; автоматический profile отсутствует | P2 |
+| QTECH | Только configured hint/raw sysObjectID evidence; автоматический profile отсутствует | P2 |
 
-Необязательные DMI поля могут отсутствовать или требовать привилегий. Physical core count отсутствует, если cpuinfo не содержит физических/core IDs. Первый CPU sample, reboot и уменьшение counters не имеют utilization. PSI и interface speed доступны только когда соответствующий kernel/sysfs источник возвращает данные. Если старый kernel не предоставляет MemAvailable, используется оценка `free + buffers + cached + SReclaimable - Shmem`, ограниченная размером RAM; это оценка reclaimable memory, а не отдельный sensor.
+Стандартные SYSTEM/IF/IF-X/ENTITY/LLDP MIB можно собирать одним Generic SNMP
+driver при их реальной доступности. Это не отдельные шесть проверенных profiles.
+Hint не подтверждает manufacturer; hostname не используется для detection,
+model/serial не выводятся из vendor. Без подтверждения Vendor остаётся пустым.
+Source/strength evidence сохраняются. Verified MikroTik prefix подтверждён
+[официальной SNMP документацией](https://help.mikrotik.com/docs/spaces/ROS/pages/8978519/SNMP).
 
-Текущая scalar модель interface index/MTU/admin state не имеет presence flags: при отсутствии sysfs metadata index/MTU равны 0, admin state false, oper state `unknown`. Consumers не должны трактовать это как подтверждённую команду отключения. Расширение presence для этих полей потребуется вместе с remote mappings.
+## Capabilities и отсутствие данных
 
-Linux collector проверен с fixtures без root/network и на реальных `/proc`, `/sys` и interface addresses в WSL Linux amd64. Компиляция `linux/amd64`, `linux/arm64`, `linux/arm`, `linux/mips`, `linux/mipsle` проверена отдельно. Cross-build не подтверждает работу конкретной прошивки OpenWrt или ресурсные ограничения маршрутизатора.
+Linux объявляет `system.read`, `inventory.read`, `cpu.read`, `memory.read`,
+`interfaces.read`, `telemetry.read`. P0 Linux scalar index/MTU/admin fields
+при отсутствии sysfs metadata имеют 0/false и oper=unknown; nil metadata
+не превращает их в доказательство отключения. Optional DMI/core IDs/PSI/speed
+могут отсутствовать. Cross-build подтверждает компиляцию, не OpenWrt RAM/flash
+или native UCI/ubus support.
 
-## Как будет расширяться SNMP поддержка
+SNMP объявляет наблюдённые `system.read`, `inventory.read`, `interfaces.read`,
+`telemetry.read`, `topology.lldp`. ENTITY-MIB optional: только фактические
+components, device model/serial лишь при единственной chassis. sysUpTime —
+uptime management subsystem; отсутствие явно отмечено. HC counters
+предпочитаются; unavailable поля сохраняют availability=false. Fallback packet
+суммы width=0 не получают rate. Counter32 rates консервативны и могут отсутствовать
+даже при доступном counter. SNMPv3 и SNMP SET не реализованы.
 
-Один protocol adapter реализует SNMP exchange, deadlines и bounded responses. Один Generic SNMP driver нормализует стандартные SYSTEM, IF-MIB/IF-X-MIB и LLDP данные. Новому manufacturer не требуется копия driver: profile добавляет только подтверждённое detection evidence и реально нужные mappings.
+RouterOS объявляет наблюдённые `system.read`, `inventory.read`, `interfaces.read`,
+`telemetry.read`, `topology.read`. `interfaces.enable/disable` требуют
+per-device opt-in и подтверждённых user/group `read/write/api/rest-api` прав;
+отсутствующая/hidden/RADIUS-only metadata оставляет unsupported. Commands
+policy default-deny и protected aliases/dependencies применяются дополнительно.
+Unknown/partial dependency metadata не позволяет mutation. Services/firewall
+writes, configuration snapshots и rollback отсутствуют.
 
-Vendor detection будет использовать проверенные sysObjectID prefixes, затем слабое sysDescr evidence. Явно выбранный profile — конфигурационный hint, а не автоматически подтверждённый manufacturer. Без достоверного evidence vendor остаётся unknown. Serial/model не выводятся из названия производителя.
+LLDP topology сохраняет raw IDs/subtypes, unresolved local port и partial/failed
+snapshots. RouterOS neighbor MAC не гарантирует LLDP chassis ID, CDP/MNDP/общий
+bridge segment не доказывают один физический кабель. Received LLDP TTL
+не предоставляется MIB; collector TTL явно обозначен как assumption.
 
-Каждая capability будет объявляться по реализованной функции и фактической доступности данных. Отсутствующая MIB или API operation даёт unsupported/unavailable с причиной. Vendor-specific OID, endpoint или CLI добавляется только после проверки документации и mapping tests. SNMPv2c — первый read-only этап; SNMPv3 auth/privacy и дополнительные протоколы требуют отдельной реализации.
+## Дальнейшие этапы и обновление матрицы
 
-## Критерий обновления matrix
+Native OpenWrt, проверенные vendor profiles, logs/audit/cursors,
+firewall/services/SIP/PBX и Simulator остаются P2. Windows LocalPlatform,
+SNMPv3, прочие протоколы по необходимости, durable queue/journal/enrollment
+и rollback — отдельные последующие этапы.
 
-После появления driver строка обновляется только с перечислением конкретных работающих функций, протокола/версии и способа проверки: fixtures, simulator, virtual device или реальное оборудование. Проверка на одном model не гарантирует все семейства и firmware vendor. Реальные hardware tests остаются отдельно tagged и не требуются для обычного `go test ./...`.
+Hardware integration должен запускаться отдельно от обычной suite. После live
+проверки указываются конкретные model/firmware, доступные operations и способ
+проверки; один fixture или cross-build не подтверждают весь vendor.
+Фактическая validation история — [validation](validation.md).

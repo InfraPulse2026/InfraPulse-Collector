@@ -24,6 +24,7 @@ message AgentEnvelope {
     Heartbeat heartbeat = 11;
     TelemetryBatch telemetry = 12;
     InventoryUpdate inventory = 13;
+    TopologyUpdate topology = 14;
     EventBatch events = 16;
     CommandResult command_result = 18;
     ErrorReport error = 20;
@@ -114,6 +115,35 @@ message Device {
   google.protobuf.Timestamp last_seen = 21;
   PhysicalLocation location = 22;
   repeated Capability capabilities = 23;
+  string system_description = 24;
+  string sys_object_id = 25;
+  string system_location = 26;
+  string system_contact = 27;
+  string vendor_hint = 28;
+  repeated Evidence vendor_evidence = 29;
+  repeated InventoryComponent components = 30;
+  optional bool uptime_available = 31;
+  string uptime_source = 32;
+}
+
+message Evidence {
+  string source = 1;
+  string value = 2;
+  string confidence = 3;
+}
+
+message InventoryComponent {
+  string id = 1;
+  string parent_id = 2;
+  string class = 3;
+  string name = 4;
+  string description = 5;
+  string manufacturer = 6;
+  string model = 7;
+  string serial_number = 8;
+  string hardware_revision = 9;
+  string firmware_version = 10;
+  string software_version = 11;
 }
 
 message CPUStats {
@@ -156,6 +186,45 @@ message InterfaceRates {
   double tx_errors_per_second = 6;
   double rx_dropped_per_second = 7;
   double tx_dropped_per_second = 8;
+  CounterAvailability available = 9;
+}
+
+// Absent metadata preserves P0 semantics: all counters are available, 64-bit.
+// A present mask distinguishes unavailable counters from measured zeroes.
+message CounterAvailability {
+  bool rx_bytes = 1;
+  bool tx_bytes = 2;
+  bool rx_packets = 3;
+  bool tx_packets = 4;
+  bool rx_errors = 5;
+  bool tx_errors = 6;
+  bool rx_dropped = 7;
+  bool tx_dropped = 8;
+}
+
+message CounterWidths {
+  // Zero means aggregate/unknown width: the counter may be observed but its
+  // modular delta cannot safely be inferred for traffic rates.
+  uint32 rx_bytes = 1;
+  uint32 tx_bytes = 2;
+  uint32 rx_packets = 3;
+  uint32 tx_packets = 4;
+  uint32 rx_errors = 5;
+  uint32 tx_errors = 6;
+  uint32 rx_dropped = 7;
+  uint32 tx_dropped = 8;
+}
+
+message CounterMetadata {
+  CounterAvailability available = 1;
+  CounterWidths widths = 2;
+  optional uint32 discontinuity_ticks = 3;
+}
+
+message InterfaceMetadata {
+  bool index = 1;
+  bool mtu = 2;
+  bool admin_status = 3;
 }
 
 message Interface {
@@ -170,6 +239,11 @@ message Interface {
   repeated string addresses = 9;
   InterfaceCounters counters = 10;
   InterfaceRates rates = 11;
+  string description = 12;
+  string alias = 13;
+  optional uint32 type = 14;
+  InterfaceMetadata metadata = 15;
+  CounterMetadata counter_metadata = 16;
 }
 
 message Metric {
@@ -189,6 +263,8 @@ message TelemetrySample {
   MemoryStats memory = 8;
   repeated Interface interfaces = 9;
   repeated Metric metrics = 10;
+  optional bool uptime_available = 11;
+  string uptime_source = 12;
 }
 
 // P0 emits a single sample in each batch. The wire contract can batch multiple
@@ -216,6 +292,55 @@ message Heartbeat {
 message InventoryUpdate {
   google.protobuf.Timestamp observed_at = 1;
   repeated Device devices = 2;
+}
+
+enum SnapshotCompleteness {
+  SNAPSHOT_COMPLETENESS_UNSPECIFIED = 0;
+  SNAPSHOT_COMPLETENESS_COMPLETE = 1;
+  SNAPSHOT_COMPLETENESS_PARTIAL = 2;
+  SNAPSHOT_COMPLETENESS_FAILED = 3;
+}
+
+enum DiscoveryProtocol {
+  DISCOVERY_PROTOCOL_UNSPECIFIED = 0;
+  DISCOVERY_PROTOCOL_LLDP = 1;
+  DISCOVERY_PROTOCOL_CDP = 2;
+  DISCOVERY_PROTOCOL_MNDP = 3;
+  DISCOVERY_PROTOCOL_UNKNOWN = 4;
+}
+
+message TopologyUpdate {
+  string device_id = 1;
+  google.protobuf.Timestamp observed_at = 2;
+  google.protobuf.Timestamp collected_at = 3;
+  string source = 4;
+  SnapshotCompleteness completeness = 5;
+  // Collector assumption, not an advertised LLDP TTL. Partial/failed snapshots
+  // cannot authoritatively remove previous observations.
+  uint32 ttl_seconds = 6;
+  string expiry_assumption = 7;
+  repeated Neighbor observations = 8;
+}
+
+message Neighbor {
+  string local_device_id = 1;
+  string local_interface_id = 2;
+  string local_interface_name = 3;
+  uint32 local_port_number = 4;
+  bytes local_port_id = 5;
+  uint32 local_port_subtype = 6;
+  bytes remote_chassis_id = 7;
+  uint32 remote_chassis_subtype = 8;
+  bytes remote_port_id = 9;
+  uint32 remote_port_subtype = 10;
+  string remote_system_name = 11;
+  string remote_port_description = 12;
+  DiscoveryProtocol protocol = 13;
+  string source = 14;
+  google.protobuf.Timestamp observed_at = 15;
+  google.protobuf.Timestamp expires_at = 16;
+  repeated Evidence evidence = 17;
+  string confidence = 18;
 }
 
 message Event {
@@ -303,4 +428,18 @@ message CommandResult {
   bool changed = 5;
   string error_code = 6;
   string error_message = 7;
+  InterfaceVerification verification = 8;
+  bool uncertain = 9;
+}
+
+message InterfaceVerification {
+  string interface_id = 1;
+  string name = 2;
+  bool expected_admin_up = 3;
+  optional bool observed_admin_up = 4;
+  google.protobuf.Timestamp observed_at = 5;
+  bool verified = 6;
+  bool changed = 7;
+  bool uncertain = 8;
+  string evidence = 9;
 }

@@ -1,12 +1,11 @@
 # InfraPulse Agent
 
 InfraPulse Agent — Go-компонент многовендорной NetOps Platform InfraPulse для
-сбора данных инфраструктуры и передачи их в Controller/Backend. В текущей версии
-Agent собирает данные локального Linux-хоста, передаёт telemetry, inventory
-и events и принимает только типизированные управляющие команды.
+сбора данных инфраструктуры и передачи их в Controller/Backend. Agent собирает
+локальный Linux-хост и удалённые устройства через SNMP v2c и RouterOS HTTPS REST,
+передаёт telemetry, inventory, topology observations и события.
 
-Архитектура предусматривает работу collector для удалённых сетевых устройств;
-удалённые integrations пока не поддерживаются. Production Backend, Web UI,
+Production Backend, Web UI,
 AI и историческое хранилище находятся вне этого репозитория. Для разработки
 и демонстрации обмена данными поставляется Mock Controller.
 
@@ -19,11 +18,18 @@ AI и историческое хранилище находятся вне эт
   расчёт traffic rates между измерениями.
 - Постоянный Agent ID и отдельный Session ID для каждого запуска.
 - Передача inventory, heartbeat и событий Agent.
+- Generic SNMP v2c read-only: SYSTEM, ENTITY-MIB при доступности, IF-MIB/IF-X-MIB
+  и LLDP-MIB с сохранением исходных идентификаторов и evidence.
+- RouterOS HTTPS REST: identity/resource/routerboard, interfaces и IP-адреса,
+  neighbor discovery с фактическим LLDP/CDP/MNDP source.
+- Ограниченный remote polling, offline после трёх последовательных ошибок связи
+  и события переходов состояния.
 - Настраиваемый интервал оперативной telemetry, по умолчанию 3 секунды.
 - Исходящее bidirectional gRPC-соединение, production mTLS и reconnect.
 - Ограниченная очередь отправки и диагностика состояния Agent.
-- Типизированный протокол команд с validation и policy checks. Изменяющие
-  действия сейчас возвращают `rejected` или `unsupported` и не исполняются.
+- Типизированные RouterOS `interface.enable`/`interface.disable` с policy,
+  защитой management interfaces и проверкой состояния после изменения.
+  По умолчанию команды отключены.
 - Development Mock Controller для наблюдения данных и проверки команд.
 
 ## Как это работает
@@ -46,10 +52,9 @@ InfraPulse Controller / Backend
 
 ### Collector Mode
 
-Collector Mode предназначен для опроса удалённых устройств через сетевые
-протоколы без установки Agent на каждое устройство. В текущем коде SNMP/REST
-drivers отсутствуют. Режим `local.enabled: false` позволяет запустить обмен
-с Controller и heartbeat без локального сбора; он не включает remote polling.
+Collector Mode опрашивает устройства из `devices` без установки Agent на них.
+`local.enabled: false` отключает сбор хоста; remote polling и heartbeat продолжают
+работать. Local Mode и Collector Mode можно использовать одновременно.
 
 Границы компонентов и внутренние механизмы описаны в
 [архитектуре](docs/architecture.md).
@@ -176,14 +181,18 @@ devices: []
 | `scheduler` | Число одновременно выполняемых collectors |
 | `logging` | Уровень логирования: debug, info, warn, error |
 | `location` | Физическое расположение, заданное оператором |
-| `commands` | Policy и protected resources; исполнители действий отсутствуют |
-| `devices` | Настройки remote devices; сейчас допустим запуск только с `[]` |
+| `commands` | Включение typed actions и protected resources |
+| `devices` | Стабильные ID, адреса, SNMP/RouterOS driver и настройки опроса |
+| `credentials` | Именованные ссылки на environment variables с credentials |
+| `remote` | Concurrency, лимиты responses/rows и срок актуальности topology |
 
 Готовые примеры:
 
 - [config.example.yaml](configs/config.example.yaml) — Linux local collection.
 - [config.collector.example.yaml](configs/config.collector.example.yaml) —
   development-соединение без локального сбора, в том числе на Windows.
+- [config.remote.example.yaml](configs/config.remote.example.yaml) — remote
+  SNMP/RouterOS collection с credentials из environment.
 
 Для production замените адрес и параметры безопасности:
 
@@ -209,6 +218,92 @@ Agent. Подробнее — [безопасность](docs/security.md).
 | `INFRAPULSE_CA_FILE` | `security.ca_file` |
 | `INFRAPULSE_CERT_FILE` | `security.cert_file` |
 | `INFRAPULSE_KEY_FILE` | `security.key_file` |
+
+### Удалённые устройства
+
+Назначьте каждому устройству постоянный `id`, который сохраняется при смене
+IP или имени. Например, для SNMP:
+
+```yaml
+credentials:
+  switch-snmp:
+    community_env: INFRAPULSE_SNMP_COMMUNITY
+devices:
+  - id: switch-01
+    name: Access switch
+    address: 192.0.2.10
+    driver: snmp
+    credential_ref: switch-snmp
+    snmp:
+      port: 161
+      retries: 1
+    polling:
+      timeout: 5s
+    location:
+      datacenter: dc-1
+      room: network
+      rack: rack-01
+      rack_unit: 12
+```
+
+Задайте `INFRAPULSE_SNMP_COMMUNITY` в окружении процесса Agent. Значение
+community в YAML не записывается. На устройстве разрешите read-only SNMP v2c
+и доступ с адреса collector. SNMPv2c не шифрует community; используйте доверенную
+management network. Пустая или отсутствующая environment variable делает
+credential недоступным. `vendor_hint` — необязательная подсказка, которая сама
+по себе не подтверждает производителя. `location` задаётся оператором;
+`sysLocation` не превращается автоматически в datacenter/room/rack.
+
+Для RouterOS 7 включите `www-ssl`, настройте серверный сертификат и разрешите
+REST доступ выбранному пользователю. В config указывается HTTPS origin:
+
+```yaml
+credentials:
+  routeros-main:
+    username_env: INFRAPULSE_ROUTEROS_USERNAME
+    password_env: INFRAPULSE_ROUTEROS_PASSWORD
+devices:
+  - id: router-01
+    name: Edge router
+    address: https://router.example.net
+    driver: routeros
+    credential_ref: routeros-main
+    tls:
+      ca_file: ../state/routeros-ca.pem
+    polling:
+      timeout: 5s
+    enable_mutations: false
+```
+
+Установите обе environment variables до запуска. `tls.ca_file` задаёт доверенные
+CA именно этого устройства; если поле отсутствует, используется системное
+хранилище CA. Имя или IP в адресе должны соответствовать сертификату. URL
+не содержит `/rest`, credentials, query или fragment. HTTP и отключение TLS
+verification не поддерживаются даже при development-соединении с Controller.
+
+Настройки `polling.fast_interval`, `medium_interval`, `inventory_interval`,
+`topology_interval` и `timeout` переопределяют общие интервалы для устройства.
+По умолчанию fast — 3s, medium — 30s, inventory/topology — 5m. Полные inventory
+и neighbor tables опрашиваются отдельно от fast counters. Общий лимит
+одновременных remote jobs задаётся `remote.concurrency` (default 4), лимиты
+таблиц и ответов — `remote.max_rows` и `remote.max_response_bytes`.
+SNMP limit применяется также к числу varbind/table cells, поэтому большая
+таблица может достичь его раньше, чем число interfaces достигнет max_rows.
+После первого bounded interface baseline SNMP fast polling использует Get
+по известным indexes. Новые interfaces обнаруживаются на следующем inventory
+refresh; исчезнувшие известные indexes удаляются при недоступном ifIndex.
+
+Перед запуском можно выполнить ограниченный read-only probe:
+
+```sh
+./bin/infrapulse-agent validate-config --config configs/config.remote.example.yaml
+./bin/infrapulse-agent probe-device --config configs/config.remote.example.yaml switch-01
+```
+
+Probe проверяет configured driver без подключения к Controller. Для полного
+сбора telemetry/topology запустите `run`. Отсутствующие MIB/JSON fields остаются
+недоступными; первый sample и сброс счётчиков не имеют traffic rates. При
+неизвестном uptime или неоднозначном 32-bit wrap rates также отсутствуют.
 
 ## Запуск
 
@@ -241,7 +336,7 @@ Controller — в stdout.
 | `version` | Версия и сведения о сборке |
 | `validate-config` | Проверка структуры и значений конфигурации |
 | `diagnostics` | Конфигурационная сводка и последний snapshot состояния |
-| `probe-device` | Команда предусмотрена, но сейчас возвращает unsupported |
+| `probe-device` | Ограниченный read-only probe configured remote device |
 
 Общий параметр — `--config <file>`; без него используется
 `configs/config.example.yaml`. Команда `version` не требует config.
@@ -249,7 +344,7 @@ Controller — в stdout.
 
 ```sh
 ./bin/infrapulse-agent version
-./bin/infrapulse-agent probe-device --config configs/config.example.yaml router-01
+./bin/infrapulse-agent probe-device --config configs/config.remote.example.yaml switch-01
 ```
 
 Для `probe-device` параметры должны предшествовать ID устройства.
@@ -263,7 +358,7 @@ Mock Controller предназначен только для разработк�
 ./bin/infrapulse-mock-controller --address 127.0.0.1:9443 --security-mode development
 ```
 
-Controller принимает AgentHello, heartbeat, telemetry, inventory, events
+Controller принимает AgentHello, heartbeat, telemetry, inventory, topology, events
 и CommandResult и выводит их JSON-строками. Для проверки typed command
 остановите обычный экземпляр и запустите его с параметрами:
 
@@ -276,9 +371,37 @@ Controller принимает AgentHello, heartbeat, telemetry, inventory, event
 `interface.disable`, `service.start`, `service.stop`, `service.restart`.
 Для service-команды ресурс задаётся `--service`.
 
-В текущей версии Agent не исполняет эти действия: с example config возвращается
-`rejected` по policy, разрешённая policy не включает отсутствующий исполнитель.
-Результат содержит `changed=false`.
+Для RouterOS разрешение действий требует одновременно `commands.enabled: true`
+и `enable_mutations: true` у устройства. Agent дополнительно проверяет реальные
+права пользователя по `/user` и `/user/group`; если metadata недоступна,
+write capability остаётся unsupported. Требуются права `read`, `write`, `api`
+и `rest-api`. SNMP и локальный Linux остаются read-only; service actions
+возвращают unsupported.
+
+Management interface обязательно включите в protected list перед разрешением
+команд:
+
+```yaml
+commands:
+  enabled: true
+  protected_interfaces: [ether1]
+```
+
+Protection проверяется по текущему `.id`, имени, default-name/MAC и связанным
+bridge/bond/VLAN interfaces. При недоступных dependency tables команда
+отклоняется. Защита действует на все устройства для перечисленных aliases.
+Agent не определяет management path автоматически. Для разрешённой команды
+Mock использует stable target ID из config:
+
+```sh
+./bin/infrapulse-mock-controller --command interface.disable --target router-01 --interface ether2
+```
+
+Результат включает `changed` и read-after-write verification. Timeout после
+отправки изменения может вернуть `uncertain=true`; автоматического rollback
+нет. Очередь и кеш повторов хранятся в RAM. Для admission команды лимит
+`queue.max_message_bytes` должен быть не меньше 4096 bytes и в очереди должно
+хватать места для результата.
 
 Для соединения с mTLS Mock поддерживает параметры `--security-mode production`,
 `--ca-file`, `--cert-file`, `--key-file`. Требования к сертификатам и протоколу —
@@ -365,8 +488,12 @@ sudo systemctl status infrapulse-agent
   `configs/config.collector.example.yaml` с `local.enabled: false`.
 - **OpenWrt:** native integrations отсутствуют; совместимость конкретной
   архитектуры и firmware требует отдельной проверки.
-- **Remote devices:** SNMP, RouterOS и другие remote integrations пока
-  не поддерживаются. Физическая topology сейчас не собирается.
+- **Remote devices:** Generic SNMP v2c и RouterOS HTTPS REST реализованы;
+  mappings проверяются fixtures и локальными protocol servers. Поддержка
+  конкретных моделей/firmware на реальном оборудовании отдельно не подтверждена.
+  LLDP передаётся как observations с evidence, а reconciliation графа выполняет
+  Backend. Полные vendor profiles, SNMPv3 и дополнительные протоколы относятся
+  к следующим этапам.
 
 Подробная [матрица платформ, vendors и capabilities](docs/vendor-support.md).
 
@@ -429,6 +556,9 @@ sh scripts/generate-proto.sh
 
 Очередь хранится только в RAM: restart теряет её содержимое, а разрыв соединения
 может потерять отправляемое сообщение. Она не заменяет durable storage.
-Удалённые integrations, Windows local collection и исполнение управляющих
-действий отсутствуют. Enrollment и автоматический выпуск сертификатов
-не поддерживаются; сертификаты устанавливаются отдельно.
+SNMPv3, native OpenWrt, Windows local collection, service/firewall writes,
+vendor-specific profiles и Simulator не реализованы. Remote integrations
+проверены fixtures/local servers; реальное hardware/firmware требует отдельной
+проверки. Interface writes доступны только RouterOS с явной policy/protection;
+rollback и persistent execution journal отсутствуют. Enrollment и автоматический
+выпуск сертификатов не поддерживаются; сертификаты устанавливаются отдельно.

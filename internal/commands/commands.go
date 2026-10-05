@@ -3,7 +3,9 @@
 package commands
 
 import (
+	"bytes"
 	"errors"
+	"net"
 	"strings"
 	"time"
 	"unicode"
@@ -83,11 +85,11 @@ func (p Policy) Check(c model.Command, aliases ...string) error {
 		return ErrProtected
 	}
 	if c.Interface != nil {
-		if contains(p.ProtectedInterfaces, c.Interface.InterfaceID) {
+		if containsInterface(p.ProtectedInterfaces, c.Interface.InterfaceID) {
 			return ErrProtected
 		}
 		for _, a := range aliases {
-			if contains(p.ProtectedInterfaces, a) {
+			if containsInterface(p.ProtectedInterfaces, a) {
 				return ErrProtected
 			}
 		}
@@ -100,6 +102,22 @@ func (p Policy) Check(c model.Command, aliases ...string) error {
 func contains(values []string, v string) bool {
 	for _, s := range values {
 		if s == v {
+			return true
+		}
+	}
+	return false
+}
+func containsInterface(values []string, v string) bool {
+	if contains(values, v) {
+		return true
+	}
+	mac, err := net.ParseMAC(v)
+	if err != nil {
+		return false
+	}
+	for _, candidate := range values {
+		other, e := net.ParseMAC(candidate)
+		if e == nil && bytes.Equal(mac, other) {
 			return true
 		}
 	}

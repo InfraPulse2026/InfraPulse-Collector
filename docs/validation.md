@@ -1,4 +1,6 @@
-# Проверка P0
+# Результаты проверок InfraPulse Agent
+
+## Завершённая проверка P0
 
 Дата: 2026-10-04. Проверенный SDK: `go1.27.1 windows/amd64`. Проверка runtime выполнена отдельно в WSL Linux amd64, kernel `6.18.33.2-microsoft-standard-WSL2`. Приведённые результаты относятся к реализации P0; последующие изменения README, документации и Git-исключений не изменяли Go-код, protobuf, зависимости или runtime-конфигурацию. Полный набор Go/runtime проверок после этих документационных изменений повторно не запускался.
 
@@ -80,3 +82,112 @@ Agent tests используют локальный TCP Mock и test-only fixtur
 ## Что не проверялось этим demo
 
 Remote SNMP/RouterOS, шесть vendor profiles, LLDP/topology, native OpenWrt, logs/auditd, services/firewall actions, SIP/PBX statistics и Simulator не реализованы в P0. Поэтому эта проверка подтверждает foundation: реальные Linux measurements, outbound stream, typed rejection, intervals, reconnect и shutdown. Она не является подтверждением полного hackathon E2E с remote equipment.
+
+## Проверка P1 — 2026-10-04
+
+SDK: `go1.27.1 windows/amd64`. P1 продолжает существующий P0; Git history и
+коммиты не изменялись. Обычные tests используют fixtures и локальные UDP/HTTPS/
+gRPC servers. Реальное сетевое оборудование не использовалось.
+
+После завершения реализации и исправлений финального review прошли:
+
+- `gofmt -w` и `gofmt -l` по всем Go sources: список неформатированных файлов пуст;
+- `go build ./...`, `go vet ./...`, `go test ./...`;
+- `go test -race ./...` на Windows amd64 с `CGO_ENABLED=1` и подготовленным
+  LLVM MinGW compiler из ignored `.tools`;
+- `go mod verify`: `all modules verified`; `go mod tidy` выполнен;
+- CLI `version` и `validate-config` для всех трёх example YAML;
+- generation через `scripts/generate-proto.ps1`: SHA256 обоих generated sources
+  остались неизменными при повторном запуске;
+- проверка относительных ссылок README/docs и `git diff --check`.
+
+GoSNMP закреплён как direct dependency `github.com/gosnmp/gosnmp v1.45.0`.
+Runtime dependencies остаются pure Go. Generated hashes:
+
+```text
+agent.pb.go:      1A6277883A51221770D273D941E0949B036DBC1095325C215E209017E364D8CB
+agent_grpc.pb.go: AC213C387B28E787A7793438C46341276EF6F6E6CB1B05CFCF18A8F667348FA2
+```
+
+### Unit / fixture / protocol tests
+
+| Блок | Реально проверенные сценарии |
+|---|---|
+| Config / credentials | Strict references/limits, environment rotation/cancellation, credential JSON/fmt/error redaction |
+| Registry | Bounded workers, exclusion/cancellation, unknown/online/offline после трёх connectivity failures, unsupported OID, backpressure, успешный medium при ошибке fast, сохранение slow inventory |
+| SNMP adapter | Actual UDP Get/GetNext/Walk/BulkWalk, packet errors, NoSuchObject/Instance, retries, timeout/cancellation/Close, OID consistency и response/request limits |
+| SNMP mapping | SYSTEM/ENTITY/chassis ambiguity, IF/IF-X HC/fallback/presence, missing/malformed values, vendor evidence, fast batched Get и slow discovery/metadata refresh |
+| Rates | First sample, actual elapsed, zero/absent counters, 64-bit precision, reset/reboot/identity/discontinuity, conservative Counter32 wrap и unknown-width aggregates |
+| LLDP / topology | Local port 7 ≠ ifIndex 42, name/MAC mapping, ambiguous/unresolved ports, raw subtypes, multiple/unknown neighbors, churn, partial/failed/complete-empty, timeout/expiry, bounded LRU, ARP rejected |
+| RouterOS HTTPS | Authentication/rotation, CA/SAN verification, fixed endpoints и canonical `*` IDs, redirects/errors/JSON/limits, timeout/cancellation |
+| RouterOS mapping | Identity/resource/RouterBOARD, interfaces/counters/IP cache, medium/slow separation, LLDP/CDP/MNDP/unknown neighbor evidence и bounded expansion |
+| Commands | Target/age/deadline/capability/policy, canonical ID/name/MAC formats и bridge/bond/VLAN protection, permission revoke, identity changes, bounded dedup/result reserve |
+| Mutations | Enable/disable/no-op/readback, timeout verified/uncertain, malformed/oversized/HTTP500 после PATCH, definitive rejection и cancellation после отправки |
+| Wire / Mock | P0 field numbers, topology=14, presence/width/raw bytes/evidence/components/verification, malformed payloads и реальный bidirectional gRPC topology JSON |
+
+### Agent ↔ Mock E2E с remote fixtures
+
+`TestAgentSNMPUDPTopologyRatesOfflineRecovery` использует реальный GoSNMP UDP
+exchange с локальным server. Проверены ENTITY model/serial, HC counters/rates,
+LLDP mapping и доставка TopologyUpdate, outage/offline/recovery, public
+`ProbeDevice`, отсутствие community в wire/diagnostics.
+
+`TestAgentRouterOSRemoteStreamingMutationsAndProtection` использует локальный
+HTTPS server с test CA и реальный Agent/Mock gRPC stream. Проверены interfaces/
+rates/neighbors, typed disable/enable с verification, replay idempotency key
+после Controller reconnect без второго PATCH, protected canonical management
+`.id` и отсутствие password в diagnostics.
+`TestRemoteTimeoutDoesNotBlockLocalCollectionAndRecovers` подтвердил local
+collection при remote timeout и online recovery.
+`TestFullOutboxRejectsCommandBeforeWrite` подтвердил отсутствие PATCH без
+резерва для CommandResult.
+
+Эти E2E прошли на Windows в обычной suite и с race detector. Полный test binary
+`internal/agent` также собран с `CGO_ENABLED=0` для Linux amd64 и выполнен в WSL:
+
+```powershell
+$env:CGO_ENABLED = '0'
+$env:GOOS = 'linux'
+$env:GOARCH = 'amd64'
+go test -c -o bin/agent-p1-linux-tests ./internal/agent
+wsl --distribution docker-desktop --exec /mnt/host/c/Users/kiril/GolandProjects/InfraPulseAgent/bin/agent-p1-linux-tests
+```
+
+Linux suite завершилась `PASS`, exit code 0. Она включает P0 Agent tests и P1
+remote E2E, использует fixture local platform и реальные protocol exchanges
+с test devices. Это Linux amd64 runtime проверенных remote paths; повторный
+live сбор `/proc`/`/sys` P1 этим запуском не заявляется. Docker engine и внешнее
+оборудование для tests не требовались.
+
+### Cross-builds P1
+
+После финальных runtime изменений с `CGO_ENABLED=0` успешно собраны:
+
+| Binary | Targets |
+|---|---|
+| Agent | linux/amd64, linux/arm64, linux/arm (`GOARM=7`), linux/mips и linux/mipsle (`GOMIPS=hardfloat`) |
+| Mock Controller | linux/amd64, linux/arm64 |
+
+Команды: `go build -o bin/<target> ./cmd/<component>` с отдельными GOOS/GOARCH.
+Binary/cache/compiler/test CA artifacts не включены в Git. Runtime остальных
+architectures и OpenWrt firmware не проверялся; cross-build не подтверждает
+hardware compatibility или приемлемое RAM/flash потребление.
+
+### Существенные ограничения P1
+
+- Hardware/vendor tests не запускались; matrix отражает fixtures/test servers.
+- SNMP только v2c read-only, community не шифруется. Шесть полноценных vendor
+  profiles и SNMPv3 остаются вне P1.
+- sysUpTime относится к management subsystem. Новые interfaces обнаруживаются
+  на slow inventory; max_rows ограничивает raw varbinds и normalized rows,
+  поэтому число допустимых interfaces меньше размера полного walk в varbinds.
+- Неоднозначные Counter32 и unknown-width aggregate rates отсутствуют;
+  unavailable не считается измеренным нулём.
+- Neighbor expiry — явная collector assumption; unresolved evidence остаётся
+  unresolved, global reconciliation принадлежит будущему Backend.
+- RouterOS writes требуют доступных local user/group permissions. Dependency
+  protection консервативна, management interfaces задаются оператором явно.
+- Outbox, result reservations, topology history и dedup volatile. Commands
+  требуют max_message_bytes ≥ 4096; без резерва запись не выполняется.
+  Durable ACK/journal/exactly-once/rollback отсутствуют.
+- P2/P3, Backend, Web UI, LLM и Simulator не добавлялись.

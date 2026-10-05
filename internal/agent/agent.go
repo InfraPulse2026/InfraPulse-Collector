@@ -17,10 +17,12 @@ import (
 
 	"InfraPulseAgent/internal/commands"
 	"InfraPulseAgent/internal/config"
+	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/identity"
 	"InfraPulseAgent/internal/model"
 	"InfraPulseAgent/internal/platform"
 	"InfraPulseAgent/internal/queue"
+	"InfraPulseAgent/internal/remote"
 	"InfraPulseAgent/internal/sanitize"
 	"InfraPulseAgent/internal/scheduler"
 	"InfraPulseAgent/internal/telemetry"
@@ -44,6 +46,8 @@ type Agent struct {
 	device       model.Device
 	connected    bool
 	recentErrors []string
+	remote       *remote.Registry
+	commands     *commands.Deduplicator
 }
 
 type Diagnostics struct {
@@ -59,6 +63,7 @@ type Diagnostics struct {
 	Collectors        []scheduler.State `json:"collectors"`
 	Devices           []model.Device    `json:"devices"`
 	RecentErrors      []string          `json:"recent_errors"`
+	RemoteDevices     []remote.State    `json:"remote_devices,omitempty"`
 }
 
 func New(ctx context.Context, cfg config.Config, p platform.Platform, t transport.Transport, logger *slog.Logger) (*Agent, error) {
@@ -67,9 +72,6 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 	}
 	if t == nil {
 		return nil, errors.New("transport is required")
-	}
-	if len(cfg.Devices) > 0 {
-		return nil, errors.New("remote device drivers are not implemented in P0; use devices: [] until P1")
 	}
 	if cfg.Local.Enabled && p == nil {
 		return nil, errors.New("local collection enabled but platform unavailable")
@@ -98,7 +100,13 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 		a.setDevice(d)
 	}
 	a.scheduler = scheduler.New(cfg.Scheduler.Concurrency, a.collectorError)
+	a.commands = commands.NewDeduplicator(256)
+	a.remote, err = remote.New(cfg, RemoteFactory(cfg, credentials.NewEnvironment(cfg.Credentials)), a.push)
+	if err != nil {
+		return nil, err
+	}
 	if err = a.jobs(); err != nil {
+		_ = a.remote.Close()
 		return nil, err
 	}
 	return a, nil
@@ -147,7 +155,7 @@ func (a *Agent) jobs() error {
 		}
 	}
 	return a.scheduler.Add(scheduler.Job{Name: "agent.heartbeat", Interval: a.cfg.Telemetry.HeartbeatInterval, Timeout: a.cfg.Telemetry.CollectTimeout, Collect: func(ctx context.Context) error {
-		h := model.Heartbeat{Timestamp: time.Now().UTC(), UptimeSeconds: time.Since(a.started).Seconds(), Build: version.Info(), Health: a.health(), Queue: a.queue.State()}
+		h := model.Heartbeat{Timestamp: time.Now().UTC(), UptimeSeconds: time.Since(a.started).Seconds(), Build: version.Info(), Health: a.health(), Queue: a.queue.State(), RemoteDeviceCount: len(a.cfg.Devices)}
 		err := a.push(model.Envelope{Heartbeat: &h})
 		return errors.Join(err, a.saveDiagnostics())
 	}})
@@ -155,6 +163,11 @@ func (a *Agent) jobs() error {
 
 func (a *Agent) health() string {
 	for _, s := range a.scheduler.Stats() {
+		if s.LastError != "" {
+			return "degraded"
+		}
+	}
+	for _, s := range a.remote.Stats() {
 		if s.LastError != "" {
 			return "degraded"
 		}
@@ -222,9 +235,11 @@ func (a *Agent) recordError(message string) {
 func (a *Agent) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	defer a.remote.Close()
 	a.event("agent.started", "info", "agent started")
-	done := make(chan error, 2)
+	done := make(chan error, 3)
 	go func() { done <- a.scheduler.Run(runCtx) }()
+	go func() { done <- a.remote.Run(runCtx) }()
 	go func() { done <- a.supervise(runCtx) }()
 	var err error
 	finished := 0
@@ -236,7 +251,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	cancel()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
-	for finished < 2 {
+	for finished < 3 {
 		select {
 		case e := <-done:
 			err = errors.Join(err, e)
@@ -342,9 +357,7 @@ func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s trans
 			if ctx.Err() != nil {
 				break
 			}
-			policy := commands.Policy{Enabled: a.cfg.Commands.Enabled, ProtectedDevices: a.cfg.Commands.ProtectedDevices, ProtectedInterfaces: a.cfg.Commands.ProtectedInterfaces, ProtectedServices: a.cfg.Commands.ProtectedServices}
-			result := commands.RejectUnsupported(*message.Command, []model.Device{a.deviceSnapshot()}, policy, time.Now())
-			if err = a.push(model.Envelope{CommandResult: &result}); err != nil {
+			if err = a.handleCommand(ctx, *message.Command); err != nil {
 				received <- err
 				cancel()
 				return
@@ -376,6 +389,7 @@ func (a *Agent) Snapshot() Diagnostics {
 	a.mu.Unlock()
 	d.Queue = a.queue.State()
 	d.Collectors = a.scheduler.Stats()
+	d.Collectors = append(d.Collectors, a.remote.Stats()...)
 	for i := range d.Collectors {
 		d.Collectors[i].LastError = sanitize.Text(d.Collectors[i].LastError)
 		if len(d.Collectors[i].LastError) > 1024 {
@@ -383,6 +397,8 @@ func (a *Agent) Snapshot() Diagnostics {
 		}
 	}
 	d.Devices = []model.Device{a.deviceSnapshot()}
+	d.RemoteDevices = a.remote.Snapshot()
+	d.Devices = append(d.Devices, a.remote.Devices()...)
 	return d
 }
 

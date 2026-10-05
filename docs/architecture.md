@@ -1,262 +1,219 @@
-# InfraPulse Agent: архитектура и план
+# Архитектура InfraPulse Agent
 
-Дата review: 2026-10-04. Module path — `InfraPulseAgent`, минимальная версия Go — 1.27. Архитектура отделяет сбор данных и выполнение разрешённых действий от транспортного протокола.
+Module path — `InfraPulseAgent`, Go — 1.27. Agent совмещает локальный Linux
+collector и remote collector. Backend, Web UI, LLM, database и историческое
+хранилище находятся вне репозитория. Mock Controller — development-компонент.
 
-## Границы продукта
+## Границы компонентов
 
-Agent — локальный сборщик и удалённый multi-vendor collector с исходящим соединением. Backend, Web UI, AI, историческое хранилище и отчёты сюда не входят. Mock Controller и Simulator — исключительно development-компоненты. Реальные данные не подменяются synthetic данными. В Simulator каждый sample/event имеет `source=simulated`.
-
-Cross-platform означает ОС запуска Agent. Multi-vendor означает работу с удалёнными устройствами через сетевые протоколы без установки Agent на них. Local и Collector modes можно включать независимо и одновременно.
-
-## Компоненты
-
-| Компонент | Ответственность |
+| Компонент | Реальная ответственность |
 |---|---|
-| Agent Core | Lifecycle, identity/session, registry устройств, wiring jobs, transport supervision, graceful shutdown. Не разбирает MIB и vendor JSON. |
-| Local Platform | Реальные данные ОС. Linux использует /proc, /sys и системные API; OpenWrt переиспользует Linux counters, добавляет ubus/UCI/procd/fw4. Windows пока unsupported. |
-| Remote Device Driver | Нормализация данных одного remote device, capability discovery, optional collectors/actions. Не читает YAML и не выбирает транспорт Backend. |
-| Protocol Adapter | SNMP wire client, HTTPS RouterOS client; deadlines, cancellation, response/output limits. Не определяет policy действий. |
-| Vendor Profile | Проверенные detection evidence, sysObjectID prefixes, metadata и дополнительные MIB mappings. Наличие profile не включает write capability. |
-| Capability Model | Granular `system.read`, `health.read`, `inventory.read`, `interfaces.read`, `interfaces.enable/disable`, `topology.lldp`, `logs.read`, `telephony.read` и т.д. Status: supported/unsupported/unavailable + reason. |
-| Scheduler | Один dispatcher, ограниченное число workers, интервалы/timeout, отсутствие перекрытия одного job, error isolation, cancellation. |
-| Telemetry Pipeline | Timestamped snapshots, counters, корректные deltas/rates, health signals, sanitizer, bounded outbox. |
-| Log Pipeline | Source adapters, bounded lines/batches, persistent cursors, rotation/truncate/recreate, sanitizer, explicit delivery semantics. |
-| Topology Pipeline | LLDP/CDP/RouterOS neighbor observations, mapping портов, evidence/source/confidence, TTL и полные/частичные snapshots. |
-| Command Pipeline | Typed decode → validation → target/capability → policy/protected resources → dedup → execution → verification → result. |
-| Security Layer | mTLS, credentials by reference, enrollment extension, data sanitizer, redacted errors, limits; никаких shell actions. |
+| Agent Core | Identity/session, lifecycle, создание drivers, запуск scheduler, outbound stream, diagnostics и admission команд |
+| Local Platform | Linux identity, CPU/memory/interfaces из `/proc` и `/sys`; не управляет удалёнными устройствами |
+| Remote Registry | Configured stable IDs, lifecycle drivers, bounded polling, per-device exclusion, last successful observation, connectivity failures и state events |
+| Remote Driver | Нормализация данных одного устройства и динамические capabilities; не читает YAML или protobuf |
+| Protocol Adapter | SNMP v2c/UDP или RouterOS HTTPS REST, authentication, deadlines, cancellation, response limits и безопасные категории ошибок |
+| CredentialProvider | Получение credentials по именованной ссылке из environment; заменяемый interface |
+| Telemetry Pipeline | Общие Interface/Device models, presence, counters, безопасные deltas/rates и outbox |
+| Command Pipeline | Typed validation → target/deadline/capability/policy → canonical protection → mutation → verification |
+| gRPC Transport | Единственная wire mapping граница; один sender и один receiver на session |
 
-## Package structure
+Core не знает OID, RouterOS endpoints и concrete protobuf types. Cross-platform
+описывает ОС запуска Agent; multi-vendor — удалённые устройства. На Windows
+доступен collector hosting с `local.enabled: false`; Windows LocalPlatform
+не реализован.
+
+## Packages и interfaces
 
 ```text
-cmd/{infrapulse-agent,infrapulse-mock-controller,infrapulse-simulator}
-api/proto/infrapulse/v1/       # source contracts
-api/gen/infrapulse/v1/         # generated Go, committed
-internal/agent/               # orchestration, state, registry
-internal/config/              # strict YAML + validation
-internal/identity/            # persistent UUID + launch UUID
-internal/model/               # transport-independent domain values
-internal/platform/            # local interface and factory
-internal/platform/{linux,openwrt}/
-internal/driver/               # optional remote interfaces
-internal/driver/{snmp,routeros}/
-internal/driver/profiles/      # six profiles in one package initially
-internal/protocol/{snmp,routeros}/
-internal/scheduler/
-internal/telemetry/            # counters/rates; health aggregates stay here initially
-internal/logs/                 # cursors and source adapters
-internal/telephony/
-internal/commands/             # policy in same package initially
-internal/credentials/
-internal/sanitize/
-internal/queue/
-internal/transport/            # interface
-internal/transport/grpc/       # mapping, TLS, stream
-internal/version/
-configs/ deployments/ docs/ tests/
+internal/agent/              composition root, diagnostics, command admission
+internal/config/             strict YAML, defaults и limits
+internal/credentials/        Provider и environment references
+internal/remote/             registry, polling и переходы состояния
+internal/driver/             Driver, Options и optional InterfaceManager
+internal/driver/snmp/        SYSTEM/ENTITY/IF/IF-X/LLDP normalization
+internal/driver/routeros/    REST normalization, dependency resolution и verification
+internal/protocol/snmp/      read-only GoSNMP adapter
+internal/protocol/routeros/  fixed HTTPS REST operations
+internal/model/              normalized values и remote evidence
+internal/telemetry/          local/remote rates
+internal/commands/           validation, policy, execution и bounded deduplication
+internal/queue/              volatile priority outbox и result reservations
+internal/transport/grpc/     protobuf mapping и verified TLS/mTLS
 ```
 
-Packages создаются по появлению работающего кода. Отдельные inventory/topology/events/health/security/logging packages не нужны для нескольких типов и функций; модели живут в model, orchestration — в agent, slog настраивается в entrypoint. SSH/NETCONF/gNMI и Windows не создаются как пустые fake drivers. FirewallProvider и ServiceManager добавляются вместе с первыми реальными providers.
+Существующие P0 `Platform`, `Transport/Session`, `scheduler.Job`, queue и
+normalized models переиспользуются. Remote `Driver` предоставляет `Probe`,
+`Inventory`, `Collect`, `Topology`, `Capabilities`, `Close`. Только RouterOS
+добавляет `InterfaceManager`: `ResolveInterface` и `SetInterface`.
+`credentials.Provider.Get(context.Context, ref)` возвращает credential,
+который не входит в normalized/wire models. Узкий fakeable SNMP client
+используется mapping fixtures; protocol adapters остаются отдельными packages.
 
-## Основные интерфейсы (целевой контракт)
+## Configuration и registry
 
-```go
-type Platform interface {
-    Identity(context.Context) (model.Device, error)
-    Collect(context.Context) (model.TelemetrySample, error)
-    Capabilities() []model.Capability
-}
+`devices` содержит stable ID, name, driver (`snmp`/`routeros`), address,
+credential reference, optional vendor hint/location, polling overrides и
+protocol options. ID не выводится из management IP и не меняется при rename.
+`local:` namespace зарезервирован для локального устройства. Legacy
+`vendor_profile` используется только как hint; vendor profiles этим полем
+не включаются.
 
-// Базовый driver мал. Optional interfaces не вынуждают реализовать всё.
-type DeviceDriver interface {
-    Probe(context.Context) (model.Device, error)
-    Capabilities() []model.Capability
-    Close() error
-}
-type TelemetryCollector interface {
-    Collect(context.Context) (model.TelemetrySample, error)
-}
-type InventoryCollector interface {
-    Inventory(context.Context) (model.DeviceInventory, error)
-}
-type TopologyCollector interface {
-    Neighbors(context.Context) ([]model.Neighbor, error)
-}
-type CommandExecutor interface {
-    Execute(context.Context, model.Command) model.CommandResult
-}
-type CredentialProvider interface {
-    Get(context.Context, string) (Credential, error)
-}
-type Transport interface {
-    Connect(context.Context) (Session, error)
-}
-type Session interface {
-    Send(model.Envelope) error
-    Receive() (model.ControllerMessage, error)
-    Close() error
-}
-type DataSanitizer interface {
-    Sanitize(model.Envelope) model.Envelope
-}
-type Job struct {
-    Name string
-    Interval, Timeout time.Duration
-    Collect func(context.Context) error
-}
-```
+Config ограничивает devices/credential references 1024 записями. Default remote
+concurrency — 4, rows — 4096, response bytes — 1 MiB. Секреты поступают через
+`credentials.<ref>.community_env` или `username_env`/`password_env`. Provider
+читает значения при request; отсутствие значения означает unavailable.
+Нельзя передать credential через Controller или включить его в diagnostics.
 
-Session lifetime определяется переданным Connect context. Один sender и один receiver на stream; Close отменяет блокирующие операции. Deadline отдельного Send реализуется отменой session watchdog, без неограниченного создания goroutines.
+Remote registry использует отдельный экземпляр существующего scheduler,
+поэтому зависший remote request не занимает local worker pool. На устройство
+создаётся один job, который проверяет сроки четырёх групп:
 
-Protocol adapters конкретны там, где одна implementation. Узкие fakeable client interfaces определяются у потребителей для тестов. Providers получают адрес/options и credentials из composition root, не из YAML.
-
-## Нормализованная модель
-
-`AgentInfo` содержит persistent agentID, sessionID текущего запуска, name, hostname, version/commit/buildTime, platform и capabilities. `AgentHealth` содержит состояние collectors/transport/outbox и recent errors с ограниченным размером.
-
-`Device`: стабильный ID, name/hostname, managementAddress, vendor/product/model, type (server/workstation/router/switch/firewall/gateway/access-point/voice-gateway/pbx/hypervisor/unknown), serial/hardwareRevision/softwareVersion/firmwareVersion, OS/architecture, chassisID, uptime, driver, capabilities, online, lastSeen. Неизвестные значения отсутствуют, а не выдумываются. Local device ID выводится из persistent agentID; remote ID задаётся config/Backend и не меняется при переименовании.
-
-`PhysicalLocation`: site/datacenter/building/room/rack/rackUnit/position/comment. Только config/Backend metadata.
-
-`TelemetrySample`: deviceID, observedAt, collectedAt, source, uptime/boot identity, optional CPUStats/MemoryStats, interface counters and derived rates, metrics и health signals. Нет CPU=0, когда CPU не собран: presence/validity отделяют ноль от отсутствия. Counters — uint64. Units и metric names стабильны.
-
-`CPUStats`: logical/physical cores, model, optional usagePercent, load1/5/15. `MemoryStats`: total/used/available/free/swapTotal/swapUsed, optional PSI. `Interface`: stable identity/index/name/MAC/MTU/admin/oper/speed/addresses, RX/TX bytes/packets/errors/drops, optional rates. `StorageStats`, `Route`, `DNSInfo`, `ServiceInfo`, `FirewallRule` добавляются как реальные collectors.
-
-`Neighbor` хранит raw identifiers/subtypes и resolution evidence. `TopologyEdge` содержит localDeviceID/localInterface/remoteDeviceIdentifier/remoteChassisID/remoteInterface/protocol/observedAt/source/confidence и optional VLAN/network. Неподтверждённый remote остаётся unresolved node, не ошибочно объединяется по hostname.
-
-`LogEvent`: eventID, timestamp/collectedAt, deviceID/hostname/source, facility/severity/program/message, bounded structured fields, cursor/sequence. AuditEvent — отдельный source с raw record и common fields. `TelephonyHealth`: только реально наблюдаемые values, SIP OPTIONS availability/latency отдельно от PBX call statistics.
-
-`Command`: commandID, targetDeviceID, action enum/typed parameters, requestedAt, timeout, initiator human/ai_suggested/automation, idempotencyKey. `CommandResult`: status, startedAt/finishedAt, changed, errorCode/safe errorMessage, typed verification result. Unsupported actions не исполняются.
-
-## Protobuf и transport
-
-Versioned package `infrapulse.v1`, proto3, generated official Go stubs. Timestamps — google.protobuf.Timestamp, duration — Duration, UTC. Transport mapping единственное место зависимости domain models от wire representation. Core не импортирует grpc/protobuf.
-
-```proto
-service AgentService {
-  rpc Connect(stream AgentEnvelope) returns (stream ControllerEnvelope);
-  // Enrollment отдельным unary RPC после появления реального CA workflow.
-}
-message AgentEnvelope {
-  string message_id = 1;
-  string agent_id = 2;
-  string session_id = 3;
-  uint64 sequence = 4;
-  google.protobuf.Timestamp sent_at = 5;
-  oneof payload {
-    AgentHello hello = 10;
-    Heartbeat heartbeat = 11;
-    TelemetryBatch telemetry = 12;
-    InventoryUpdate inventory = 13;
-    TopologyUpdate topology = 14;
-    LogBatch logs = 15;
-    EventBatch events = 16;
-    CommandAck command_ack = 17;
-    CommandResult command_result = 18;
-    HealthStatus health = 19;
-    ErrorReport error = 20;
-  }
-}
-message ControllerEnvelope {
-  oneof payload {
-    HelloAck hello_ack = 1;
-    Command command = 2;
-  }
-}
-message Command {
-  string command_id = 1;
-  string target_device_id = 2;
-  google.protobuf.Timestamp requested_at = 3;
-  google.protobuf.Duration timeout = 4;
-  Initiator initiator = 5;
-  string idempotency_key = 6;
-  oneof action {
-    InterfaceAction interface_action = 10; // explicit enable/disable enum
-    ServiceAction service_action = 11;     // start/stop/restart enum
-  }
-}
-```
-
-Не все перечисленные payload collectors появляются в P0. P0 wire schema реализует hello/ack, heartbeat, telemetry, inventory, events/error и безопасный unsupported command result; остальные message shapes документированы и добавляются совместимо в P1/P2. Никаких google.protobuf.Any для metrics/actions. Необязательные scalar fields — optional; metadata maps допустимы только для bounded labels/structured fields. Удалённые field numbers резервируются.
-
-Hello — первое сообщение каждой session. Controller подтверждает protocol version. До acknowledgement обычный outbox не отправляется. Production controller связывает agentID с сертификатной identity; Mock не является production авторизацией.
-
-P0 доставка best effort: отправка gRPC не означает durable acceptance Backend. Возможны loss/duplicate при disconnect/restart, Backend должен deduplicate по messageID. Durable ACK/replay, persistence command results и disk queue — отдельный P3 контракт, не обещание P0.
-
-## Multi-vendor SNMP
-
-Единственный Generic SNMP driver читает SYSTEM/IF-MIB/IF-X-MIB/LLDP-MIB/при наличии ENTITY-MIB. Protocol layer отвечает за BER/UDP/versions/walk; driver — за нормализацию. Cisco/Huawei/MikroTik/Juniper/Eltex/QTECH profiles добавляют проверенные detection prefixes и metadata. Vendor-specific OID добавляется только с подтверждённой MIB и fixture/test. SNMPv2c read-only в P1, SNMPv3 auth/privacy options предусмотрены; capability unsupported до реализации.
-
-Vendor detection: explicit configured hint сохраняется отдельно → sysObjectID longest verified prefix → sysDescr как слабое evidence → unknown. Configured profile не считается автоматическим обнаружением. PEN/OEM неоднозначность допускается; конфликт evidence показывается в diagnostics. Модель и serial не выводятся из названия вендора. Profile не объявляет LLDP поддержанным без успешного probe MIB.
-
-## Topology
-
-LLDP remote table индексируется timeMark/localPort/remIndex. lldpLocPortNum не всегда ifIndex; mapping строится через local port ID/subtype, ifName/ifDescr/MAC, при необходимости BRIDGE-MIB. Raw IDs/subtypes сохраняются. Отсутствующие OID и ошибки walk дают partial snapshot, не удаление всех edges.
-
-RouterOS neighbor discovery может возвращать LLDP/CDP/MNDP observations: source сохраняется фактическим. ARP/ND/FDB — evidence логической смежности; не объявляется физическим кабелем. TopologyUpdate имеет observedAt и признак complete/partial; link removals только после complete collection и TTL. Dedup/reconciliation графа между collectors — ответственность Backend.
-
-## Fast pipeline и ограничение ресурсов
-
-Default fast=3s, medium=30s, inventory/topology=5m, heartbeat=10s. Все configurable. Fast сбор CPU/RAM/counters/oper/errors/drops; полные inventory/topology не отправляются каждые 3s. Если job не успевает — пропускается повторный запуск, не копятся задачи. Remote pool имеет общую concurrency и per-device exclusion; offline после трёх последовательных connectivity failures, not unsupported OID.
-
-Rates = delta/actual elapsed monotonic time. Первый sample не имеет rate. Reboot, ifCounterDiscontinuityTime, reset и смена interface identity сбрасывают baseline. Для 32-bit overflow нужен known width и правдоподобная граница скорости; неоднозначный reset/overflow даёт unavailable rate. CPU usage — delta cumulative busy/total без двойного учёта guest. Trends/rolling stats только математические, не AI.
-
-Outbox ограничен количеством сообщений, retained payload bytes и размером каждого сообщения. Приоритеты: results → critical events → important logs → inventory/topology → heartbeat → telemetry. Telemetry drops oldest; счётчики drop по class видны в heartbeat. Резерв для results; при невозможности сохранить result новые commands отклоняются до action. Max devices/interfaces/lines/labels/response sizes дополнительно ограничивают working set. Один sender/receiver, bounded command workers, bounded recent errors.
-
-Send может блокироваться gRPC flow control. Watchdog отменяет session после configured send_timeout; exponential backoff с jitter 1s→2s→…max. Reset после hello handshake. Collector jobs продолжаются offline. Очередь P0 в памяти и теряется при restart; persistence — P3.
-
-## Logs, commands, security
-
-Logs P2: open file inode/device identity + offset; bounded read, restart cursor; rotation дочитывает старый descriptor и затем новый, truncate сбрасывает offset. Persistence через temp+fsync+atomic rename. Cursor committed after enqueue означает best effort, после Backend durable ACK — at least once. Journald использует native cursor, если доступен adapter; не читается весь журнал заново. Audit records отдельно, correlation на Backend.
-
-Commands default-deny и bounded concurrency. InterfaceAction принимает stable ID/name, не CLI/API endpoint. Parameter validation, stale requestedAt, timeout cap, target/capability/policy проверяются до action. Protected_devices/interfaces/services проверяются по каноническим resolved identifiers: .id/name/index/MAC aliases нормализуются driver. Все disruptive operations запрещены protected resources; management interface нужно явно отметить, auto detection дополнительная защита, а не гарантия маршрута. Config example включает protect list и отключённые write commands. Idempotency fingerprint включает target/action/params; одна key с другими параметрами отклоняется. Duplicate in progress не запускает action повторно. P0 любые mutations unsupported.
-
-RouterOS P1: HTTPS REST, GET resource/identity/interfaces/addresses/routes/neighbors; PATCH существующего interface .id с disabled=true/false; read-after-write verification. Credentials Basic Auth только HTTPS, custom CA, никакого production InsecureSkipVerify. Перед execution повторно проверяются имя/.id и protected aliases. Timeout после mutation может означать uncertain state: result failed/timeout с verification evidence, автоматического слепого rollback нет.
-
-AI только на Backend: evidence → recommendation → human approval → typed Command. Initiator не меняет trust и не обходит policy. У Agent нет LLM client и произвольного shell. Snapshot/Apply/Verify/Rollback extension позже, rollback unsupported пока нет реальной реализации.
-
-Production transport — TLS >=1.2 и обязательный client certificate/CA/private key (mTLS). Development plaintext только explicit mode и loopback controller/listener; remote plaintext в P0 запрещён, отдельного opt-in нет. Enrollment пока documented extension, one-time token не превращается в готовый сертификат без CA workflow. CredentialProvider в P1: config/env references → позже Vault/Backend; секреты не сериализуются в diagnostics/errors/logs. DataSanitizer очищает известные секретные поля перед outbox; free-text redaction имеет ограничения и не заменяет policy Backend для cloud AI.
-
-Shutdown: stop command admission, cancel scheduler/polls/session, wait bounded, persist cursors/state, close clients. Volatile queue нельзя обещать полностью flush при offline controller.
-
-## Dependencies
-
-| Dependency | Зачем и почему | Альтернативы/этап |
+| Группа | Default interval | Работа |
 |---|---|---|
-| google.golang.org/grpc | Официальный maintained Go gRPC runtime, HTTP/2 streaming/TLS/context. | ConnectRPC — иной контракт; standard net/http не заменяет gRPC. P0. |
-| google.golang.org/protobuf | Официальные generated codecs/types, совместимость Backend. | Никакого handwritten protobuf. P0. |
-| go.yaml.in/yaml/v3 | Strict KnownFields decoder, официальный maintained YAML organization fork, pure Go. | Старый gopkg.in/yaml.v3 upstream объявлял unmaintained; JSON не удовлетворяет YAML requirement. P0. |
-| github.com/google/uuid | Mature UUID generation/parsing; не писать RFC implementation. | gofrs/uuid допустим, но отдельной причины нет. P0. |
-| github.com/gosnmp/gosnmp | Mature pure Go SNMP v2c/v3, Get/BulkWalk. | Не реализовывать BER/SNMP самостоятельно. P1. |
-| golang.org/x/sys | Только при реальной необходимости Linux syscalls/netlink/statfs. | /proc/sys + stdlib для P0. P1/P2. |
+| Fast | 3s | Interfaces/state/counters и доступные resource values |
+| Medium | 30s | Device probe |
+| Inventory | 5m | Inventory/components и медленно меняющиеся адреса |
+| Topology | 5m | LLDP/neighbor tables |
 
-CLI flag, slog, crypto/tls, net/http, os/signal, contexts — standard library. Cobra/Viper/ORM/event bus не нужны. Protoc и protoc-gen-go/grpc — pinned build tools, не runtime dependencies. Versions фиксируются в go.mod/go.sum после разрешения. Runtime dependencies pure Go; portability подтверждается cross-build, а не декларацией. На маленьких OpenWrt остаётся риск RAM/flash/certificate store и vendor Go architecture support.
+Каждый probe имеет собственный timeout, у job общий предел — четыре probe
+timeouts. Scheduler запрещает overlapping runs job; gate устройства также
+сериализует polling с commands. Отмена закрывает SNMP connections и HTTP I/O.
+Tables и response bytes ограничены adapter и driver. Missed runs пропускаются,
+а не накапливаются в неограниченной очереди.
 
-Primary references: [gRPC Go](https://grpc.io/docs/languages/go/basics/), [flow control](https://grpc.io/docs/guides/flow-control/), [protobuf presence/versioning](https://protobuf.dev/programming-guides/proto3/), [YAML maintained fork](https://github.com/yaml/go-yaml), [UUID](https://github.com/google/uuid), [GoSNMP](https://github.com/gosnmp/gosnmp), [IF-MIB RFC2863](https://www.rfc-editor.org/rfc/rfc2863), [RouterOS REST](https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API).
+Registry хранит last seen и число последовательных connectivity failures;
+после трёх ошибок связи устройство становится offline.
+Unsupported OID, missing API и malformed data не считаются connectivity failure.
+До первого успешного наблюдения/трёх ошибок connectivity state — unknown.
+Успешное remote чтение в poll round имеет приоритет над connectivity error;
+ошибка outbox не меняет доступность оборудования. На переходах формируются
+`device.online/offline`, `interface.up/down`, `topology.link.observed/expired`.
+`collector.error` отражает смену состояния ошибки, а не каждый poll.
 
-## Риски и проверки
+## Generic SNMP и inventory
 
-1. Multi-vendor MIB differences: fixtures, unsupported/partial semantics, реальные devices перед заявлением подтверждённой поддержки.
-2. LLDP port/chassis mapping и OEM PEN: raw evidence, no hostname-only merging, partial topology expiry.
-3. Counters/reset/overflow: actual elapsed time, discontinuity markers, unit tests и bounded state.
-4. Command disconnect/timeout: protected IDs, default-deny, verification, bounded dedup; no exactly-once claims.
-5. Controller backpressure: byte/message limits, send cancellation, reconnect tests с реальным stream.
-6. Linux/OpenWrt variability: fixture /proc/sys tests + Linux live smoke отдельно. Cross-build не доказывает runtime.
-7. Identity/cursor crash safety: exclusive creation, validation corruption, sync; ошибки persistence не создают новый ID молча.
-8. Log storms и sensitive data: line/batch limits, cursor delivery documentation, sanitizer tests, secret-free diagnostics.
-9. Production PKI/enrollment: test CA mTLS positive/negative tests, certificate identity authorization — будущий Backend.
+Pure-Go `github.com/gosnmp/gosnmp` выполняет BER/SNMP. Adapter предоставляет
+Get/GetNext/Walk/BulkWalk только SNMP v2c read-only; driver разбирает стандартные
+SYSTEM, ENTITY-MIB, IF-MIB/IF-X-MIB и LLDP-MIB. Library packet logging отключён:
+сообщество не появляется в errors или logs. Ошибки и partial walk сохраняются,
+поэтому оборванная таблица не выдаётся за complete snapshot.
 
-## Implementation plan
+Первый fast sample получает bounded IF/IF-X baseline. Затем fast polling
+использует Get batches до 60 OID по известным indexes для identity/state/counters
+и discontinuity; полный interface walk повторяется на slow inventory interval.
+Новые interfaces появляются после slow discovery refresh, исчезнувшие known
+indexes удаляются при NoSuchInstance. Fast name/MAC refresh защищает rates
+при recreation. `remote.max_rows` ограничивает также varbind/table cells,
+поэтому большой walk может достичь лимита раньше числа interfaces.
 
-| Этап | Работа | Критерий завершения |
-|---|---|---|
-| P0.1 | Bootstrap, strict config/defaults/validation, version/CLI, identity/models | config/identity tests, build/vet/test |
-| P0.2 | Linux identity/CPU/RAM/network; unsupported local platform fallback | fixture mapping tests, linux amd64/arm64 cross-build |
-| P0.3 | Controlled scheduler, bounded priority queue, counters/rates, backoff | cancellation/timeout/non-overlap/drop/reset tests |
-| P0.4 | Versioned protobuf, generated stubs, TLS/mTLS transport, hello/heartbeat | real bidi stream test, TLS rejection test |
-| P0.5 | Agent wiring, Mock Controller, graceful shutdown/diagnostics | end-to-end hello→telemetry→heartbeat, outage→reconnect; no hardware required |
-| P0.6 | README/docs, config, systemd, build scripts/CI | gofmt/build/vet/test/race where toolchain permits; runtime limitations stated |
-| P1 | Generic SNMP v2c/interfaces/IF-X rates/inventory/LLDP; RouterOS HTTPS mappings; remote registry, online threshold; typed interface actions/policy/protection | fixtures + simulated protocol servers, e2e commands protected rejection and disable/enable; real hardware tests separately tagged |
-| P2 | Native OpenWrt, six verified profiles, logs/audit/cursors, firewall read/services, SIP OPTIONS, Simulator scenarios/trends | rotation/restart tests, pure simulated source labels, Linux/OpenWrt live integration and telephony fixture |
-| P3 | Windows local, SNMPv3, NETCONF/gNMI as justified, durable outbox/results, enrollment, config snapshots/rollback, advanced telephony | feature-specific verified capabilities/security/compatibility tests |
+SYSTEM даёт sysDescr/sysObjectID/sysUpTime/sysContact/sysName/sysLocation.
+`sysUpTime` — uptime management subsystem, не доказательство uptime ОС.
+Отсутствие uptime явно отмечено; remote rates тогда отсутствуют. ENTITY
+сохраняет список chassis/modules и реально возвращённые model/serial/revisions.
+Device-level model/serial выбираются только при единственной chassis.
+PhysicalLocation приходит из config, не из sysLocation/sysDescr.
 
-P0 не заявляет OpenWrt-native, SNMP, RouterOS, physical topology, logs, PBX статистику или write actions готовыми. Они следуют после рабочего P0. Требуемые vendor/protocol/policy/log unit tests добавляются вместе с implementation, без fake production collectors.
+Vendor evidence сохраняет hint отдельно от подтверждения. Сейчас существует
+проверенный MikroTik PEN prefix `.1.3.6.1.4.1.14988`; literal MikroTik в sysDescr
+— слабое evidence. Hostname не используется для detection, vendor не создаёт
+model/serial. Cisco/Huawei/Juniper/Eltex/QTECH profiles не реализованы.
+
+## Presence и rates
+
+Interface одинаков для Linux, SNMP и RouterOS. Новые optional metadata сохраняют
+наличие index/MTU/admin state, availability каждого counter, его width и
+`ifCounterDiscontinuityTime`. Nil counter metadata сохраняет P0 semantics:
+все counters доступны и 64-bit. Remote drivers передают explicit metadata;
+нулевое значение с availability=true — измеренный ноль.
+
+HC counters предпочитаются IF-X-MIB. IF-MIB Counter32 используется как fallback.
+Сумма fallback packet counters доступна как число с width=0: агрегат не является
+одним modular counter, rate по нему не выводится. Width=0 означает unknown
+width, не unavailable. Rates имеют свою availability mask.
+
+Rates — delta / actual elapsed time. Первый sample, смена ID/index/name/MAC,
+уменьшение uptime, boot identity change, discontinuity marker change и уменьшение
+64-bit counter сбрасывают соответствующий baseline. Для 32-bit byte rates нужна
+стабильная известная speed и интервал, исключающий multiple wraps. Уменьшение
+Counter32 дополнительно требует неизменного доступного discontinuity marker;
+неоднозначное reset/overflow даёт unavailable. Для Counter32 packets/errors/
+discards rates консервативно не выводятся. Full host reboot не всегда можно
+отличить от restart SNMP subsystem; недоступный uptime не подменяется нулём.
+
+## Topology и wire
+
+`model.TopologyUpdate` различает complete/partial/failed, observed/collected
+время, collector TTL assumption и Neighbor observations. Raw chassis/port bytes,
+subtypes, local port number, protocol/source, evidence/confidence сохраняются.
+LLDP local port number не приравнивается ifIndex: используется unique mapping
+по ifName/ifAlias/MAC или weaker ifDescr evidence. Неуверенный port остаётся
+unresolved. ARP/ND/FDB не собираются как physical links.
+
+RouterOS neighbor discovery сохраняет LLDP/CDP/MNDP/unknown. Neighbor MAC не
+объявляется LLDP chassis subtype=MAC, а CDP interface-name не переносится
+автоматически на LLDP/MNDP. Наблюдение на общем bridged segment не подтверждает
+один прямой кабель. Global graph reconciliation остаётся Backend.
+
+LLDP-MIB не предоставляет received TTL. `remote.topology_ttl` (default 15m)
+явно передаётся как collector assumption. Partial/failed collection не удаляет
+предыдущие links; локальное expiry event допускается после complete snapshot,
+если отсутствующее observation уже достигло expiry.
+
+Совместимый payload `AgentEnvelope.topology=14` добавлен без перенумерации P0.
+Wire presence/evidence/verification отражают normalized model. Mock Controller
+выводит decoded observations в JSON. Details — [protocol](protocol.md) и
+[topology](topology.md).
+
+## RouterOS и actions
+
+HTTPS REST client использует фиксированные GET identity/resource/routerboard,
+interface/address/neighbor и protection metadata menus; PATCH может менять
+только `disabled` существующего canonical interface `.id`. Controller не
+передаёт URL/path/method/JSON/CLI. TLS проверяет CA/SAN; redirects, proxy и
+HTTPS→HTTP fallback отключены. При custom device CA доверяется этому PEM pool,
+иначе используются системные roots.
+
+Capabilities появляются после фактических успешных операций. Writes требуют
+`commands.enabled` и per-device `enable_mutations`, а также положительных
+`read/write/api/rest-api` permissions authenticated user/group. Недоступная
+metadata, hidden/RADIUS-only user или отсутствующая dependency table оставляют
+mutation unsupported. Permission discovery повторяется перед write.
+
+Canonical aliases включают `.id`, name/default-name/MAC и связанные
+bridge/bond/VLAN interfaces. Dependency graph проверяется консервативно:
+protection любого связанного management alias запрещает disruptive operation.
+Автоматическое определение management path отсутствует.
+
+До action Agent резервирует 4096 bytes и message slot для CommandResult;
+недостаточная queue capacity/малый message limit не допускают action. Receiver
+исполняет commands последовательно; per-device gate исключает конфликт poll.
+Bounded volatile dedup cache содержит до 256 commands/results и проверяет
+fingerprint target/action/initiator. In-flight identity не вытесняется.
+
+SetInterface проверяет текущий canonical record, выполняет один PATCH и
+read-after-write GET после любой отправленной попытки, включая HTTP error или
+невалидное тело ответа. Для verification оставляется часть deadline. Повторяется
+только безопасное чтение; если исход
+не подтверждён, result содержит uncertain. Fake rollback отсутствует.
+
+Outbox/result reservations/dedup находятся в RAM: restart теряет состояние,
+ошибка Send после Pop может потерять result. Это не durable execution journal
+и не exactly-once. Полная security model — [security](security.md).
+
+## Источники и следующие этапы
+
+Standard mappings: [RFC 3418](https://www.rfc-editor.org/rfc/rfc3418),
+[RFC 2863](https://www.rfc-editor.org/rfc/rfc2863),
+[RFC 6933](https://www.rfc-editor.org/rfc/rfc6933),
+[IEEE LLDP-MIB](https://www.ieee802.org/1/files/public/MIBs/LLDP-MIB-200505060000Z.mib),
+[MikroTik SNMP](https://help.mikrotik.com/docs/spaces/ROS/pages/8978519/SNMP).
+RouterOS operations: [REST API](https://manual.mikrotik.com/docs/developer-guides/rest-api/),
+[interfaces](https://manual.mikrotik.com/docs/cli-reference/interface/),
+[neighbors](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery).
+
+P2 остаётся отдельным этапом: native OpenWrt, подтверждённые vendor profiles,
+logs/audit/cursors, firewall/services, SIP/PBX и Simulator. P3 — Windows
+LocalPlatform, SNMPv3/другие протоколы по необходимости, durable delivery,
+enrollment и snapshots/rollback. Их наличие в roadmap не означает capability.
+Фактически выполненные проверки находятся в [validation](validation.md).

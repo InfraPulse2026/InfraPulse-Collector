@@ -14,22 +14,25 @@ import (
 	"strings"
 	"time"
 
+	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/model"
 	"go.yaml.in/yaml/v3"
 )
 
 type Config struct {
-	Agent      Agent                  `yaml:"agent"`
-	Controller Controller             `yaml:"controller"`
-	Security   Security               `yaml:"security"`
-	Local      Local                  `yaml:"local"`
-	Telemetry  Telemetry              `yaml:"telemetry"`
-	Queue      Queue                  `yaml:"queue"`
-	Scheduler  Scheduler              `yaml:"scheduler"`
-	Logging    Logging                `yaml:"logging"`
-	Location   model.PhysicalLocation `yaml:"location"`
-	Devices    []Device               `yaml:"devices"`
-	Commands   Commands               `yaml:"commands"`
+	Agent       Agent                            `yaml:"agent"`
+	Controller  Controller                       `yaml:"controller"`
+	Security    Security                         `yaml:"security"`
+	Local       Local                            `yaml:"local"`
+	Telemetry   Telemetry                        `yaml:"telemetry"`
+	Queue       Queue                            `yaml:"queue"`
+	Scheduler   Scheduler                        `yaml:"scheduler"`
+	Logging     Logging                          `yaml:"logging"`
+	Location    model.PhysicalLocation           `yaml:"location"`
+	Devices     []Device                         `yaml:"devices"`
+	Commands    Commands                         `yaml:"commands"`
+	Remote      Remote                           `yaml:"remote"`
+	Credentials map[string]credentials.Reference `yaml:"credentials" json:"-"`
 }
 type Agent struct {
 	Name     string `yaml:"name"`
@@ -72,12 +75,38 @@ type Logging struct {
 	Level string `yaml:"level"`
 }
 type Device struct {
-	ID            string `yaml:"id"`
-	Name          string `yaml:"name"`
-	Driver        string `yaml:"driver"`
-	Address       string `yaml:"address"`
-	CredentialRef string `yaml:"credential_ref"`
-	VendorProfile string `yaml:"vendor_profile"`
+	ID              string                 `yaml:"id"`
+	Name            string                 `yaml:"name"`
+	Driver          string                 `yaml:"driver"`
+	Address         string                 `yaml:"address"`
+	CredentialRef   string                 `yaml:"credential_ref"`
+	VendorProfile   string                 `yaml:"vendor_profile"`
+	VendorHint      string                 `yaml:"vendor_hint"`
+	Location        model.PhysicalLocation `yaml:"location"`
+	Polling         Polling                `yaml:"polling"`
+	SNMP            SNMP                   `yaml:"snmp"`
+	TLS             RemoteTLS              `yaml:"tls"`
+	EnableMutations bool                   `yaml:"enable_mutations"`
+}
+type Remote struct {
+	Concurrency      int           `yaml:"concurrency"`
+	MaxRows          int           `yaml:"max_rows"`
+	MaxResponseBytes int           `yaml:"max_response_bytes"`
+	TopologyTTL      time.Duration `yaml:"topology_ttl"`
+}
+type Polling struct {
+	FastInterval      time.Duration `yaml:"fast_interval"`
+	MediumInterval    time.Duration `yaml:"medium_interval"`
+	InventoryInterval time.Duration `yaml:"inventory_interval"`
+	TopologyInterval  time.Duration `yaml:"topology_interval"`
+	Timeout           time.Duration `yaml:"timeout"`
+}
+type SNMP struct {
+	Port    uint16 `yaml:"port"`
+	Retries int    `yaml:"retries"`
+}
+type RemoteTLS struct {
+	CAFile string `yaml:"ca_file"`
 }
 type Commands struct {
 	Enabled             bool     `yaml:"enabled"`
@@ -93,6 +122,7 @@ func Defaults() Config {
 		Security:   Security{Mode: "production"}, Local: Local{Enabled: true},
 		Telemetry: Telemetry{FastInterval: 3 * time.Second, MediumInterval: 30 * time.Second, InventoryInterval: 5 * time.Minute, TopologyInterval: 5 * time.Minute, HeartbeatInterval: 10 * time.Second, CollectTimeout: 2 * time.Second},
 		Queue:     Queue{MaxMessages: 256, MaxBytes: 8 << 20, MaxMessageBytes: 1 << 20}, Scheduler: Scheduler{Concurrency: 4}, Logging: Logging{Level: "info"},
+		Remote: Remote{Concurrency: 4, MaxRows: 4096, MaxResponseBytes: 1 << 20, TopologyTTL: 15 * time.Minute},
 	}
 }
 
@@ -128,6 +158,12 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("resolve configuration directory: %w", err)
 	}
 	for _, p := range []*string{&c.Agent.StateDir, &c.Security.CAFile, &c.Security.CertFile, &c.Security.KeyFile} {
+		if *p != "" && !filepath.IsAbs(*p) {
+			*p = filepath.Join(base, *p)
+		}
+	}
+	for i := range c.Devices {
+		p := &c.Devices[i].TLS.CAFile
 		if *p != "" && !filepath.IsAbs(*p) {
 			*p = filepath.Join(base, *p)
 		}
@@ -192,6 +228,31 @@ func (c Config) Validate() error {
 	add(c.Queue.MaxBytes >= 1024 && c.Queue.MaxBytes <= 256<<20, "queue.max_bytes")
 	add(c.Queue.MaxMessageBytes >= 512 && c.Queue.MaxMessageBytes <= 4<<20 && c.Queue.MaxMessageBytes <= c.Queue.MaxBytes, "queue.max_message_bytes")
 	add(c.Scheduler.Concurrency >= 1 && c.Scheduler.Concurrency <= 64, "scheduler.concurrency")
+	add(c.Remote.Concurrency >= 1 && c.Remote.Concurrency <= 64, "remote.concurrency")
+	add(c.Remote.MaxRows >= 1 && c.Remote.MaxRows <= 16384, "remote.max_rows")
+	add(c.Remote.MaxResponseBytes >= 512 && c.Remote.MaxResponseBytes <= 4<<20, "remote.max_response_bytes")
+	add(c.Remote.TopologyTTL >= time.Second && c.Remote.TopologyTTL <= 24*time.Hour, "remote.topology_ttl")
+	add(len(c.Credentials) <= 1024, "credentials count")
+	validRef := func(s string) bool {
+		if len(s) == 0 || len(s) > 128 {
+			return false
+		}
+		for _, r := range s {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.') {
+				return false
+			}
+		}
+		return true
+	}
+	for ref, cr := range c.Credentials {
+		add(validRef(ref), "credential reference")
+		add((cr.CommunityEnv != "") != (cr.UsernameEnv != "" || cr.PasswordEnv != ""), "credential kind")
+		if cr.CommunityEnv != "" {
+			add(validRef(cr.CommunityEnv), "credential community_env")
+		} else {
+			add(validRef(cr.UsernameEnv) && validRef(cr.PasswordEnv), "credential username_env/password_env")
+		}
+	}
 	add(c.Logging.Level == "debug" || c.Logging.Level == "info" || c.Logging.Level == "warn" || c.Logging.Level == "error", "logging.level")
 	add(c.Location.RackUnit >= 0, "location.rack_unit")
 	for _, value := range []string{c.Location.Site, c.Location.Datacenter, c.Location.Building, c.Location.Room, c.Location.Rack, c.Location.Position, c.Location.Comment} {
@@ -206,9 +267,33 @@ func (c Config) Validate() error {
 		add(d.Driver == "snmp" || d.Driver == "routeros", prefix+".driver")
 		add(d.Address != "", prefix+".address")
 		add(d.CredentialRef != "", prefix+".credential_ref")
+		cr, exists := c.Credentials[d.CredentialRef]
+		add(exists, prefix+".credential_ref (not configured)")
+		add(!strings.HasPrefix(d.ID, "local:"), prefix+".id (reserved local namespace)")
+		add(len(d.Name) <= 128 && len(d.VendorHint) <= 128 && len(d.VendorProfile) <= 128, prefix+" metadata length")
+		add(d.Location.RackUnit >= 0, prefix+".location.rack_unit")
+		for _, v := range []string{d.Location.Site, d.Location.Datacenter, d.Location.Building, d.Location.Room, d.Location.Rack, d.Location.Position, d.Location.Comment} {
+			add(len(v) <= 512, prefix+".location")
+		}
+		for _, v := range []time.Duration{d.Polling.FastInterval, d.Polling.MediumInterval, d.Polling.InventoryInterval, d.Polling.TopologyInterval, d.Polling.Timeout} {
+			add(v == 0 || v >= 10*time.Millisecond && v <= 24*time.Hour, prefix+".polling")
+		}
+		add(d.SNMP.Retries >= 0 && d.SNMP.Retries <= 3, prefix+".snmp.retries")
+		if d.Driver == "snmp" {
+			add(cr.CommunityEnv != "", prefix+".credential_ref kind")
+			add(!d.EnableMutations && d.TLS.CAFile == "", prefix+" SNMP read-only options")
+			add(!strings.ContainsAny(d.Address, "/@?#\\ \t\r\n") && len(d.Address) <= 253, prefix+".address (host or IP)")
+			add(net.ParseIP(d.Address) != nil || !strings.Contains(d.Address, ":"), prefix+".address (port is snmp.port)")
+		}
 		if d.Driver == "routeros" {
+			timeout := d.Polling.Timeout
+			if timeout == 0 {
+				timeout = c.Telemetry.CollectTimeout
+			}
+			add(timeout <= time.Minute, prefix+".polling.timeout (RouterOS maximum 1m)")
+			add(cr.UsernameEnv != "" && cr.PasswordEnv != "", prefix+".credential_ref kind")
 			u, e := url.Parse(d.Address)
-			add(e == nil && u != nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "", prefix+".address (HTTPS without embedded credentials)")
+			add(e == nil && u != nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && (u.Path == "" || u.Path == "/"), prefix+".address (HTTPS origin without embedded credentials)")
 		}
 	}
 	return errors.Join(problems...)

@@ -38,10 +38,11 @@ type interfaceIdentity struct {
 	name, mac string
 }
 type previousSample struct {
-	observed   time.Time
-	bootID     string
-	uptime     float64
-	interfaces map[interfaceIdentity]model.Counters
+	observed        time.Time
+	bootID          string
+	uptime          float64
+	interfaces      map[interfaceIdentity]model.Interface
+	uptimeAvailable bool
 }
 
 type RateTracker struct {
@@ -68,16 +69,35 @@ func (r *RateTracker) Apply(sample *model.TelemetrySample) {
 	previous, found := r.devices[sample.DeviceID]
 	valid := sample.DeviceID != "" && !sample.ObservedAt.IsZero() && sample.UptimeSeconds >= 0 && !math.IsNaN(sample.UptimeSeconds) && !math.IsInf(sample.UptimeSeconds, 0)
 	elapsed := sample.ObservedAt.Sub(previous.observed).Seconds()
-	continuous := valid && found && elapsed > 0 && sample.BootID == previous.bootID && sample.UptimeSeconds >= previous.uptime
-	current := previousSample{observed: sample.ObservedAt, bootID: sample.BootID, uptime: sample.UptimeSeconds, interfaces: make(map[interfaceIdentity]model.Counters, len(sample.Interfaces))}
+	uptimeAvailable := sample.UptimeAvailable == nil || *sample.UptimeAvailable
+	continuous := valid && found && elapsed > 0 && sample.BootID == previous.bootID && sample.UptimeSeconds >= previous.uptime && uptimeAvailable && previous.uptimeAvailable
+	current := previousSample{observed: sample.ObservedAt, bootID: sample.BootID, uptime: sample.UptimeSeconds, uptimeAvailable: uptimeAvailable, interfaces: make(map[interfaceIdentity]model.Interface, len(sample.Interfaces))}
 	for i := range sample.Interfaces {
 		iface := &sample.Interfaces[i]
 		iface.Rates = nil
 		key := interfaceIdentity{id: iface.ID, index: iface.Index, name: iface.Name, mac: iface.MAC}
 		if old, ok := previous.interfaces[key]; continuous && ok {
-			iface.Rates = calculate(old, iface.Counters, elapsed)
+			if old.CounterMetadata == nil && iface.CounterMetadata == nil {
+				iface.Rates = calculate(old.Counters, iface.Counters, elapsed)
+			} else {
+				iface.Rates = calculateRemote(old, *iface, elapsed)
+			}
 		}
-		current.interfaces[key] = iface.Counters
+		baseline := *iface
+		baseline.Rates = nil
+		if iface.CounterMetadata != nil {
+			metadata := *iface.CounterMetadata
+			if metadata.DiscontinuityTicks != nil {
+				ticks := *metadata.DiscontinuityTicks
+				metadata.DiscontinuityTicks = &ticks
+			}
+			baseline.CounterMetadata = &metadata
+		}
+		if iface.SpeedBitsPerSecond != nil {
+			speed := *iface.SpeedBitsPerSecond
+			baseline.SpeedBitsPerSecond = &speed
+		}
+		current.interfaces[key] = baseline
 	}
 	// A late or duplicate sample cannot replace a newer baseline: doing so would
 	// distort the next rate, even when the late sample itself has absent rates.
