@@ -191,3 +191,161 @@ hardware compatibility или приемлемое RAM/flash потреблен�
   требуют max_message_bytes ≥ 4096; без резерва запись не выполняется.
   Durable ACK/journal/exactly-once/rollback отсутствуют.
 - P2/P3, Backend, Web UI, LLM и Simulator не добавлялись.
+
+## Проверка P2 — 2026-10-05
+
+SDK: `go1.27.1 windows/amd64`, module `InfraPulseAgent`, Go 1.27.
+Финальные проверки выполнены после review и исправлений logs identity,
+sanitizer, SIP parser и Simulator stream/scenario lifecycle. P0/P1 tests
+сохранены. Коммиты, индекс и Git history не изменялись.
+
+### Финальные quality gates
+
+| Проверка | Фактический результат |
+|---|---|
+| `gofmt -w` и `gofmt -l` всех Go sources | PASS; список неформатированных файлов пуст |
+| `go build ./...` | PASS, Windows amd64, CGO disabled |
+| `go vet ./...` | PASS |
+| `go test ./...` | PASS; fixtures и локальные protocol servers |
+| `go test -race ./...` | PASS, Windows amd64, `CGO_ENABLED=1`, portable LLVM MinGW compiler |
+| `go mod verify` | `all modules verified` |
+| `scripts/build.ps1` | Собраны Agent, Mock Controller и отдельный Simulator |
+| CLI `validate-config` | Все пять example YAML прошли |
+| Protobuf regeneration | Повторный `scripts/generate-proto.ps1` сохранил SHA256 generated sources |
+| Production dependencies | `go list -deps ./cmd/infrapulse-agent` не содержит `internal/simulator` |
+| Документация и Git diff | Относительные Markdown links всех 12 README/docs файлов и `git diff --check` прошли |
+
+`golang.org/x/sys v0.47.0` используется напрямую для file identity; версия
+существовавшей зависимости не изменена. Runtime builds не требуют CGO.
+Обычная suite не использует root, Internet, внешний Controller/PBX или
+сетевое оборудование. Live Linux tests отделены tag `integration`.
+
+Generated hashes:
+
+```text
+agent.pb.go:      A9A9B840B3AB2849DB0B6DBC7F6C328ED54F06D8282E30C60AAFFFCE601FD9E3
+agent_grpc.pb.go: AC213C387B28E787A7793438C46341276EF6F6E6CB1B05CFCF18A8F667348FA2
+```
+
+P0/P1 field numbers сохранены. Проверены новые `logs=15`, `telephony=17`,
+inventory extensions и optional zero/false presence после настоящей protobuf
+serialization. Generated sources получены pinned script, а не ручным изменением.
+
+### Unit / fixture / regression coverage
+
+| Блок | Реально выполненные проверки |
+|---|---|
+| OpenWrt | Release evidence/detection, board/model, Linux reuse/fallback, netifd networks, procd instances и boot symlink, UCI zones/rules/redirects, missing ubus, malformed/partial/bounded responses, timeout/cancellation и wire roundtrip |
+| Шесть profiles | Cisco/Huawei/MikroTik/Juniper/Eltex/QTECH PEN registry fixtures: positive/negative, OID arc boundaries, missing/malformed/unknown product, standard Generic fallback и отсутствие ложной capability |
+| File pipeline | Append, incomplete/empty file, restart, rename/new file, copytruncate/regrowth, truncate, delete/recreate, identity change/inode reuse, rapid rotation/gap/limits, oversized line, JSON expansion, malformed UTF-8, permissions через injected error, burst и cancellation |
+| Cursor semantics | Corrupted state fail-closed, membership/anchor validation, rejected admission, first rejected file после rotation/restart, persistence failure blocking/replay и отсутствие durable RAM delivery |
+| Syslog/audit | RFC5424/BSD/rsyslog parsing, uncertain timestamps, malformed/duplicate audit fields, optional UID/AUID/PID/success, exact bounded EventID correlation и sanitized raw records |
+| Sanitizer | Configured community/password values, Authorization Bearer/Basic, known secret fields, multiline PEM через restart/rotation, короткие/overlapping secrets, marker-prefix credentials, idempotence и post-sanitization batch bounds |
+| SIP UDP/TCP | 200/202, 401/407, 404, 503, timeout, malformed response, cancellation, latency, failure threshold/recovery/transitions, UDP retry, transaction matching, TCP framing/provisional/body/truncation, CRLF/folded headers и strict Content-Length |
+| Simulator | Все 12 scenarios и `all`, deterministic seed/trends, wire markers, limits, topology events по snapshot differences, offline LastSeen, JSON/controller CLI, имя 128 bytes, reconnect/cancellation и bounded peer EOF drain |
+| Agent / outbox | Logs/audit/SIP gRPC streaming, cursor restart, source/service/telephony transitions, diagnostics/redaction, heartbeat recovery, log storm telemetry isolation и dropped_logs |
+| P1 regression | SNMP/ENTITY/IF/LLDP/rates, RouterOS HTTPS enable/disable/protection/readback, remote timeout isolation, result reserve и Agent remote E2E |
+
+OpenWrt fixtures построены по официальным implementation schemas;
+vendor fixtures — по подтверждённому IANA registry. Test board/address/PID/product
+values не являются captures оборудования. Ни один из шести profiles не получил
+vendor-specific health OID или автоматическую capability.
+
+### Linux runtime и Agent ↔ Mock E2E
+
+Среда: WSL `docker-desktop`, Linux amd64,
+kernel `6.18.33.2-microsoft-standard-WSL2`. Docker engine не запускался.
+Go/C compiler внутри WSL не требуется: test binaries собраны с `CGO_ENABLED=0`
+в Windows и выполнены в Linux. После последнего code freeze прошли полные suites:
+
+- `internal/platform/linux` с tag `integration`: реальные `/proc`, `/sys`,
+  CPU/RAM/interfaces/addresses и все Linux fixtures;
+- `internal/logs`: реальный Linux file I/O, cursor persistence/restart,
+  rotation/truncate/delete/recreate и statx birth time regression;
+- `internal/telephony`: оба транспорта с локальными SIP servers;
+- `internal/platform/openwrt`: schema fixtures, включая реальную Linux symlink;
+- `internal/agent` с tag `integration`: 15 tests, включая P0/P1 remote E2E;
+- `internal/simulator`: scenarios/trends и настоящий TCP gRPC Mock stream.
+
+Сборка и запуск выполнялись в соответствующем package directory, например:
+
+```powershell
+$env:CGO_ENABLED = '0'
+$env:GOOS = 'linux'
+$env:GOARCH = 'amd64'
+go test -c -tags=integration -o bin/agent-p2-linux-tests ./internal/agent
+wsl --distribution docker-desktop --cd /mnt/host/c/Users/kiril/GolandProjects/InfraPulseAgent/internal/agent --exec /mnt/host/c/Users/kiril/GolandProjects/InfraPulseAgent/bin/agent-p2-linux-tests '-test.v=true' '-test.count=1'
+```
+
+`TestLiveLinuxLogsTelemetrySIPAndRotation` использовал реальный Linux collector,
+temp log file, rename/new file, локальный UDP SIP fixture и настоящий Agent/Mock
+gRPC stream. `TestAgentCursorRestartOverGRPC` подтвердил продолжение read position
+после нового запуска Agent; `TestAgentLogsAuditTelephonyStreamingAndRestart`
+проверил audit fixture, redaction, SIP outage/recovery и rotation delivery.
+`TestLogStormPreservesTelemetry` подтвердил изоляцию telemetry от log burst.
+Cancellation/graceful shutdown paths прошли. Это Linux runtime file pipeline,
+но не проверка production rsyslog/auditd daemon или внешнего PBX.
+
+### Simulator CLI ↔ Mock отдельными процессами
+
+После финальной сборки Windows amd64 запущены два отдельных executables на
+loopback: Mock Controller и `infrapulse-simulator --scenario all --duration 500ms
+--interval 50ms --seed 42 --devices 2 --output controller`. Config name имел
+128 bytes. Simulator завершился с exit code 0; число envelopes совпало с
+отдельным JSON CLI run того же scenario: **76 из 76**.
+
+| Payload | Получено |
+|---|---:|
+| Hello | 1 |
+| Inventory | 10 |
+| Telemetry | 17 |
+| Topology | 20 |
+| Logs | 10 batches, включая 3 audit records |
+| Telephony | 10 |
+| Events | 8 batches |
+
+Проверены explicit simulated markers. Final stream использует CloseSend и
+bounded ожидание peer EOF; regression с замедленным Mock подтверждает получение
+последних low-priority logs/telemetry. Это graceful transport completion,
+не application ACK и не durable delivery. Mock process остановлен после проверки;
+его graceful signal shutdown этим Windows CLI запуском не заявляется.
+
+### Cross-builds и binary size P2
+
+После последних runtime изменений с `CGO_ENABLED=0` собран полный Agent:
+
+| Target | Размер обычного binary, bytes |
+|---|---:|
+| linux/amd64 | 21,544,795 |
+| linux/arm64 | 20,113,003 |
+| linux/arm, GOARM=7 | 20,331,204 |
+| linux/mips, GOMIPS=hardfloat | 22,256,727 |
+| linux/mipsle, GOMIPS=hardfloat | 22,256,327 |
+
+Дополнительно собраны Linux amd64 binaries с `-ldflags '-s -w'`:
+Agent — 14,782,624 bytes, Mock — 12,660,896 bytes,
+Simulator — 13,111,456 bytes. Размеры относятся к этому build и не доказывают
+приемлемое потребление RAM/flash конкретного OpenWrt устройства.
+Simulator не включён в Agent. Binaries, test outputs, compiler/cache, identity,
+runtime cursors и временные configs остаются ignored artifacts.
+
+### Фактические ограничения и непроверенные среды
+
+- OpenWrt runtime/hardware **unverified**: доступная WSL среда не содержит
+  `/etc/openwrt_release` и `/bin/ubus`. Startup, native ubus/fw4, gRPC, shutdown
+  и memory consumption на настоящей firmware не проверялись.
+- Cisco/Huawei/MikroTik/Juniper/Eltex/QTECH hardware **не проверено**.
+  Profiles — detection-only; Generic compatibility требует standard MIB
+  availability. RouterOS fixture не является MikroTik hardware validation.
+- SIP только unauthenticated OPTIONS UDP/TCP, без TLS/REGISTER/media.
+  Реальные PBX и production rsyslog/auditd deployments не использовались.
+- Firewall inventory — configured UCI, не active nftables evidence; rpcd UCI
+  object может быть unavailable. Service/firewall mutations отсутствуют.
+- Cursor после RAM admission не обеспечивает delivery. Eviction/Send failure/
+  crash могут терять logs; persistence failure допускает replay. Без statx
+  birth time невозможно отличить equal-content inode reuse; snapshot reads
+  не гарантируют обнаружение идентичного overwrite или уже удалённой rotation.
+- Sanitizer ограничен известными patterns/values, audit correlation — batch;
+  universal anonymization и SIEM/AI inference не реализованы.
+- Windows LocalPlatform, SNMPv3, durable outbox/application ACK/enrollment/
+  execution journal/rollback и прочие P3 функции не добавлены.

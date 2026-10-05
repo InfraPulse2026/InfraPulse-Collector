@@ -19,6 +19,7 @@ import (
 	"InfraPulseAgent/internal/config"
 	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/identity"
+	"InfraPulseAgent/internal/logs"
 	"InfraPulseAgent/internal/model"
 	"InfraPulseAgent/internal/platform"
 	"InfraPulseAgent/internal/queue"
@@ -26,6 +27,7 @@ import (
 	"InfraPulseAgent/internal/sanitize"
 	"InfraPulseAgent/internal/scheduler"
 	"InfraPulseAgent/internal/telemetry"
+	"InfraPulseAgent/internal/telephony"
 	"InfraPulseAgent/internal/transport"
 	"InfraPulseAgent/internal/version"
 	"github.com/google/uuid"
@@ -48,22 +50,28 @@ type Agent struct {
 	recentErrors []string
 	remote       *remote.Registry
 	commands     *commands.Deduplicator
+	logs         *logs.Pipeline
+	logScheduler *scheduler.Scheduler
+	sipScheduler *scheduler.Scheduler
+	sip          []*telephony.Collector
 }
 
 type Diagnostics struct {
-	AgentID           string            `json:"agent_id"`
-	SessionID         string            `json:"session_id"`
-	Build             model.BuildInfo   `json:"build"`
-	Platform          string            `json:"platform"`
-	ControllerAddress string            `json:"controller_address"`
-	TLSMode           string            `json:"tls_mode"`
-	Connected         bool              `json:"connected"`
-	ObservedAt        time.Time         `json:"observed_at"`
-	Queue             model.QueueState  `json:"queue"`
-	Collectors        []scheduler.State `json:"collectors"`
-	Devices           []model.Device    `json:"devices"`
-	RecentErrors      []string          `json:"recent_errors"`
-	RemoteDevices     []remote.State    `json:"remote_devices,omitempty"`
+	AgentID           string                  `json:"agent_id"`
+	SessionID         string                  `json:"session_id"`
+	Build             model.BuildInfo         `json:"build"`
+	Platform          string                  `json:"platform"`
+	ControllerAddress string                  `json:"controller_address"`
+	TLSMode           string                  `json:"tls_mode"`
+	Connected         bool                    `json:"connected"`
+	ObservedAt        time.Time               `json:"observed_at"`
+	Queue             model.QueueState        `json:"queue"`
+	Collectors        []scheduler.State       `json:"collectors"`
+	Devices           []model.Device          `json:"devices"`
+	RecentErrors      []string                `json:"recent_errors"`
+	RemoteDevices     []remote.State          `json:"remote_devices,omitempty"`
+	LogSources        []logs.State            `json:"log_sources,omitempty"`
+	Telephony         []model.TelephonyHealth `json:"telephony,omitempty"`
 }
 
 func New(ctx context.Context, cfg config.Config, p platform.Platform, t transport.Transport, logger *slog.Logger) (*Agent, error) {
@@ -109,16 +117,26 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 		_ = a.remote.Close()
 		return nil, err
 	}
+	if err = a.p2Jobs(); err != nil {
+		_ = a.remote.Close()
+		if a.logs != nil {
+			_ = a.logs.Close()
+		}
+		return nil, err
+	}
 	return a, nil
 }
 
 func (a *Agent) setDevice(d model.Device) {
+	d = model.CloneDevice(d)
 	d.ID = "local:" + a.id.AgentID
 	d.Location = a.cfg.Location
 	if d.Name == "" {
 		d.Name = a.cfg.Agent.Name
 	}
 	a.mu.Lock()
+	a.serviceTransitions(a.device, d)
+	d.Capabilities = append(d.Capabilities, a.p2CapabilitiesLocked()...)
 	a.device = d
 	a.mu.Unlock()
 }
@@ -126,8 +144,7 @@ func (a *Agent) deviceSnapshot() model.Device {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	d := a.device
-	d.Capabilities = append([]model.Capability(nil), d.Capabilities...)
-	return d
+	return model.CloneDevice(d)
 }
 
 func (a *Agent) jobs() error {
@@ -162,6 +179,16 @@ func (a *Agent) jobs() error {
 }
 
 func (a *Agent) health() string {
+	for _, c := range a.sip {
+		if state := c.State().State; state == "down" || state == "degraded" {
+			return "degraded"
+		}
+	}
+	for _, s := range append(a.logScheduler.Stats(), a.sipScheduler.Stats()...) {
+		if s.LastError != "" {
+			return "degraded"
+		}
+	}
 	for _, s := range a.scheduler.Stats() {
 		if s.LastError != "" {
 			return "degraded"
@@ -190,7 +217,7 @@ func (a *Agent) push(e model.Envelope) error {
 	if err != nil {
 		return err
 	}
-	return a.queue.Push((sanitize.KnownSecrets{}).Sanitize(e))
+	return a.queue.Push((sanitize.KnownSecrets{Values: a.secretValues()}).Sanitize(e))
 }
 
 func (a *Agent) event(kind, severity, message string) {
@@ -209,7 +236,7 @@ func (a *Agent) collectorError(name string, err error) {
 		a.logger.Debug("outbox dropped sample", "collector", name, "error", err)
 		return
 	}
-	message := sanitize.Text(err.Error())
+	message := a.sanitizeText(err.Error())
 	if len(message) > 1024 {
 		message = strings.Clone(message[:1024])
 	}
@@ -218,7 +245,7 @@ func (a *Agent) collectorError(name string, err error) {
 	a.event("collector.error", "warn", name+": "+message)
 }
 func (a *Agent) recordError(message string) {
-	message = sanitize.Text(message)
+	message = a.sanitizeText(message)
 	if len(message) > 1024 {
 		message = strings.Clone(message[:1024])
 	}
@@ -232,15 +259,20 @@ func (a *Agent) recordError(message string) {
 }
 
 // Run cancels network IO and collectors together and bounds shutdown waiting.
-func (a *Agent) Run(ctx context.Context) error {
+func (a *Agent) Run(ctx context.Context) (resultErr error) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer a.remote.Close()
+	if a.logs != nil {
+		defer func() { resultErr = errors.Join(resultErr, a.logs.Close()) }()
+	}
 	a.event("agent.started", "info", "agent started")
-	done := make(chan error, 3)
+	done := make(chan error, 5)
 	go func() { done <- a.scheduler.Run(runCtx) }()
 	go func() { done <- a.remote.Run(runCtx) }()
 	go func() { done <- a.supervise(runCtx) }()
+	go func() { done <- a.logScheduler.Run(runCtx) }()
+	go func() { done <- a.sipScheduler.Run(runCtx) }()
 	var err error
 	finished := 0
 	select {
@@ -251,7 +283,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	cancel()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
-	for finished < 3 {
+	for finished < 5 {
 		select {
 		case e := <-done:
 			err = errors.Join(err, e)
@@ -390,8 +422,10 @@ func (a *Agent) Snapshot() Diagnostics {
 	d.Queue = a.queue.State()
 	d.Collectors = a.scheduler.Stats()
 	d.Collectors = append(d.Collectors, a.remote.Stats()...)
+	d.Collectors = append(d.Collectors, a.logScheduler.Stats()...)
+	d.Collectors = append(d.Collectors, a.sipScheduler.Stats()...)
 	for i := range d.Collectors {
-		d.Collectors[i].LastError = sanitize.Text(d.Collectors[i].LastError)
+		d.Collectors[i].LastError = a.sanitizeText(d.Collectors[i].LastError)
 		if len(d.Collectors[i].LastError) > 1024 {
 			d.Collectors[i].LastError = d.Collectors[i].LastError[:1024]
 		}
@@ -399,6 +433,12 @@ func (a *Agent) Snapshot() Diagnostics {
 	d.Devices = []model.Device{a.deviceSnapshot()}
 	d.RemoteDevices = a.remote.Snapshot()
 	d.Devices = append(d.Devices, a.remote.Devices()...)
+	if a.logs != nil {
+		d.LogSources = a.logs.Snapshot()
+	}
+	for _, c := range a.sip {
+		d.Telephony = append(d.Telephony, c.State())
+	}
 	return d
 }
 

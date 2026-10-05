@@ -1,0 +1,11 @@
+{
+  "values": {
+    "cfg01": {".anonymous": true, ".type": "defaults", ".name": "cfg01", ".index": 0, "input": "REJECT", "output": "ACCEPT", "forward": "REJECT"},
+    "cfg02": {".anonymous": true, ".type": "zone", ".name": "cfg02", ".index": 1, "name": "lan", "network": ["lan", "guest"], "input": "ACCEPT", "forward": "ACCEPT"},
+    "cfg03": {".anonymous": true, ".type": "zone", ".name": "cfg03", ".index": 2, "name": "wan", "network": "wan wan6", "enabled": "1"},
+    "cfg04": {".anonymous": true, ".type": "forwarding", ".name": "cfg04", ".index": 3, "src": "lan", "dest": "wan"},
+    "allow-dns": {".anonymous": false, ".type": "rule", ".name": "allow-dns", ".index": 4, "name": "Allow DNS", "src": "lan", "proto": ["tcp", "udp"], "dest_port": "53", "target": "ACCEPT", "family": "ipv4", "password": "do-not-forward-firewall-secret"},
+    "disabled-ssh": {".anonymous": false, ".type": "rule", ".name": "disabled-ssh", ".index": 5, "name": "Disabled SSH", "src": "wan", "dest_port": "22", "enabled": "0", "target": "ACCEPT"},
+    "https": {".anonymous": false, ".type": "redirect", ".name": "https", ".index": 6, "name": "HTTPS fixture", "src": "wan", "dest": "lan", "proto": "tcp", "src_dport": "8443", "dest_ip": "192.0.2.20", "dest_port": "443"}
+  }
+}

@@ -137,6 +137,59 @@ commit на Backend. Delivery ACK/durable outbox/journal/enrollment относя
 к следующим этапам. Agent не содержит LLM client и не отправляет данные AI
 напрямую; Backend должен отдельно решать допустимость дальнейшей передачи.
 
+## Logs, audit и persistent state
+
+Configured file sources читаются только как regular files, с limits строки,
+read budget, batch/JSON bytes, tracked identities и scanned directory entries.
+Отдельный worker pool и низкий queue priority защищают telemetry от log storm.
+Diagnostics хранит source status/counters/offset и safe error category, не raw
+log messages. Права на syslog/audit files и state directory задаёт оператор;
+ordinary tests используют temp directories без root.
+
+Перед parsing/enqueue применяется sanitizer известных полей/Authorization
+Bearer/Basic, literal values configured SNMP community/RouterOS password и
+private-key blocks. PEM suppression state сохраняется в cursor для restart.
+Oversized line передаётся целиком как redacted marker: обрезанный credential
+может не совпасть с полной configured строкой. Значения environment обновляются
+при sanitization; недоступный/необъявленный secret не гарантированно скрывается.
+Это bounded best-effort redaction, не универсальное удаление sensitive data.
+
+Audit raw record остаётся sanitized; normalizer разбирает только достоверные
+поля и сохраняет exact EventID. Он не является SIEM и не делает security/AI
+inference. Audit records всё равно могут содержать usernames/paths/UID и другую
+конфиденциальную информацию; Backend контролирует дальнейшую обработку.
+
+Cursor state защищён mode0700/0600 на Linux, strict validation и atomic
+temp/sync/rename с directory sync. Corruption fail-closed требует явного recovery;
+Agent не сбрасывает его молча. Это read position, не transport durability:
+RAM loss/eviction/Send error остаются возможны. Detailed semantics — [logs](logs.md).
+
+## OpenWrt typed access
+
+OpenWrt определяется release evidence; Linux CPU/RAM/interfaces остаются прежними.
+Закрытый enum операций вызывает только absolute `/bin/ubus` и literal arguments
+system board/network.interface dump/service list/uci get firewall. Controller
+не задаёт binary/argv/API endpoint; `sh -c`, init script execution, UCI/nft mutation
+отсутствуют. Procd command/env/data и unknown raw UCI options не публикуются.
+Stdout/stderr bounded; сообщения ошибок не включают содержимое ответов.
+UCI snapshot не подтверждает active firewall; службы/firewall read-only.
+
+## SIP и Simulator
+
+SIP endpoint config validated against CRLF/URI injection, транспорт только
+UDP/TCP. Agent самостоятельно формирует fixed OPTIONS с уникальными transaction
+IDs, сопоставляет Call-ID/CSeq/Via branch, ограничивает messages/response bytes
+и время. Raw packets/network errors не логируются. 401/407 не обходятся через
+REGISTER; SIP authentication/TLS/media отсутствуют. UDP/TCP не обеспечивают
+шифрование SIP; probe не содержит passwords/tokens.
+
+Simulator — отдельный development binary. Production Agent не импортирует
+его packages и не подменяет collectors synthetic fallback. Synthetic nested
+samples/devices/neighbors/logs/health/events имеют `source=simulated`; будущий
+Backend должен сохранять marker. Simulator подключается через обычный verified
+transport; development plaintext остаётся только loopback. Он не реализует
+command mutation executor и не является production Agent/hardware validation.
+
 ## Primary documentation
 
 [MikroTik REST API](https://manual.mikrotik.com/docs/developer-guides/rest-api/),

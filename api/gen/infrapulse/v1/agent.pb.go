@@ -437,7 +437,9 @@ type AgentEnvelope struct {
 	//	*AgentEnvelope_Telemetry
 	//	*AgentEnvelope_Inventory
 	//	*AgentEnvelope_Topology
+	//	*AgentEnvelope_Logs
 	//	*AgentEnvelope_Events
+	//	*AgentEnvelope_Telephony
 	//	*AgentEnvelope_CommandResult
 	//	*AgentEnvelope_Error
 	Payload       isAgentEnvelope_Payload `protobuf_oneof:"payload"`
@@ -562,10 +564,28 @@ func (x *AgentEnvelope) GetTopology() *TopologyUpdate {
 	return nil
 }
 
+func (x *AgentEnvelope) GetLogs() *LogBatch {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentEnvelope_Logs); ok {
+			return x.Logs
+		}
+	}
+	return nil
+}
+
 func (x *AgentEnvelope) GetEvents() *EventBatch {
 	if x != nil {
 		if x, ok := x.Payload.(*AgentEnvelope_Events); ok {
 			return x.Events
+		}
+	}
+	return nil
+}
+
+func (x *AgentEnvelope) GetTelephony() *TelephonyUpdate {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentEnvelope_Telephony); ok {
+			return x.Telephony
 		}
 	}
 	return nil
@@ -613,8 +633,16 @@ type AgentEnvelope_Topology struct {
 	Topology *TopologyUpdate `protobuf:"bytes,14,opt,name=topology,proto3,oneof"`
 }
 
+type AgentEnvelope_Logs struct {
+	Logs *LogBatch `protobuf:"bytes,15,opt,name=logs,proto3,oneof"`
+}
+
 type AgentEnvelope_Events struct {
 	Events *EventBatch `protobuf:"bytes,16,opt,name=events,proto3,oneof"`
+}
+
+type AgentEnvelope_Telephony struct {
+	Telephony *TelephonyUpdate `protobuf:"bytes,17,opt,name=telephony,proto3,oneof"`
 }
 
 type AgentEnvelope_CommandResult struct {
@@ -635,7 +663,11 @@ func (*AgentEnvelope_Inventory) isAgentEnvelope_Payload() {}
 
 func (*AgentEnvelope_Topology) isAgentEnvelope_Payload() {}
 
+func (*AgentEnvelope_Logs) isAgentEnvelope_Payload() {}
+
 func (*AgentEnvelope_Events) isAgentEnvelope_Payload() {}
+
+func (*AgentEnvelope_Telephony) isAgentEnvelope_Payload() {}
 
 func (*AgentEnvelope_CommandResult) isAgentEnvelope_Payload() {}
 
@@ -1121,6 +1153,12 @@ type Device struct {
 	Components        []*InventoryComponent  `protobuf:"bytes,30,rep,name=components,proto3" json:"components,omitempty"`
 	UptimeAvailable   *bool                  `protobuf:"varint,31,opt,name=uptime_available,json=uptimeAvailable,proto3,oneof" json:"uptime_available,omitempty"`
 	UptimeSource      string                 `protobuf:"bytes,32,opt,name=uptime_source,json=uptimeSource,proto3" json:"uptime_source,omitempty"`
+	Source            string                 `protobuf:"bytes,33,opt,name=source,proto3" json:"source,omitempty"`
+	BoardName         string                 `protobuf:"bytes,34,opt,name=board_name,json=boardName,proto3" json:"board_name,omitempty"`
+	PlatformEvidence  []*Evidence            `protobuf:"bytes,35,rep,name=platform_evidence,json=platformEvidence,proto3" json:"platform_evidence,omitempty"`
+	Services          []*Service             `protobuf:"bytes,36,rep,name=services,proto3" json:"services,omitempty"`
+	Firewall          *FirewallSnapshot      `protobuf:"bytes,37,opt,name=firewall,proto3" json:"firewall,omitempty"`
+	Networks          []*NetworkState        `protobuf:"bytes,38,rep,name=networks,proto3" json:"networks,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1377,6 +1415,48 @@ func (x *Device) GetUptimeSource() string {
 		return x.UptimeSource
 	}
 	return ""
+}
+
+func (x *Device) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *Device) GetBoardName() string {
+	if x != nil {
+		return x.BoardName
+	}
+	return ""
+}
+
+func (x *Device) GetPlatformEvidence() []*Evidence {
+	if x != nil {
+		return x.PlatformEvidence
+	}
+	return nil
+}
+
+func (x *Device) GetServices() []*Service {
+	if x != nil {
+		return x.Services
+	}
+	return nil
+}
+
+func (x *Device) GetFirewall() *FirewallSnapshot {
+	if x != nil {
+		return x.Firewall
+	}
+	return nil
+}
+
+func (x *Device) GetNetworks() []*NetworkState {
+	if x != nil {
+		return x.Networks
+	}
+	return nil
 }
 
 type Evidence struct {
@@ -2687,6 +2767,7 @@ type QueueState struct {
 	Bytes            uint64                 `protobuf:"varint,2,opt,name=bytes,proto3" json:"bytes,omitempty"`
 	DroppedTelemetry uint64                 `protobuf:"varint,3,opt,name=dropped_telemetry,json=droppedTelemetry,proto3" json:"dropped_telemetry,omitempty"`
 	DroppedOther     uint64                 `protobuf:"varint,4,opt,name=dropped_other,json=droppedOther,proto3" json:"dropped_other,omitempty"`
+	DroppedLogs      uint64                 `protobuf:"varint,5,opt,name=dropped_logs,json=droppedLogs,proto3" json:"dropped_logs,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2745,6 +2826,13 @@ func (x *QueueState) GetDroppedTelemetry() uint64 {
 func (x *QueueState) GetDroppedOther() uint64 {
 	if x != nil {
 		return x.DroppedOther
+	}
+	return 0
+}
+
+func (x *QueueState) GetDroppedLogs() uint64 {
+	if x != nil {
+		return x.DroppedLogs
 	}
 	return 0
 }
@@ -3823,11 +3911,1249 @@ func (x *InterfaceVerification) GetEvidence() string {
 	return ""
 }
 
+// Read-only configured inventory; not an nftables runtime management API.
+type Service struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	Enabled       *bool                  `protobuf:"varint,3,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
+	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	Source        string                 `protobuf:"bytes,5,opt,name=source,proto3" json:"source,omitempty"`
+	Instances     []*ServiceInstance     `protobuf:"bytes,6,rep,name=instances,proto3" json:"instances,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Service) Reset() {
+	*x = Service{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Service) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Service) ProtoMessage() {}
+
+func (x *Service) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Service.ProtoReflect.Descriptor instead.
+func (*Service) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *Service) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Service) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *Service) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
+	}
+	return false
+}
+
+func (x *Service) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *Service) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *Service) GetInstances() []*ServiceInstance {
+	if x != nil {
+		return x.Instances
+	}
+	return nil
+}
+
+type ServiceInstance struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Running       *bool                  `protobuf:"varint,2,opt,name=running,proto3,oneof" json:"running,omitempty"`
+	Pid           *uint32                `protobuf:"varint,3,opt,name=pid,proto3,oneof" json:"pid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceInstance) Reset() {
+	*x = ServiceInstance{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceInstance) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceInstance) ProtoMessage() {}
+
+func (x *ServiceInstance) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceInstance.ProtoReflect.Descriptor instead.
+func (*ServiceInstance) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ServiceInstance) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ServiceInstance) GetRunning() bool {
+	if x != nil && x.Running != nil {
+		return *x.Running
+	}
+	return false
+}
+
+func (x *ServiceInstance) GetPid() uint32 {
+	if x != nil && x.Pid != nil {
+		return *x.Pid
+	}
+	return 0
+}
+
+type NetworkState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Device        string                 `protobuf:"bytes,2,opt,name=device,proto3" json:"device,omitempty"`
+	Protocol      string                 `protobuf:"bytes,3,opt,name=protocol,proto3" json:"protocol,omitempty"`
+	Up            *bool                  `protobuf:"varint,4,opt,name=up,proto3,oneof" json:"up,omitempty"`
+	Pending       *bool                  `protobuf:"varint,5,opt,name=pending,proto3,oneof" json:"pending,omitempty"`
+	Addresses     []string               `protobuf:"bytes,6,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	Source        string                 `protobuf:"bytes,7,opt,name=source,proto3" json:"source,omitempty"`
+	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NetworkState) Reset() {
+	*x = NetworkState{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkState) ProtoMessage() {}
+
+func (x *NetworkState) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkState.ProtoReflect.Descriptor instead.
+func (*NetworkState) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *NetworkState) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NetworkState) GetDevice() string {
+	if x != nil {
+		return x.Device
+	}
+	return ""
+}
+
+func (x *NetworkState) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+func (x *NetworkState) GetUp() bool {
+	if x != nil && x.Up != nil {
+		return *x.Up
+	}
+	return false
+}
+
+func (x *NetworkState) GetPending() bool {
+	if x != nil && x.Pending != nil {
+		return *x.Pending
+	}
+	return false
+}
+
+func (x *NetworkState) GetAddresses() []string {
+	if x != nil {
+		return x.Addresses
+	}
+	return nil
+}
+
+func (x *NetworkState) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *NetworkState) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+type FirewallSnapshot struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	Completeness  string                 `protobuf:"bytes,3,opt,name=completeness,proto3" json:"completeness,omitempty"`
+	Enabled       *bool                  `protobuf:"varint,4,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
+	Zones         []*FirewallZone        `protobuf:"bytes,5,rep,name=zones,proto3" json:"zones,omitempty"`
+	Forwardings   []*FirewallForwarding  `protobuf:"bytes,6,rep,name=forwardings,proto3" json:"forwardings,omitempty"`
+	Rules         []*FirewallRule        `protobuf:"bytes,7,rep,name=rules,proto3" json:"rules,omitempty"`
+	Redirects     []*FirewallRedirect    `protobuf:"bytes,8,rep,name=redirects,proto3" json:"redirects,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FirewallSnapshot) Reset() {
+	*x = FirewallSnapshot{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FirewallSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FirewallSnapshot) ProtoMessage() {}
+
+func (x *FirewallSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FirewallSnapshot.ProtoReflect.Descriptor instead.
+func (*FirewallSnapshot) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *FirewallSnapshot) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *FirewallSnapshot) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *FirewallSnapshot) GetCompleteness() string {
+	if x != nil {
+		return x.Completeness
+	}
+	return ""
+}
+
+func (x *FirewallSnapshot) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
+	}
+	return false
+}
+
+func (x *FirewallSnapshot) GetZones() []*FirewallZone {
+	if x != nil {
+		return x.Zones
+	}
+	return nil
+}
+
+func (x *FirewallSnapshot) GetForwardings() []*FirewallForwarding {
+	if x != nil {
+		return x.Forwardings
+	}
+	return nil
+}
+
+func (x *FirewallSnapshot) GetRules() []*FirewallRule {
+	if x != nil {
+		return x.Rules
+	}
+	return nil
+}
+
+func (x *FirewallSnapshot) GetRedirects() []*FirewallRedirect {
+	if x != nil {
+		return x.Redirects
+	}
+	return nil
+}
+
+type FirewallZone struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Networks      []string               `protobuf:"bytes,3,rep,name=networks,proto3" json:"networks,omitempty"`
+	Input         string                 `protobuf:"bytes,4,opt,name=input,proto3" json:"input,omitempty"`
+	Output        string                 `protobuf:"bytes,5,opt,name=output,proto3" json:"output,omitempty"`
+	Forward       string                 `protobuf:"bytes,6,opt,name=forward,proto3" json:"forward,omitempty"`
+	Enabled       *bool                  `protobuf:"varint,7,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FirewallZone) Reset() {
+	*x = FirewallZone{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FirewallZone) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FirewallZone) ProtoMessage() {}
+
+func (x *FirewallZone) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FirewallZone.ProtoReflect.Descriptor instead.
+func (*FirewallZone) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *FirewallZone) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *FirewallZone) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FirewallZone) GetNetworks() []string {
+	if x != nil {
+		return x.Networks
+	}
+	return nil
+}
+
+func (x *FirewallZone) GetInput() string {
+	if x != nil {
+		return x.Input
+	}
+	return ""
+}
+
+func (x *FirewallZone) GetOutput() string {
+	if x != nil {
+		return x.Output
+	}
+	return ""
+}
+
+func (x *FirewallZone) GetForward() string {
+	if x != nil {
+		return x.Forward
+	}
+	return ""
+}
+
+func (x *FirewallZone) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
+	}
+	return false
+}
+
+type FirewallForwarding struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	SourceZone      string                 `protobuf:"bytes,2,opt,name=source_zone,json=sourceZone,proto3" json:"source_zone,omitempty"`
+	DestinationZone string                 `protobuf:"bytes,3,opt,name=destination_zone,json=destinationZone,proto3" json:"destination_zone,omitempty"`
+	Enabled         *bool                  `protobuf:"varint,4,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *FirewallForwarding) Reset() {
+	*x = FirewallForwarding{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FirewallForwarding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FirewallForwarding) ProtoMessage() {}
+
+func (x *FirewallForwarding) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FirewallForwarding.ProtoReflect.Descriptor instead.
+func (*FirewallForwarding) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *FirewallForwarding) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *FirewallForwarding) GetSourceZone() string {
+	if x != nil {
+		return x.SourceZone
+	}
+	return ""
+}
+
+func (x *FirewallForwarding) GetDestinationZone() string {
+	if x != nil {
+		return x.DestinationZone
+	}
+	return ""
+}
+
+func (x *FirewallForwarding) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
+	}
+	return false
+}
+
+type FirewallRule struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name            string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	SourceZone      string                 `protobuf:"bytes,3,opt,name=source_zone,json=sourceZone,proto3" json:"source_zone,omitempty"`
+	DestinationZone string                 `protobuf:"bytes,4,opt,name=destination_zone,json=destinationZone,proto3" json:"destination_zone,omitempty"`
+	Protocol        string                 `protobuf:"bytes,5,opt,name=protocol,proto3" json:"protocol,omitempty"`
+	SourceIp        string                 `protobuf:"bytes,6,opt,name=source_ip,json=sourceIp,proto3" json:"source_ip,omitempty"`
+	DestinationIp   string                 `protobuf:"bytes,7,opt,name=destination_ip,json=destinationIp,proto3" json:"destination_ip,omitempty"`
+	SourcePort      string                 `protobuf:"bytes,8,opt,name=source_port,json=sourcePort,proto3" json:"source_port,omitempty"`
+	DestinationPort string                 `protobuf:"bytes,9,opt,name=destination_port,json=destinationPort,proto3" json:"destination_port,omitempty"`
+	Target          string                 `protobuf:"bytes,10,opt,name=target,proto3" json:"target,omitempty"`
+	Family          string                 `protobuf:"bytes,11,opt,name=family,proto3" json:"family,omitempty"`
+	Enabled         *bool                  `protobuf:"varint,12,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *FirewallRule) Reset() {
+	*x = FirewallRule{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FirewallRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FirewallRule) ProtoMessage() {}
+
+func (x *FirewallRule) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FirewallRule.ProtoReflect.Descriptor instead.
+func (*FirewallRule) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *FirewallRule) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetSourceZone() string {
+	if x != nil {
+		return x.SourceZone
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetDestinationZone() string {
+	if x != nil {
+		return x.DestinationZone
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetSourceIp() string {
+	if x != nil {
+		return x.SourceIp
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetDestinationIp() string {
+	if x != nil {
+		return x.DestinationIp
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetSourcePort() string {
+	if x != nil {
+		return x.SourcePort
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetDestinationPort() string {
+	if x != nil {
+		return x.DestinationPort
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetFamily() string {
+	if x != nil {
+		return x.Family
+	}
+	return ""
+}
+
+func (x *FirewallRule) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
+	}
+	return false
+}
+
+type FirewallRedirect struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rule          *FirewallRule          `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`
+	ExternalPort  string                 `protobuf:"bytes,2,opt,name=external_port,json=externalPort,proto3" json:"external_port,omitempty"`
+	InternalIp    string                 `protobuf:"bytes,3,opt,name=internal_ip,json=internalIp,proto3" json:"internal_ip,omitempty"`
+	InternalPort  string                 `protobuf:"bytes,4,opt,name=internal_port,json=internalPort,proto3" json:"internal_port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FirewallRedirect) Reset() {
+	*x = FirewallRedirect{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FirewallRedirect) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FirewallRedirect) ProtoMessage() {}
+
+func (x *FirewallRedirect) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FirewallRedirect.ProtoReflect.Descriptor instead.
+func (*FirewallRedirect) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *FirewallRedirect) GetRule() *FirewallRule {
+	if x != nil {
+		return x.Rule
+	}
+	return nil
+}
+
+func (x *FirewallRedirect) GetExternalPort() string {
+	if x != nil {
+		return x.ExternalPort
+	}
+	return ""
+}
+
+func (x *FirewallRedirect) GetInternalIp() string {
+	if x != nil {
+		return x.InternalIp
+	}
+	return ""
+}
+
+func (x *FirewallRedirect) GetInternalPort() string {
+	if x != nil {
+		return x.InternalPort
+	}
+	return ""
+}
+
+type AuditRecord struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EventId       string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	RecordType    string                 `protobuf:"bytes,2,opt,name=record_type,json=recordType,proto3" json:"record_type,omitempty"`
+	Uid           *uint32                `protobuf:"varint,3,opt,name=uid,proto3,oneof" json:"uid,omitempty"`
+	Auid          *uint32                `protobuf:"varint,4,opt,name=auid,proto3,oneof" json:"auid,omitempty"`
+	Pid           *uint32                `protobuf:"varint,5,opt,name=pid,proto3,oneof" json:"pid,omitempty"`
+	Executable    string                 `protobuf:"bytes,6,opt,name=executable,proto3" json:"executable,omitempty"`
+	Syscall       string                 `protobuf:"bytes,7,opt,name=syscall,proto3" json:"syscall,omitempty"`
+	Success       *bool                  `protobuf:"varint,8,opt,name=success,proto3,oneof" json:"success,omitempty"`
+	Result        string                 `protobuf:"bytes,9,opt,name=result,proto3" json:"result,omitempty"`
+	Host          string                 `protobuf:"bytes,10,opt,name=host,proto3" json:"host,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuditRecord) Reset() {
+	*x = AuditRecord{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditRecord) ProtoMessage() {}
+
+func (x *AuditRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditRecord.ProtoReflect.Descriptor instead.
+func (*AuditRecord) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *AuditRecord) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetRecordType() string {
+	if x != nil {
+		return x.RecordType
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetUid() uint32 {
+	if x != nil && x.Uid != nil {
+		return *x.Uid
+	}
+	return 0
+}
+
+func (x *AuditRecord) GetAuid() uint32 {
+	if x != nil && x.Auid != nil {
+		return *x.Auid
+	}
+	return 0
+}
+
+func (x *AuditRecord) GetPid() uint32 {
+	if x != nil && x.Pid != nil {
+		return *x.Pid
+	}
+	return 0
+}
+
+func (x *AuditRecord) GetExecutable() string {
+	if x != nil {
+		return x.Executable
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetSyscall() string {
+	if x != nil {
+		return x.Syscall
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetSuccess() bool {
+	if x != nil && x.Success != nil {
+		return *x.Success
+	}
+	return false
+}
+
+func (x *AuditRecord) GetResult() string {
+	if x != nil {
+		return x.Result
+	}
+	return ""
+}
+
+func (x *AuditRecord) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+type LogRecord struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	DeviceId          string                 `protobuf:"bytes,2,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	Source            string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	SourceId          string                 `protobuf:"bytes,4,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	ObservedAt        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	OriginalTimestamp *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=original_timestamp,json=originalTimestamp,proto3" json:"original_timestamp,omitempty"`
+	Severity          *uint32                `protobuf:"varint,7,opt,name=severity,proto3,oneof" json:"severity,omitempty"`
+	Facility          *uint32                `protobuf:"varint,8,opt,name=facility,proto3,oneof" json:"facility,omitempty"`
+	Host              string                 `protobuf:"bytes,9,opt,name=host,proto3" json:"host,omitempty"`
+	Process           string                 `protobuf:"bytes,10,opt,name=process,proto3" json:"process,omitempty"`
+	ProcessId         string                 `protobuf:"bytes,11,opt,name=process_id,json=processId,proto3" json:"process_id,omitempty"`
+	Message           string                 `protobuf:"bytes,12,opt,name=message,proto3" json:"message,omitempty"`
+	Raw               string                 `protobuf:"bytes,13,opt,name=raw,proto3" json:"raw,omitempty"`
+	Truncated         bool                   `protobuf:"varint,14,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	FileIdentity      string                 `protobuf:"bytes,15,opt,name=file_identity,json=fileIdentity,proto3" json:"file_identity,omitempty"`
+	Offset            int64                  `protobuf:"varint,16,opt,name=offset,proto3" json:"offset,omitempty"`
+	Audit             *AuditRecord           `protobuf:"bytes,17,opt,name=audit,proto3" json:"audit,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *LogRecord) Reset() {
+	*x = LogRecord{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogRecord) ProtoMessage() {}
+
+func (x *LogRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogRecord.ProtoReflect.Descriptor instead.
+func (*LogRecord) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *LogRecord) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *LogRecord) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *LogRecord) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *LogRecord) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *LogRecord) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *LogRecord) GetOriginalTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OriginalTimestamp
+	}
+	return nil
+}
+
+func (x *LogRecord) GetSeverity() uint32 {
+	if x != nil && x.Severity != nil {
+		return *x.Severity
+	}
+	return 0
+}
+
+func (x *LogRecord) GetFacility() uint32 {
+	if x != nil && x.Facility != nil {
+		return *x.Facility
+	}
+	return 0
+}
+
+func (x *LogRecord) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *LogRecord) GetProcess() string {
+	if x != nil {
+		return x.Process
+	}
+	return ""
+}
+
+func (x *LogRecord) GetProcessId() string {
+	if x != nil {
+		return x.ProcessId
+	}
+	return ""
+}
+
+func (x *LogRecord) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *LogRecord) GetRaw() string {
+	if x != nil {
+		return x.Raw
+	}
+	return ""
+}
+
+func (x *LogRecord) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *LogRecord) GetFileIdentity() string {
+	if x != nil {
+		return x.FileIdentity
+	}
+	return ""
+}
+
+func (x *LogRecord) GetOffset() int64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *LogRecord) GetAudit() *AuditRecord {
+	if x != nil {
+		return x.Audit
+	}
+	return nil
+}
+
+// Cursor advances after RAM outbox admission, not after durable delivery.
+type LogBatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	Records       []*LogRecord           `protobuf:"bytes,3,rep,name=records,proto3" json:"records,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogBatch) Reset() {
+	*x = LogBatch{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogBatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogBatch) ProtoMessage() {}
+
+func (x *LogBatch) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogBatch.ProtoReflect.Descriptor instead.
+func (*LogBatch) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *LogBatch) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *LogBatch) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *LogBatch) GetRecords() []*LogRecord {
+	if x != nil {
+		return x.Records
+	}
+	return nil
+}
+
+type TelephonyHealth struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	TargetId            string                 `protobuf:"bytes,1,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
+	Address             string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	Transport           string                 `protobuf:"bytes,3,opt,name=transport,proto3" json:"transport,omitempty"`
+	Reachable           bool                   `protobuf:"varint,4,opt,name=reachable,proto3" json:"reachable,omitempty"`
+	ResponseCode        *uint32                `protobuf:"varint,5,opt,name=response_code,json=responseCode,proto3,oneof" json:"response_code,omitempty"`
+	LatencyMs           *float64               `protobuf:"fixed64,6,opt,name=latency_ms,json=latencyMs,proto3,oneof" json:"latency_ms,omitempty"`
+	ObservedAt          *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	ConsecutiveFailures uint32                 `protobuf:"varint,8,opt,name=consecutive_failures,json=consecutiveFailures,proto3" json:"consecutive_failures,omitempty"`
+	State               string                 `protobuf:"bytes,9,opt,name=state,proto3" json:"state,omitempty"`
+	ErrorCategory       string                 `protobuf:"bytes,10,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
+	Source              string                 `protobuf:"bytes,11,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *TelephonyHealth) Reset() {
+	*x = TelephonyHealth{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TelephonyHealth) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TelephonyHealth) ProtoMessage() {}
+
+func (x *TelephonyHealth) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TelephonyHealth.ProtoReflect.Descriptor instead.
+func (*TelephonyHealth) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *TelephonyHealth) GetTargetId() string {
+	if x != nil {
+		return x.TargetId
+	}
+	return ""
+}
+
+func (x *TelephonyHealth) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *TelephonyHealth) GetTransport() string {
+	if x != nil {
+		return x.Transport
+	}
+	return ""
+}
+
+func (x *TelephonyHealth) GetReachable() bool {
+	if x != nil {
+		return x.Reachable
+	}
+	return false
+}
+
+func (x *TelephonyHealth) GetResponseCode() uint32 {
+	if x != nil && x.ResponseCode != nil {
+		return *x.ResponseCode
+	}
+	return 0
+}
+
+func (x *TelephonyHealth) GetLatencyMs() float64 {
+	if x != nil && x.LatencyMs != nil {
+		return *x.LatencyMs
+	}
+	return 0
+}
+
+func (x *TelephonyHealth) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *TelephonyHealth) GetConsecutiveFailures() uint32 {
+	if x != nil {
+		return x.ConsecutiveFailures
+	}
+	return 0
+}
+
+func (x *TelephonyHealth) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *TelephonyHealth) GetErrorCategory() string {
+	if x != nil {
+		return x.ErrorCategory
+	}
+	return ""
+}
+
+func (x *TelephonyHealth) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+type TelephonyUpdate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	Targets       []*TelephonyHealth     `protobuf:"bytes,3,rep,name=targets,proto3" json:"targets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TelephonyUpdate) Reset() {
+	*x = TelephonyUpdate{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TelephonyUpdate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TelephonyUpdate) ProtoMessage() {}
+
+func (x *TelephonyUpdate) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TelephonyUpdate.ProtoReflect.Descriptor instead.
+func (*TelephonyUpdate) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *TelephonyUpdate) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *TelephonyUpdate) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *TelephonyUpdate) GetTargets() []*TelephonyHealth {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
 var File_infrapulse_v1_agent_proto protoreflect.FileDescriptor
 
 const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x19infrapulse/v1/agent.proto\x12\rinfrapulse.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9d\x05\n" +
+	"\x19infrapulse/v1/agent.proto\x12\rinfrapulse.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8c\x06\n" +
 	"\rAgentEnvelope\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12\x19\n" +
@@ -3841,8 +5167,10 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\theartbeat\x18\v \x01(\v2\x18.infrapulse.v1.HeartbeatH\x00R\theartbeat\x12=\n" +
 	"\ttelemetry\x18\f \x01(\v2\x1d.infrapulse.v1.TelemetryBatchH\x00R\ttelemetry\x12>\n" +
 	"\tinventory\x18\r \x01(\v2\x1e.infrapulse.v1.InventoryUpdateH\x00R\tinventory\x12;\n" +
-	"\btopology\x18\x0e \x01(\v2\x1d.infrapulse.v1.TopologyUpdateH\x00R\btopology\x123\n" +
-	"\x06events\x18\x10 \x01(\v2\x19.infrapulse.v1.EventBatchH\x00R\x06events\x12E\n" +
+	"\btopology\x18\x0e \x01(\v2\x1d.infrapulse.v1.TopologyUpdateH\x00R\btopology\x12-\n" +
+	"\x04logs\x18\x0f \x01(\v2\x17.infrapulse.v1.LogBatchH\x00R\x04logs\x123\n" +
+	"\x06events\x18\x10 \x01(\v2\x19.infrapulse.v1.EventBatchH\x00R\x06events\x12>\n" +
+	"\ttelephony\x18\x11 \x01(\v2\x1e.infrapulse.v1.TelephonyUpdateH\x00R\ttelephony\x12E\n" +
 	"\x0ecommand_result\x18\x12 \x01(\v2\x1c.infrapulse.v1.CommandResultH\x00R\rcommandResult\x122\n" +
 	"\x05error\x18\x14 \x01(\v2\x1a.infrapulse.v1.ErrorReportH\x00R\x05errorB\t\n" +
 	"\apayload\"\x8b\x01\n" +
@@ -3884,7 +5212,7 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\x04rack\x18\x05 \x01(\tR\x04rack\x12\x1b\n" +
 	"\track_unit\x18\x06 \x01(\x05R\brackUnit\x12\x1a\n" +
 	"\bposition\x18\a \x01(\tR\bposition\x12\x18\n" +
-	"\acomment\x18\b \x01(\tR\acomment\"\xe3\t\n" +
+	"\acomment\x18\b \x01(\tR\acomment\"\x8a\f\n" +
 	"\x06Device\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
@@ -3922,7 +5250,14 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"components\x18\x1e \x03(\v2!.infrapulse.v1.InventoryComponentR\n" +
 	"components\x12.\n" +
 	"\x10uptime_available\x18\x1f \x01(\bH\x00R\x0fuptimeAvailable\x88\x01\x01\x12#\n" +
-	"\ruptime_source\x18  \x01(\tR\fuptimeSourceB\x13\n" +
+	"\ruptime_source\x18  \x01(\tR\fuptimeSource\x12\x16\n" +
+	"\x06source\x18! \x01(\tR\x06source\x12\x1d\n" +
+	"\n" +
+	"board_name\x18\" \x01(\tR\tboardName\x12D\n" +
+	"\x11platform_evidence\x18# \x03(\v2\x17.infrapulse.v1.EvidenceR\x10platformEvidence\x122\n" +
+	"\bservices\x18$ \x03(\v2\x16.infrapulse.v1.ServiceR\bservices\x12;\n" +
+	"\bfirewall\x18% \x01(\v2\x1f.infrapulse.v1.FirewallSnapshotR\bfirewall\x127\n" +
+	"\bnetworks\x18& \x03(\v2\x1b.infrapulse.v1.NetworkStateR\bnetworksB\x13\n" +
 	"\x11_uptime_available\"X\n" +
 	"\bEvidence\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x14\n" +
@@ -4066,13 +5401,14 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\ruptime_source\x18\f \x01(\tR\fuptimeSourceB\x13\n" +
 	"\x11_uptime_available\"J\n" +
 	"\x0eTelemetryBatch\x128\n" +
-	"\asamples\x18\x01 \x03(\v2\x1e.infrapulse.v1.TelemetrySampleR\asamples\"\x90\x01\n" +
+	"\asamples\x18\x01 \x03(\v2\x1e.infrapulse.v1.TelemetrySampleR\asamples\"\xb3\x01\n" +
 	"\n" +
 	"QueueState\x12\x1a\n" +
 	"\bmessages\x18\x01 \x01(\x04R\bmessages\x12\x14\n" +
 	"\x05bytes\x18\x02 \x01(\x04R\x05bytes\x12+\n" +
 	"\x11dropped_telemetry\x18\x03 \x01(\x04R\x10droppedTelemetry\x12#\n" +
-	"\rdropped_other\x18\x04 \x01(\x04R\fdroppedOther\"\x95\x02\n" +
+	"\rdropped_other\x18\x04 \x01(\x04R\fdroppedOther\x12!\n" +
+	"\fdropped_logs\x18\x05 \x01(\x04R\vdroppedLogs\"\x95\x02\n" +
 	"\tHeartbeat\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12%\n" +
 	"\x0euptime_seconds\x18\x02 \x01(\x01R\ruptimeSeconds\x12.\n" +
@@ -4177,7 +5513,161 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\achanged\x18\a \x01(\bR\achanged\x12\x1c\n" +
 	"\tuncertain\x18\b \x01(\bR\tuncertain\x12\x1a\n" +
 	"\bevidence\x18\t \x01(\tR\bevidenceB\x14\n" +
-	"\x12_observed_admin_up*\xc8\x02\n" +
+	"\x12_observed_admin_up\"\xf1\x01\n" +
+	"\aService\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12\x1d\n" +
+	"\aenabled\x18\x03 \x01(\bH\x00R\aenabled\x88\x01\x01\x12;\n" +
+	"\vobserved_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x12\x16\n" +
+	"\x06source\x18\x05 \x01(\tR\x06source\x12<\n" +
+	"\tinstances\x18\x06 \x03(\v2\x1e.infrapulse.v1.ServiceInstanceR\tinstancesB\n" +
+	"\n" +
+	"\b_enabled\"o\n" +
+	"\x0fServiceInstance\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
+	"\arunning\x18\x02 \x01(\bH\x00R\arunning\x88\x01\x01\x12\x15\n" +
+	"\x03pid\x18\x03 \x01(\rH\x01R\x03pid\x88\x01\x01B\n" +
+	"\n" +
+	"\b_runningB\x06\n" +
+	"\x04_pid\"\x90\x02\n" +
+	"\fNetworkState\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06device\x18\x02 \x01(\tR\x06device\x12\x1a\n" +
+	"\bprotocol\x18\x03 \x01(\tR\bprotocol\x12\x13\n" +
+	"\x02up\x18\x04 \x01(\bH\x00R\x02up\x88\x01\x01\x12\x1d\n" +
+	"\apending\x18\x05 \x01(\bH\x01R\apending\x88\x01\x01\x12\x1c\n" +
+	"\taddresses\x18\x06 \x03(\tR\taddresses\x12\x16\n" +
+	"\x06source\x18\a \x01(\tR\x06source\x12;\n" +
+	"\vobserved_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAtB\x05\n" +
+	"\x03_upB\n" +
+	"\n" +
+	"\b_pending\"\xa0\x03\n" +
+	"\x10FirewallSnapshot\x12;\n" +
+	"\vobserved_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x12\"\n" +
+	"\fcompleteness\x18\x03 \x01(\tR\fcompleteness\x12\x1d\n" +
+	"\aenabled\x18\x04 \x01(\bH\x00R\aenabled\x88\x01\x01\x121\n" +
+	"\x05zones\x18\x05 \x03(\v2\x1b.infrapulse.v1.FirewallZoneR\x05zones\x12C\n" +
+	"\vforwardings\x18\x06 \x03(\v2!.infrapulse.v1.FirewallForwardingR\vforwardings\x121\n" +
+	"\x05rules\x18\a \x03(\v2\x1b.infrapulse.v1.FirewallRuleR\x05rules\x12=\n" +
+	"\tredirects\x18\b \x03(\v2\x1f.infrapulse.v1.FirewallRedirectR\tredirectsB\n" +
+	"\n" +
+	"\b_enabled\"\xc1\x01\n" +
+	"\fFirewallZone\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
+	"\bnetworks\x18\x03 \x03(\tR\bnetworks\x12\x14\n" +
+	"\x05input\x18\x04 \x01(\tR\x05input\x12\x16\n" +
+	"\x06output\x18\x05 \x01(\tR\x06output\x12\x18\n" +
+	"\aforward\x18\x06 \x01(\tR\aforward\x12\x1d\n" +
+	"\aenabled\x18\a \x01(\bH\x00R\aenabled\x88\x01\x01B\n" +
+	"\n" +
+	"\b_enabled\"\x9b\x01\n" +
+	"\x12FirewallForwarding\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
+	"\vsource_zone\x18\x02 \x01(\tR\n" +
+	"sourceZone\x12)\n" +
+	"\x10destination_zone\x18\x03 \x01(\tR\x0fdestinationZone\x12\x1d\n" +
+	"\aenabled\x18\x04 \x01(\bH\x00R\aenabled\x88\x01\x01B\n" +
+	"\n" +
+	"\b_enabled\"\x85\x03\n" +
+	"\fFirewallRule\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
+	"\vsource_zone\x18\x03 \x01(\tR\n" +
+	"sourceZone\x12)\n" +
+	"\x10destination_zone\x18\x04 \x01(\tR\x0fdestinationZone\x12\x1a\n" +
+	"\bprotocol\x18\x05 \x01(\tR\bprotocol\x12\x1b\n" +
+	"\tsource_ip\x18\x06 \x01(\tR\bsourceIp\x12%\n" +
+	"\x0edestination_ip\x18\a \x01(\tR\rdestinationIp\x12\x1f\n" +
+	"\vsource_port\x18\b \x01(\tR\n" +
+	"sourcePort\x12)\n" +
+	"\x10destination_port\x18\t \x01(\tR\x0fdestinationPort\x12\x16\n" +
+	"\x06target\x18\n" +
+	" \x01(\tR\x06target\x12\x16\n" +
+	"\x06family\x18\v \x01(\tR\x06family\x12\x1d\n" +
+	"\aenabled\x18\f \x01(\bH\x00R\aenabled\x88\x01\x01B\n" +
+	"\n" +
+	"\b_enabled\"\xae\x01\n" +
+	"\x10FirewallRedirect\x12/\n" +
+	"\x04rule\x18\x01 \x01(\v2\x1b.infrapulse.v1.FirewallRuleR\x04rule\x12#\n" +
+	"\rexternal_port\x18\x02 \x01(\tR\fexternalPort\x12\x1f\n" +
+	"\vinternal_ip\x18\x03 \x01(\tR\n" +
+	"internalIp\x12#\n" +
+	"\rinternal_port\x18\x04 \x01(\tR\finternalPort\"\xba\x02\n" +
+	"\vAuditRecord\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1f\n" +
+	"\vrecord_type\x18\x02 \x01(\tR\n" +
+	"recordType\x12\x15\n" +
+	"\x03uid\x18\x03 \x01(\rH\x00R\x03uid\x88\x01\x01\x12\x17\n" +
+	"\x04auid\x18\x04 \x01(\rH\x01R\x04auid\x88\x01\x01\x12\x15\n" +
+	"\x03pid\x18\x05 \x01(\rH\x02R\x03pid\x88\x01\x01\x12\x1e\n" +
+	"\n" +
+	"executable\x18\x06 \x01(\tR\n" +
+	"executable\x12\x18\n" +
+	"\asyscall\x18\a \x01(\tR\asyscall\x12\x1d\n" +
+	"\asuccess\x18\b \x01(\bH\x03R\asuccess\x88\x01\x01\x12\x16\n" +
+	"\x06result\x18\t \x01(\tR\x06result\x12\x12\n" +
+	"\x04host\x18\n" +
+	" \x01(\tR\x04hostB\x06\n" +
+	"\x04_uidB\a\n" +
+	"\x05_auidB\x06\n" +
+	"\x04_pidB\n" +
+	"\n" +
+	"\b_success\"\xd7\x04\n" +
+	"\tLogRecord\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
+	"\tdevice_id\x18\x02 \x01(\tR\bdeviceId\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12\x1b\n" +
+	"\tsource_id\x18\x04 \x01(\tR\bsourceId\x12;\n" +
+	"\vobserved_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x12I\n" +
+	"\x12original_timestamp\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x11originalTimestamp\x12\x1f\n" +
+	"\bseverity\x18\a \x01(\rH\x00R\bseverity\x88\x01\x01\x12\x1f\n" +
+	"\bfacility\x18\b \x01(\rH\x01R\bfacility\x88\x01\x01\x12\x12\n" +
+	"\x04host\x18\t \x01(\tR\x04host\x12\x18\n" +
+	"\aprocess\x18\n" +
+	" \x01(\tR\aprocess\x12\x1d\n" +
+	"\n" +
+	"process_id\x18\v \x01(\tR\tprocessId\x12\x18\n" +
+	"\amessage\x18\f \x01(\tR\amessage\x12\x10\n" +
+	"\x03raw\x18\r \x01(\tR\x03raw\x12\x1c\n" +
+	"\ttruncated\x18\x0e \x01(\bR\ttruncated\x12#\n" +
+	"\rfile_identity\x18\x0f \x01(\tR\ffileIdentity\x12\x16\n" +
+	"\x06offset\x18\x10 \x01(\x03R\x06offset\x120\n" +
+	"\x05audit\x18\x11 \x01(\v2\x1a.infrapulse.v1.AuditRecordR\x05auditB\v\n" +
+	"\t_severityB\v\n" +
+	"\t_facility\"\x93\x01\n" +
+	"\bLogBatch\x12;\n" +
+	"\vobserved_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x122\n" +
+	"\arecords\x18\x03 \x03(\v2\x18.infrapulse.v1.LogRecordR\arecords\"\xb8\x03\n" +
+	"\x0fTelephonyHealth\x12\x1b\n" +
+	"\ttarget_id\x18\x01 \x01(\tR\btargetId\x12\x18\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x1c\n" +
+	"\ttransport\x18\x03 \x01(\tR\ttransport\x12\x1c\n" +
+	"\treachable\x18\x04 \x01(\bR\treachable\x12(\n" +
+	"\rresponse_code\x18\x05 \x01(\rH\x00R\fresponseCode\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"latency_ms\x18\x06 \x01(\x01H\x01R\tlatencyMs\x88\x01\x01\x12;\n" +
+	"\vobserved_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x121\n" +
+	"\x14consecutive_failures\x18\b \x01(\rR\x13consecutiveFailures\x12\x14\n" +
+	"\x05state\x18\t \x01(\tR\x05state\x12%\n" +
+	"\x0eerror_category\x18\n" +
+	" \x01(\tR\rerrorCategory\x12\x16\n" +
+	"\x06source\x18\v \x01(\tR\x06sourceB\x10\n" +
+	"\x0e_response_codeB\r\n" +
+	"\v_latency_ms\"\xa0\x01\n" +
+	"\x0fTelephonyUpdate\x12;\n" +
+	"\vobserved_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x128\n" +
+	"\atargets\x18\x03 \x03(\v2\x1e.infrapulse.v1.TelephonyHealthR\atargets*\xc8\x02\n" +
 	"\n" +
 	"DeviceType\x12\x1b\n" +
 	"\x17DEVICE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -4243,7 +5733,7 @@ func file_infrapulse_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_infrapulse_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_infrapulse_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_infrapulse_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
 var file_infrapulse_v1_agent_proto_goTypes = []any{
 	(DeviceType)(0),               // 0: infrapulse.v1.DeviceType
 	(SnapshotCompleteness)(0),     // 1: infrapulse.v1.SnapshotCompleteness
@@ -4287,79 +5777,115 @@ var file_infrapulse_v1_agent_proto_goTypes = []any{
 	(*Command)(nil),               // 39: infrapulse.v1.Command
 	(*CommandResult)(nil),         // 40: infrapulse.v1.CommandResult
 	(*InterfaceVerification)(nil), // 41: infrapulse.v1.InterfaceVerification
-	(*timestamppb.Timestamp)(nil), // 42: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 43: google.protobuf.Duration
+	(*Service)(nil),               // 42: infrapulse.v1.Service
+	(*ServiceInstance)(nil),       // 43: infrapulse.v1.ServiceInstance
+	(*NetworkState)(nil),          // 44: infrapulse.v1.NetworkState
+	(*FirewallSnapshot)(nil),      // 45: infrapulse.v1.FirewallSnapshot
+	(*FirewallZone)(nil),          // 46: infrapulse.v1.FirewallZone
+	(*FirewallForwarding)(nil),    // 47: infrapulse.v1.FirewallForwarding
+	(*FirewallRule)(nil),          // 48: infrapulse.v1.FirewallRule
+	(*FirewallRedirect)(nil),      // 49: infrapulse.v1.FirewallRedirect
+	(*AuditRecord)(nil),           // 50: infrapulse.v1.AuditRecord
+	(*LogRecord)(nil),             // 51: infrapulse.v1.LogRecord
+	(*LogBatch)(nil),              // 52: infrapulse.v1.LogBatch
+	(*TelephonyHealth)(nil),       // 53: infrapulse.v1.TelephonyHealth
+	(*TelephonyUpdate)(nil),       // 54: infrapulse.v1.TelephonyUpdate
+	(*timestamppb.Timestamp)(nil), // 55: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 56: google.protobuf.Duration
 }
 var file_infrapulse_v1_agent_proto_depIdxs = []int32{
-	42, // 0: infrapulse.v1.AgentEnvelope.sent_at:type_name -> google.protobuf.Timestamp
+	55, // 0: infrapulse.v1.AgentEnvelope.sent_at:type_name -> google.protobuf.Timestamp
 	10, // 1: infrapulse.v1.AgentEnvelope.hello:type_name -> infrapulse.v1.AgentHello
 	30, // 2: infrapulse.v1.AgentEnvelope.heartbeat:type_name -> infrapulse.v1.Heartbeat
 	28, // 3: infrapulse.v1.AgentEnvelope.telemetry:type_name -> infrapulse.v1.TelemetryBatch
 	31, // 4: infrapulse.v1.AgentEnvelope.inventory:type_name -> infrapulse.v1.InventoryUpdate
 	32, // 5: infrapulse.v1.AgentEnvelope.topology:type_name -> infrapulse.v1.TopologyUpdate
-	35, // 6: infrapulse.v1.AgentEnvelope.events:type_name -> infrapulse.v1.EventBatch
-	40, // 7: infrapulse.v1.AgentEnvelope.command_result:type_name -> infrapulse.v1.CommandResult
-	36, // 8: infrapulse.v1.AgentEnvelope.error:type_name -> infrapulse.v1.ErrorReport
-	11, // 9: infrapulse.v1.ControllerEnvelope.hello_ack:type_name -> infrapulse.v1.HelloAck
-	39, // 10: infrapulse.v1.ControllerEnvelope.command:type_name -> infrapulse.v1.Command
-	9,  // 11: infrapulse.v1.AgentHello.build:type_name -> infrapulse.v1.BuildInfo
-	42, // 12: infrapulse.v1.AgentHello.started_at:type_name -> google.protobuf.Timestamp
-	14, // 13: infrapulse.v1.AgentHello.device:type_name -> infrapulse.v1.Device
-	0,  // 14: infrapulse.v1.Device.type:type_name -> infrapulse.v1.DeviceType
-	42, // 15: infrapulse.v1.Device.last_seen:type_name -> google.protobuf.Timestamp
-	13, // 16: infrapulse.v1.Device.location:type_name -> infrapulse.v1.PhysicalLocation
-	12, // 17: infrapulse.v1.Device.capabilities:type_name -> infrapulse.v1.Capability
-	15, // 18: infrapulse.v1.Device.vendor_evidence:type_name -> infrapulse.v1.Evidence
-	16, // 19: infrapulse.v1.Device.components:type_name -> infrapulse.v1.InventoryComponent
-	21, // 20: infrapulse.v1.InterfaceRates.available:type_name -> infrapulse.v1.CounterAvailability
-	21, // 21: infrapulse.v1.CounterMetadata.available:type_name -> infrapulse.v1.CounterAvailability
-	22, // 22: infrapulse.v1.CounterMetadata.widths:type_name -> infrapulse.v1.CounterWidths
-	19, // 23: infrapulse.v1.Interface.counters:type_name -> infrapulse.v1.InterfaceCounters
-	20, // 24: infrapulse.v1.Interface.rates:type_name -> infrapulse.v1.InterfaceRates
-	24, // 25: infrapulse.v1.Interface.metadata:type_name -> infrapulse.v1.InterfaceMetadata
-	23, // 26: infrapulse.v1.Interface.counter_metadata:type_name -> infrapulse.v1.CounterMetadata
-	42, // 27: infrapulse.v1.TelemetrySample.observed_at:type_name -> google.protobuf.Timestamp
-	42, // 28: infrapulse.v1.TelemetrySample.collected_at:type_name -> google.protobuf.Timestamp
-	17, // 29: infrapulse.v1.TelemetrySample.cpu:type_name -> infrapulse.v1.CPUStats
-	18, // 30: infrapulse.v1.TelemetrySample.memory:type_name -> infrapulse.v1.MemoryStats
-	25, // 31: infrapulse.v1.TelemetrySample.interfaces:type_name -> infrapulse.v1.Interface
-	26, // 32: infrapulse.v1.TelemetrySample.metrics:type_name -> infrapulse.v1.Metric
-	27, // 33: infrapulse.v1.TelemetryBatch.samples:type_name -> infrapulse.v1.TelemetrySample
-	42, // 34: infrapulse.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
-	9,  // 35: infrapulse.v1.Heartbeat.build:type_name -> infrapulse.v1.BuildInfo
-	29, // 36: infrapulse.v1.Heartbeat.queue:type_name -> infrapulse.v1.QueueState
-	42, // 37: infrapulse.v1.InventoryUpdate.observed_at:type_name -> google.protobuf.Timestamp
-	14, // 38: infrapulse.v1.InventoryUpdate.devices:type_name -> infrapulse.v1.Device
-	42, // 39: infrapulse.v1.TopologyUpdate.observed_at:type_name -> google.protobuf.Timestamp
-	42, // 40: infrapulse.v1.TopologyUpdate.collected_at:type_name -> google.protobuf.Timestamp
-	1,  // 41: infrapulse.v1.TopologyUpdate.completeness:type_name -> infrapulse.v1.SnapshotCompleteness
-	33, // 42: infrapulse.v1.TopologyUpdate.observations:type_name -> infrapulse.v1.Neighbor
-	2,  // 43: infrapulse.v1.Neighbor.protocol:type_name -> infrapulse.v1.DiscoveryProtocol
-	42, // 44: infrapulse.v1.Neighbor.observed_at:type_name -> google.protobuf.Timestamp
-	42, // 45: infrapulse.v1.Neighbor.expires_at:type_name -> google.protobuf.Timestamp
-	15, // 46: infrapulse.v1.Neighbor.evidence:type_name -> infrapulse.v1.Evidence
-	42, // 47: infrapulse.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
-	34, // 48: infrapulse.v1.EventBatch.events:type_name -> infrapulse.v1.Event
-	42, // 49: infrapulse.v1.ErrorReport.timestamp:type_name -> google.protobuf.Timestamp
-	4,  // 50: infrapulse.v1.InterfaceAction.operation:type_name -> infrapulse.v1.InterfaceOperation
-	5,  // 51: infrapulse.v1.ServiceAction.operation:type_name -> infrapulse.v1.ServiceOperation
-	42, // 52: infrapulse.v1.Command.requested_at:type_name -> google.protobuf.Timestamp
-	43, // 53: infrapulse.v1.Command.timeout:type_name -> google.protobuf.Duration
-	3,  // 54: infrapulse.v1.Command.initiator:type_name -> infrapulse.v1.CommandInitiator
-	37, // 55: infrapulse.v1.Command.interface:type_name -> infrapulse.v1.InterfaceAction
-	38, // 56: infrapulse.v1.Command.service:type_name -> infrapulse.v1.ServiceAction
-	6,  // 57: infrapulse.v1.CommandResult.status:type_name -> infrapulse.v1.CommandStatus
-	42, // 58: infrapulse.v1.CommandResult.started_at:type_name -> google.protobuf.Timestamp
-	42, // 59: infrapulse.v1.CommandResult.finished_at:type_name -> google.protobuf.Timestamp
-	41, // 60: infrapulse.v1.CommandResult.verification:type_name -> infrapulse.v1.InterfaceVerification
-	42, // 61: infrapulse.v1.InterfaceVerification.observed_at:type_name -> google.protobuf.Timestamp
-	7,  // 62: infrapulse.v1.AgentService.Connect:input_type -> infrapulse.v1.AgentEnvelope
-	8,  // 63: infrapulse.v1.AgentService.Connect:output_type -> infrapulse.v1.ControllerEnvelope
-	63, // [63:64] is the sub-list for method output_type
-	62, // [62:63] is the sub-list for method input_type
-	62, // [62:62] is the sub-list for extension type_name
-	62, // [62:62] is the sub-list for extension extendee
-	0,  // [0:62] is the sub-list for field type_name
+	52, // 6: infrapulse.v1.AgentEnvelope.logs:type_name -> infrapulse.v1.LogBatch
+	35, // 7: infrapulse.v1.AgentEnvelope.events:type_name -> infrapulse.v1.EventBatch
+	54, // 8: infrapulse.v1.AgentEnvelope.telephony:type_name -> infrapulse.v1.TelephonyUpdate
+	40, // 9: infrapulse.v1.AgentEnvelope.command_result:type_name -> infrapulse.v1.CommandResult
+	36, // 10: infrapulse.v1.AgentEnvelope.error:type_name -> infrapulse.v1.ErrorReport
+	11, // 11: infrapulse.v1.ControllerEnvelope.hello_ack:type_name -> infrapulse.v1.HelloAck
+	39, // 12: infrapulse.v1.ControllerEnvelope.command:type_name -> infrapulse.v1.Command
+	9,  // 13: infrapulse.v1.AgentHello.build:type_name -> infrapulse.v1.BuildInfo
+	55, // 14: infrapulse.v1.AgentHello.started_at:type_name -> google.protobuf.Timestamp
+	14, // 15: infrapulse.v1.AgentHello.device:type_name -> infrapulse.v1.Device
+	0,  // 16: infrapulse.v1.Device.type:type_name -> infrapulse.v1.DeviceType
+	55, // 17: infrapulse.v1.Device.last_seen:type_name -> google.protobuf.Timestamp
+	13, // 18: infrapulse.v1.Device.location:type_name -> infrapulse.v1.PhysicalLocation
+	12, // 19: infrapulse.v1.Device.capabilities:type_name -> infrapulse.v1.Capability
+	15, // 20: infrapulse.v1.Device.vendor_evidence:type_name -> infrapulse.v1.Evidence
+	16, // 21: infrapulse.v1.Device.components:type_name -> infrapulse.v1.InventoryComponent
+	15, // 22: infrapulse.v1.Device.platform_evidence:type_name -> infrapulse.v1.Evidence
+	42, // 23: infrapulse.v1.Device.services:type_name -> infrapulse.v1.Service
+	45, // 24: infrapulse.v1.Device.firewall:type_name -> infrapulse.v1.FirewallSnapshot
+	44, // 25: infrapulse.v1.Device.networks:type_name -> infrapulse.v1.NetworkState
+	21, // 26: infrapulse.v1.InterfaceRates.available:type_name -> infrapulse.v1.CounterAvailability
+	21, // 27: infrapulse.v1.CounterMetadata.available:type_name -> infrapulse.v1.CounterAvailability
+	22, // 28: infrapulse.v1.CounterMetadata.widths:type_name -> infrapulse.v1.CounterWidths
+	19, // 29: infrapulse.v1.Interface.counters:type_name -> infrapulse.v1.InterfaceCounters
+	20, // 30: infrapulse.v1.Interface.rates:type_name -> infrapulse.v1.InterfaceRates
+	24, // 31: infrapulse.v1.Interface.metadata:type_name -> infrapulse.v1.InterfaceMetadata
+	23, // 32: infrapulse.v1.Interface.counter_metadata:type_name -> infrapulse.v1.CounterMetadata
+	55, // 33: infrapulse.v1.TelemetrySample.observed_at:type_name -> google.protobuf.Timestamp
+	55, // 34: infrapulse.v1.TelemetrySample.collected_at:type_name -> google.protobuf.Timestamp
+	17, // 35: infrapulse.v1.TelemetrySample.cpu:type_name -> infrapulse.v1.CPUStats
+	18, // 36: infrapulse.v1.TelemetrySample.memory:type_name -> infrapulse.v1.MemoryStats
+	25, // 37: infrapulse.v1.TelemetrySample.interfaces:type_name -> infrapulse.v1.Interface
+	26, // 38: infrapulse.v1.TelemetrySample.metrics:type_name -> infrapulse.v1.Metric
+	27, // 39: infrapulse.v1.TelemetryBatch.samples:type_name -> infrapulse.v1.TelemetrySample
+	55, // 40: infrapulse.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
+	9,  // 41: infrapulse.v1.Heartbeat.build:type_name -> infrapulse.v1.BuildInfo
+	29, // 42: infrapulse.v1.Heartbeat.queue:type_name -> infrapulse.v1.QueueState
+	55, // 43: infrapulse.v1.InventoryUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	14, // 44: infrapulse.v1.InventoryUpdate.devices:type_name -> infrapulse.v1.Device
+	55, // 45: infrapulse.v1.TopologyUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	55, // 46: infrapulse.v1.TopologyUpdate.collected_at:type_name -> google.protobuf.Timestamp
+	1,  // 47: infrapulse.v1.TopologyUpdate.completeness:type_name -> infrapulse.v1.SnapshotCompleteness
+	33, // 48: infrapulse.v1.TopologyUpdate.observations:type_name -> infrapulse.v1.Neighbor
+	2,  // 49: infrapulse.v1.Neighbor.protocol:type_name -> infrapulse.v1.DiscoveryProtocol
+	55, // 50: infrapulse.v1.Neighbor.observed_at:type_name -> google.protobuf.Timestamp
+	55, // 51: infrapulse.v1.Neighbor.expires_at:type_name -> google.protobuf.Timestamp
+	15, // 52: infrapulse.v1.Neighbor.evidence:type_name -> infrapulse.v1.Evidence
+	55, // 53: infrapulse.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
+	34, // 54: infrapulse.v1.EventBatch.events:type_name -> infrapulse.v1.Event
+	55, // 55: infrapulse.v1.ErrorReport.timestamp:type_name -> google.protobuf.Timestamp
+	4,  // 56: infrapulse.v1.InterfaceAction.operation:type_name -> infrapulse.v1.InterfaceOperation
+	5,  // 57: infrapulse.v1.ServiceAction.operation:type_name -> infrapulse.v1.ServiceOperation
+	55, // 58: infrapulse.v1.Command.requested_at:type_name -> google.protobuf.Timestamp
+	56, // 59: infrapulse.v1.Command.timeout:type_name -> google.protobuf.Duration
+	3,  // 60: infrapulse.v1.Command.initiator:type_name -> infrapulse.v1.CommandInitiator
+	37, // 61: infrapulse.v1.Command.interface:type_name -> infrapulse.v1.InterfaceAction
+	38, // 62: infrapulse.v1.Command.service:type_name -> infrapulse.v1.ServiceAction
+	6,  // 63: infrapulse.v1.CommandResult.status:type_name -> infrapulse.v1.CommandStatus
+	55, // 64: infrapulse.v1.CommandResult.started_at:type_name -> google.protobuf.Timestamp
+	55, // 65: infrapulse.v1.CommandResult.finished_at:type_name -> google.protobuf.Timestamp
+	41, // 66: infrapulse.v1.CommandResult.verification:type_name -> infrapulse.v1.InterfaceVerification
+	55, // 67: infrapulse.v1.InterfaceVerification.observed_at:type_name -> google.protobuf.Timestamp
+	55, // 68: infrapulse.v1.Service.observed_at:type_name -> google.protobuf.Timestamp
+	43, // 69: infrapulse.v1.Service.instances:type_name -> infrapulse.v1.ServiceInstance
+	55, // 70: infrapulse.v1.NetworkState.observed_at:type_name -> google.protobuf.Timestamp
+	55, // 71: infrapulse.v1.FirewallSnapshot.observed_at:type_name -> google.protobuf.Timestamp
+	46, // 72: infrapulse.v1.FirewallSnapshot.zones:type_name -> infrapulse.v1.FirewallZone
+	47, // 73: infrapulse.v1.FirewallSnapshot.forwardings:type_name -> infrapulse.v1.FirewallForwarding
+	48, // 74: infrapulse.v1.FirewallSnapshot.rules:type_name -> infrapulse.v1.FirewallRule
+	49, // 75: infrapulse.v1.FirewallSnapshot.redirects:type_name -> infrapulse.v1.FirewallRedirect
+	48, // 76: infrapulse.v1.FirewallRedirect.rule:type_name -> infrapulse.v1.FirewallRule
+	55, // 77: infrapulse.v1.LogRecord.observed_at:type_name -> google.protobuf.Timestamp
+	55, // 78: infrapulse.v1.LogRecord.original_timestamp:type_name -> google.protobuf.Timestamp
+	50, // 79: infrapulse.v1.LogRecord.audit:type_name -> infrapulse.v1.AuditRecord
+	55, // 80: infrapulse.v1.LogBatch.observed_at:type_name -> google.protobuf.Timestamp
+	51, // 81: infrapulse.v1.LogBatch.records:type_name -> infrapulse.v1.LogRecord
+	55, // 82: infrapulse.v1.TelephonyHealth.observed_at:type_name -> google.protobuf.Timestamp
+	55, // 83: infrapulse.v1.TelephonyUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	53, // 84: infrapulse.v1.TelephonyUpdate.targets:type_name -> infrapulse.v1.TelephonyHealth
+	7,  // 85: infrapulse.v1.AgentService.Connect:input_type -> infrapulse.v1.AgentEnvelope
+	8,  // 86: infrapulse.v1.AgentService.Connect:output_type -> infrapulse.v1.ControllerEnvelope
+	86, // [86:87] is the sub-list for method output_type
+	85, // [85:86] is the sub-list for method input_type
+	85, // [85:85] is the sub-list for extension type_name
+	85, // [85:85] is the sub-list for extension extendee
+	0,  // [0:85] is the sub-list for field type_name
 }
 
 func init() { file_infrapulse_v1_agent_proto_init() }
@@ -4373,7 +5899,9 @@ func file_infrapulse_v1_agent_proto_init() {
 		(*AgentEnvelope_Telemetry)(nil),
 		(*AgentEnvelope_Inventory)(nil),
 		(*AgentEnvelope_Topology)(nil),
+		(*AgentEnvelope_Logs)(nil),
 		(*AgentEnvelope_Events)(nil),
+		(*AgentEnvelope_Telephony)(nil),
 		(*AgentEnvelope_CommandResult)(nil),
 		(*AgentEnvelope_Error)(nil),
 	}
@@ -4392,13 +5920,23 @@ func file_infrapulse_v1_agent_proto_init() {
 		(*Command_Service)(nil),
 	}
 	file_infrapulse_v1_agent_proto_msgTypes[34].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[35].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[36].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[37].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[38].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[39].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[40].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[41].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[43].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[44].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[46].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_infrapulse_v1_agent_proto_rawDesc), len(file_infrapulse_v1_agent_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   35,
+			NumMessages:   48,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

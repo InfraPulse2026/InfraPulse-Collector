@@ -9,6 +9,7 @@ build:
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) build -ldflags '$(LDFLAGS)' -o bin/infrapulse-agent ./cmd/infrapulse-agent
 	CGO_ENABLED=0 $(GO) build -o bin/infrapulse-mock-controller ./cmd/infrapulse-mock-controller
+	CGO_ENABLED=0 $(GO) build -o bin/infrapulse-simulator ./cmd/infrapulse-simulator
 
 check:
 	$(GO) fmt ./...

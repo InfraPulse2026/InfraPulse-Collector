@@ -25,7 +25,9 @@ message AgentEnvelope {
     TelemetryBatch telemetry = 12;
     InventoryUpdate inventory = 13;
     TopologyUpdate topology = 14;
+    LogBatch logs = 15;
     EventBatch events = 16;
+    TelephonyUpdate telephony = 17;
     CommandResult command_result = 18;
     ErrorReport error = 20;
   }
@@ -124,6 +126,12 @@ message Device {
   repeated InventoryComponent components = 30;
   optional bool uptime_available = 31;
   string uptime_source = 32;
+  string source = 33;
+  string board_name = 34;
+  repeated Evidence platform_evidence = 35;
+  repeated Service services = 36;
+  FirewallSnapshot firewall = 37;
+  repeated NetworkState networks = 38;
 }
 
 message Evidence {
@@ -278,6 +286,7 @@ message QueueState {
   uint64 bytes = 2;
   uint64 dropped_telemetry = 3;
   uint64 dropped_other = 4;
+  uint64 dropped_logs = 5;
 }
 
 message Heartbeat {
@@ -442,4 +451,129 @@ message InterfaceVerification {
   bool changed = 7;
   bool uncertain = 8;
   string evidence = 9;
+}
+
+// Read-only configured inventory; not an nftables runtime management API.
+message Service {
+  string name = 1;
+  string state = 2;
+  optional bool enabled = 3;
+  google.protobuf.Timestamp observed_at = 4;
+  string source = 5;
+  repeated ServiceInstance instances = 6;
+}
+message ServiceInstance {
+  string name = 1;
+  optional bool running = 2;
+  optional uint32 pid = 3;
+}
+message NetworkState {
+  string name = 1;
+  string device = 2;
+  string protocol = 3;
+  optional bool up = 4;
+  optional bool pending = 5;
+  repeated string addresses = 6;
+  string source = 7;
+  google.protobuf.Timestamp observed_at = 8;
+}
+message FirewallSnapshot {
+  google.protobuf.Timestamp observed_at = 1;
+  string source = 2;
+  string completeness = 3;
+  optional bool enabled = 4;
+  repeated FirewallZone zones = 5;
+  repeated FirewallForwarding forwardings = 6;
+  repeated FirewallRule rules = 7;
+  repeated FirewallRedirect redirects = 8;
+}
+message FirewallZone {
+  string id = 1;
+  string name = 2;
+  repeated string networks = 3;
+  string input = 4;
+  string output = 5;
+  string forward = 6;
+  optional bool enabled = 7;
+}
+message FirewallForwarding {
+  string id = 1;
+  string source_zone = 2;
+  string destination_zone = 3;
+  optional bool enabled = 4;
+}
+message FirewallRule {
+  string id = 1;
+  string name = 2;
+  string source_zone = 3;
+  string destination_zone = 4;
+  string protocol = 5;
+  string source_ip = 6;
+  string destination_ip = 7;
+  string source_port = 8;
+  string destination_port = 9;
+  string target = 10;
+  string family = 11;
+  optional bool enabled = 12;
+}
+message FirewallRedirect {
+  FirewallRule rule = 1;
+  string external_port = 2;
+  string internal_ip = 3;
+  string internal_port = 4;
+}
+message AuditRecord {
+  string event_id = 1;
+  string record_type = 2;
+  optional uint32 uid = 3;
+  optional uint32 auid = 4;
+  optional uint32 pid = 5;
+  string executable = 6;
+  string syscall = 7;
+  optional bool success = 8;
+  string result = 9;
+  string host = 10;
+}
+message LogRecord {
+  string id = 1;
+  string device_id = 2;
+  string source = 3;
+  string source_id = 4;
+  google.protobuf.Timestamp observed_at = 5;
+  google.protobuf.Timestamp original_timestamp = 6;
+  optional uint32 severity = 7;
+  optional uint32 facility = 8;
+  string host = 9;
+  string process = 10;
+  string process_id = 11;
+  string message = 12;
+  string raw = 13;
+  bool truncated = 14;
+  string file_identity = 15;
+  int64 offset = 16;
+  AuditRecord audit = 17;
+}
+// Cursor advances after RAM outbox admission, not after durable delivery.
+message LogBatch {
+  google.protobuf.Timestamp observed_at = 1;
+  string source = 2;
+  repeated LogRecord records = 3;
+}
+message TelephonyHealth {
+  string target_id = 1;
+  string address = 2;
+  string transport = 3;
+  bool reachable = 4;
+  optional uint32 response_code = 5;
+  optional double latency_ms = 6;
+  google.protobuf.Timestamp observed_at = 7;
+  uint32 consecutive_failures = 8;
+  string state = 9;
+  string error_category = 10;
+  string source = 11;
+}
+message TelephonyUpdate {
+  google.protobuf.Timestamp observed_at = 1;
+  string source = 2;
+  repeated TelephonyHealth targets = 3;
 }

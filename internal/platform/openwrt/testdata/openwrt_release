@@ -1,0 +1,6 @@
+DISTRIB_ID='OpenWrt'
+DISTRIB_RELEASE='24.10.0'
+DISTRIB_REVISION='r-release-fixture'
+DISTRIB_TARGET='fixture/generic'
+DISTRIB_ARCH='fixture_arch'
+DISTRIB_DESCRIPTION='OpenWrt 24.10.0 release fixture'

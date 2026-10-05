@@ -1,0 +1,8 @@
+[
+  {"id":"cisco","vendor":"Cisco","enterprise_oid":".1.3.6.1.4.1.9","organization":"ciscoSystems","source":"https://www.iana.org/assignments/enterprise-numbers/?page=1"},
+  {"id":"huawei","vendor":"Huawei","enterprise_oid":".1.3.6.1.4.1.2011","organization":"HUAWEI Technology Co.,Ltd","source":"https://www.iana.org/assignments/enterprise-numbers/?page=21"},
+  {"id":"mikrotik","vendor":"MikroTik","enterprise_oid":".1.3.6.1.4.1.14988","organization":"MikroTik","source":"https://www.iana.org/assignments/enterprise-numbers/?page=150"},
+  {"id":"juniper","vendor":"Juniper","enterprise_oid":".1.3.6.1.4.1.2636","organization":"Juniper Networks, Inc.","source":"https://www.iana.org/assignments/enterprise-numbers/?page=27"},
+  {"id":"eltex","vendor":"Eltex","enterprise_oid":".1.3.6.1.4.1.35265","organization":"Eltex Enterprise, Ltd.","source":"https://www.iana.org/assignments/enterprise-numbers/?page=353"},
+  {"id":"qtech","vendor":"QTECH","enterprise_oid":".1.3.6.1.4.1.27514","organization":"QTECH LLC","source":"https://www.iana.org/assignments/enterprise-numbers/?page=276"}
+]

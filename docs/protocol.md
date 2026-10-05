@@ -50,7 +50,9 @@ Controller отвечает `HelloAck{accepted: true, protocol_version: 1}`. Д�
 | telemetry | 12 | TelemetryBatch, oneof payload |
 | inventory | 13 | InventoryUpdate, oneof payload |
 | topology | 14 | TopologyUpdate, oneof payload |
+| logs | 15 | LogBatch, oneof payload |
 | events | 16 | EventBatch, oneof payload |
+| telephony | 17 | TelephonyUpdate, oneof payload |
 | command_result | 18 | CommandResult, oneof payload |
 | error | 20 | ErrorReport, oneof payload |
 
@@ -63,9 +65,9 @@ Mock Controller использует 1 MiB. Допустимый configurable д
 transport — 512 bytes–4 MiB; ограничение действует в обе стороны.
 
 Номер 14 использован для `TopologyUpdate` согласно исходному protocol plan.
-Номера 15, 17, 19 остаются свободны для `LogBatch`, `CommandAck`, `HealthStatus`.
-Их появление не должно переименовывать или перенумеровывать
-существующие поля. Удалённые в будущем поля нужно явно объявлять `reserved`;
+P2 использует ранее незанятые 15 и 17 для logs и telephony; 19 остаётся свободным.
+Дополнение не переименовывает и не перенумеровывает существующие поля.
+Удалённые в будущем поля нужно явно объявлять `reserved`;
 занятый номер никогда не используется для другого смысла.
 
 ## Payloads
@@ -87,7 +89,7 @@ value и confidence (`high`, `medium`, `low`, `unresolved`). Configured hint
 Credentials и credential references отсутствуют в Device/wire models.
 
 `Heartbeat`: timestamp, uptime, build metadata, health, remote device count,
-число и суммарный размер queued messages, dropped telemetry/other counters.
+число и суммарный размер queued messages, dropped telemetry/other/log counters.
 Heartbeat отделён от telemetry. Health отражает ошибки collectors;
 это не результат AI или полноценная оценка здоровья инфраструктуры.
 
@@ -213,9 +215,9 @@ Outbox ограничен числом сообщений, общим разме
 CommandResult; dropped queue counters описывают drops очереди и не подтверждают
 доставку по сети. Следовательно, Agent не обещает exactly-once, durable command
 results или надёжную доставку логов. Receiver Backend должен использовать
-message/event IDs для deduplication при будущих retries. Для production log
-cursors и durable command results потребуется persistent outbox + явный
-application acknowledgement; это отдельная будущая реализация.
+message/event IDs для deduplication при будущих retries. Persistent log cursors
+реализованы отдельно от delivery; durable logs/command results требуют persistent
+outbox и явный application acknowledgement вне P2.
 
 До execution Agent резервирует 4096 bytes/один message slot под result.
 При недостаточной capacity или `max_message_bytes < 4096` команда не исполняется,
@@ -223,6 +225,59 @@ session закрывается; reservation гарантирует RAM admission
 Dedup cache ограничен 256 commands/results, сверяет command ID/idempotency key
 и fingerprint параметров, повторно выдаёт завершённый result с актуальным
 command ID. Cache теряется при restart/eviction, persistent journal отсутствует.
+
+## LogBatch и audit
+
+`AgentEnvelope.logs=15` содержит `observed_at`, source и до 1024 records.
+Каждый record сохраняет stable deterministic ID, device ID, source/source ID,
+observed time, optional parsed original timestamp, optional severity/facility,
+достоверные host/process/PID, sanitized message/raw, truncated flag и исходные
+file identity/offset. Нулевые optional values сохраняют presence. BSD timestamp
+без года/timezone не превращается в выдуманный UTC timestamp.
+
+Audit record дополнительно передаёт event ID, record type, optional UID/AUID/PID,
+executable, syscall number/action, success/result и node host, если parsing уверен.
+Records одного event связываются exact source+device+host+event ID; batch не
+означает полный audit event, соседние строки не склеиваются. Agent не делает AI
+security inference; обычная log line не становится Event.
+
+Cursor advances только после успешного RAM queue admission всего batch.
+Rejected batch не advance. State persistence failure после admission блокирует
+новые чтения до успешной записи; restart может повторить records. Eviction,
+crash/restart RAM queue и Send после Pop могут потерять принятые logs. gRPC Send
+не является application ACK. Semantics — best effort с persistent read position,
+без exactly-once/guaranteed/durable delivery. `QueueState.dropped_logs=5`
+считает отказ и eviction log envelopes; dropped_other включает их также.
+Logs имеют более низкий priority, чем telemetry, и не вытесняют CommandResult.
+Подробнее — [logs](logs.md).
+
+## TelephonyUpdate
+
+`AgentEnvelope.telephony=17` содержит observed time, source и bounded targets
+(wire limit256, config128). Health: stable target ID, address, UDP/TCP transport,
+reachable, optional response code/latency milliseconds, observed time,
+consecutive failures, state и safe error category. Matching valid response
+подтверждает reachable; 2xx означает успешный unauthenticated OPTIONS, 401/407
+— authentication required, 404/5xx — rejected/server error. Timeout/DNS/connect/
+malformed различаются. Latency threshold создаёт degraded, failure threshold —
+down. Это отдельная telephony state, не device/interface offline.
+Transitions `telephony.up/down/degraded` передаются EventBatch. Cancellation
+сохраняет предыдущую state. Подробности — [telephony](telephony.md).
+
+## Read-only OpenWrt inventory и Simulator
+
+Device дополнен совместимыми полями `source=33`, `board_name=34`,
+`platform_evidence=35`, `services=36`, `firewall=37`, `networks=38`.
+Services сохраняют instances, running/unknown и optional enabled. Firewall
+сохраняет zones/networks/forwardings/rules/redirects и configuration source,
+completeness; это UCI snapshot, не доказательство активных runtime rules.
+Unknown enabled/up/pending/PID остаются absent, а не false/zero.
+
+Simulator использует этот же wire contract, protocol version1 и HelloAck.
+Все synthetic nested samples, devices, neighbors, log records, health и events
+имеют explicit `source=simulated`. Simulated inventory driver также simulated;
+production Agent не запускает Generator. Marker должен сохраняться Backend
+при дальнейшей обработке. Simulator — development component.
 
 ## TLS и enrollment
 

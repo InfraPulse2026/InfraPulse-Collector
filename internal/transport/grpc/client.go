@@ -131,6 +131,8 @@ func (s *session) Receive() (model.ControllerMessage, error) {
 	}
 }
 
+func (s *session) CloseSend() error { return s.stream.CloseSend() }
+
 func (s *session) Close() error {
 	s.closeOnce.Do(func() {
 		s.cancel()

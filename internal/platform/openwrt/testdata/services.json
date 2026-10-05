@@ -1,0 +1,16 @@
+{
+  "dnsmasq": {
+    "instances": {
+      "cfg01411c": {
+        "running": true,
+        "pid": 734,
+        "command": ["/usr/sbin/dnsmasq", "--password=do-not-forward-command-secret"],
+        "env": {"TOKEN": "do-not-forward-env-secret"},
+        "term_timeout": 5
+      }
+    }
+  },
+  "dropbear": {"autostart": false, "instances": {"instance1": {"running": false, "exit_code": 0}}},
+  "firewall": {"data": {"password": "do-not-forward-service-secret"}},
+  "unknown-instance": {"instances": {"instance1": {}}}
+}

@@ -1,0 +1,20 @@
+{
+  "interface": [
+    {
+      "interface": "lan",
+      "up": true,
+      "pending": false,
+      "available": true,
+      "autostart": true,
+      "dynamic": false,
+      "uptime": 42,
+      "l3_device": "br-lan",
+      "proto": "static",
+      "device": "br-lan",
+      "ipv4-address": [{"address": "192.0.2.1", "mask": 24}],
+      "ipv6-address": [{"address": "2001:db8::1", "mask": 64}],
+      "data": {"password": "do-not-forward-network-secret"}
+    },
+    {"interface": "wan", "up": false, "pending": true, "proto": "dhcp", "device": "eth0", "ipv4-address": []}
+  ]
+}

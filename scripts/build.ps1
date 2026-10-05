@@ -16,7 +16,7 @@ try {
         $nativeOS = & $GoPath env GOHOSTOS
         $suffix = if ($nativeOS -eq 'windows') { '.exe' } else { '' }
         $env:GOOS=$nativeOS; $env:GOARCH=(& $GoPath env GOHOSTARCH)
-        foreach ($binary in @('infrapulse-agent','infrapulse-mock-controller')) {
+        foreach ($binary in @('infrapulse-agent','infrapulse-mock-controller','infrapulse-simulator')) {
             & $GoPath build -o "bin/$binary$suffix" "./cmd/$binary"
             if ($LASTEXITCODE -ne 0) { throw "build failed: $binary" }
         }

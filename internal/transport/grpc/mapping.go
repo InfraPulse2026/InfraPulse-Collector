@@ -49,6 +49,10 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 		SentAt: timestamp(envelope.SentAt),
 	}
 	switch {
+	case envelope.Logs != nil:
+		message.Payload = &pb.AgentEnvelope_Logs{Logs: logsToProto(*envelope.Logs)}
+	case envelope.Telephony != nil:
+		message.Payload = &pb.AgentEnvelope_Telephony{Telephony: telephonyToProto(*envelope.Telephony)}
 	case envelope.Hello != nil:
 		h := envelope.Hello
 		message.Payload = &pb.AgentEnvelope_Hello{Hello: &pb.AgentHello{
@@ -63,7 +67,7 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 			Build: buildToProto(h.Build), Health: h.Health,
 			RemoteDeviceCount: uint32(h.RemoteDeviceCount), Queue: &pb.QueueState{
 				Messages: uint64(h.Queue.Messages), Bytes: uint64(h.Queue.Bytes),
-				DroppedTelemetry: h.Queue.DroppedTelemetry, DroppedOther: h.Queue.DroppedOther,
+				DroppedTelemetry: h.Queue.DroppedTelemetry, DroppedOther: h.Queue.DroppedOther, DroppedLogs: h.Queue.DroppedLogs,
 			},
 		}}
 	case envelope.Telemetry != nil:
@@ -123,6 +127,24 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 		SessionID: message.SessionId, Sequence: message.Sequence, SentAt: sentAt,
 	}
 	switch payload := message.Payload.(type) {
+	case *pb.AgentEnvelope_Logs:
+		if payload == nil {
+			return e, errors.New("nil logs payload")
+		}
+		b, err := logsFromProto(payload.Logs)
+		if err != nil {
+			return e, err
+		}
+		e.Logs = &b
+	case *pb.AgentEnvelope_Telephony:
+		if payload == nil {
+			return e, errors.New("nil telephony payload")
+		}
+		u, err := telephonyFromProto(payload.Telephony)
+		if err != nil {
+			return e, err
+		}
+		e.Telephony = &u
 	case *pb.AgentEnvelope_Hello:
 		if payload == nil || payload.Hello == nil || payload.Hello.Device == nil {
 			return e, errors.New("hello or local device is nil")
@@ -157,7 +179,7 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 			Timestamp: at, UptimeSeconds: h.UptimeSeconds, Build: buildFromProto(h.Build),
 			Health: h.Health, RemoteDeviceCount: int(h.RemoteDeviceCount),
 			Queue: model.QueueState{Messages: int(h.Queue.Messages), Bytes: int(h.Queue.Bytes),
-				DroppedTelemetry: h.Queue.DroppedTelemetry, DroppedOther: h.Queue.DroppedOther},
+				DroppedTelemetry: h.Queue.DroppedTelemetry, DroppedOther: h.Queue.DroppedOther, DroppedLogs: h.Queue.DroppedLogs},
 		}
 	case *pb.AgentEnvelope_Telemetry:
 		if payload == nil || payload.Telemetry == nil || len(payload.Telemetry.Samples) != 1 {
@@ -368,7 +390,7 @@ func validateEnvelope(e model.Envelope) error {
 		return err
 	}
 	payloads := 0
-	for _, present := range []bool{e.Hello != nil, e.Heartbeat != nil, e.Telemetry != nil, e.Inventory != nil, e.Topology != nil, len(e.Events) > 0, e.CommandResult != nil, e.Error != nil} {
+	for _, present := range []bool{e.Hello != nil, e.Heartbeat != nil, e.Telemetry != nil, e.Inventory != nil, e.Topology != nil, len(e.Events) > 0, e.CommandResult != nil, e.Error != nil, e.Logs != nil, e.Telephony != nil} {
 		if present {
 			payloads++
 		}
@@ -377,6 +399,10 @@ func validateEnvelope(e model.Envelope) error {
 		return errors.New("envelope requires exactly one payload")
 	}
 	switch {
+	case e.Logs != nil:
+		return validateLogs(*e.Logs)
+	case e.Telephony != nil:
+		return validateTelephony(*e.Telephony)
 	case e.Hello != nil:
 		if e.Hello.AgentID != e.AgentID || e.Hello.SessionID != e.SessionID {
 			return errors.New("hello identity does not match envelope")
@@ -492,6 +518,9 @@ func validateEnvelope(e model.Envelope) error {
 }
 
 func validateDevice(device model.Device) error {
+	if err := validateP2Device(device); err != nil {
+		return err
+	}
 	if device.ID == "" {
 		return errors.New("device ID is required")
 	}
@@ -608,6 +637,7 @@ func deviceToProto(d model.Device) *pb.Device {
 	for _, capability := range d.Capabilities {
 		result.Capabilities = append(result.Capabilities, &pb.Capability{Name: capability.Name, Supported: capability.Supported, Reason: capability.Reason})
 	}
+	p2DeviceToProto(d, result)
 	for _, c := range d.Components {
 		result.Components = append(result.Components, &pb.InventoryComponent{Id: c.ID, ParentId: c.ParentID, Class: c.Class,
 			Name: c.Name, Description: c.Description, Manufacturer: c.Manufacturer, Model: c.Model, SerialNumber: c.SerialNumber,
@@ -643,6 +673,9 @@ func deviceFromProto(d *pb.Device) (model.Device, error) {
 		SystemLocation: d.SystemLocation, SystemContact: d.SystemContact,
 		VendorHint: d.VendorHint, VendorEvidence: vendorEvidence,
 		UptimeAvailable: d.UptimeAvailable, UptimeSource: d.UptimeSource,
+	}
+	if err := p2DeviceFromProto(d, &result); err != nil {
+		return model.Device{}, err
 	}
 	if location := d.Location; location != nil {
 		result.Location = model.PhysicalLocation{Site: location.Site, Datacenter: location.Datacenter, Building: location.Building,

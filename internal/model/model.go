@@ -21,6 +21,12 @@ type PhysicalLocation struct {
 }
 
 type Device struct {
+	Source            string               `json:"source,omitempty"`
+	BoardName         string               `json:"board_name,omitempty"`
+	PlatformEvidence  []Evidence           `json:"platform_evidence,omitempty"`
+	Services          []Service            `json:"services,omitempty"`
+	Firewall          *FirewallSnapshot    `json:"firewall,omitempty"`
+	Networks          []NetworkState       `json:"networks,omitempty"`
 	ID                string               `json:"id"`
 	Name              string               `json:"name,omitempty"`
 	Hostname          string               `json:"hostname,omitempty"`
@@ -155,6 +161,7 @@ type TelemetrySample struct {
 }
 
 type QueueState struct {
+	DroppedLogs      uint64 `json:"dropped_logs"`
 	Messages         int    `json:"messages"`
 	Bytes            int    `json:"bytes"`
 	DroppedTelemetry uint64 `json:"dropped_telemetry"`
@@ -227,6 +234,8 @@ type CommandResult struct {
 
 // Envelope has one payload. Validate/mapping rejects missing or multiple payloads.
 type Envelope struct {
+	Logs          *LogBatch        `json:"logs,omitempty"`
+	Telephony     *TelephonyUpdate `json:"telephony,omitempty"`
 	MessageID     string           `json:"message_id"`
 	AgentID       string           `json:"agent_id"`
 	SessionID     string           `json:"session_id"`

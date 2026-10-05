@@ -21,6 +21,7 @@ type entry struct {
 	data      []byte
 	priority  int
 	telemetry bool
+	logs      bool
 }
 
 type Queue struct {
@@ -57,7 +58,7 @@ func (q *Queue) Push(envelope model.Envelope) error {
 	if err != nil {
 		return fmt.Errorf("encode outbound envelope: %w", err)
 	}
-	item := entry{data: data, priority: priority, telemetry: envelope.Telemetry != nil}
+	item := entry{data: data, priority: priority, telemetry: envelope.Telemetry != nil, logs: envelope.Logs != nil}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if len(data) > q.maxMessageBytes || len(data) > q.maxBytes {
@@ -146,6 +147,9 @@ func (q *Queue) State() model.QueueState {
 }
 
 func (q *Queue) dropped(item entry) {
+	if item.logs {
+		q.state.DroppedLogs++
+	}
 	if item.telemetry {
 		q.state.DroppedTelemetry++
 	} else {
@@ -155,6 +159,14 @@ func (q *Queue) dropped(item entry) {
 
 func envelopePriority(e model.Envelope) (int, error) {
 	count, priority := 0, 5
+	if e.Logs != nil {
+		count++
+		priority = 6
+	}
+	if e.Telephony != nil {
+		count++
+		priority = 4
+	}
 	if e.Hello != nil {
 		count++
 		priority = 0

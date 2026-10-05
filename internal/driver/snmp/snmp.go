@@ -16,6 +16,7 @@ import (
 	"InfraPulseAgent/internal/driver"
 	"InfraPulseAgent/internal/model"
 	protocol "InfraPulseAgent/internal/protocol/snmp"
+	"InfraPulseAgent/internal/vendorprofiles"
 )
 
 // Standard mappings are defined by RFC 3418, RFC 2863, RFC 6933 and the
@@ -797,26 +798,8 @@ func selectChassis(dev *model.Device) {
 	}
 }
 
-// No full vendor profiles are asserted. MikroTik's own MIB documents this PEN;
-// sysDescr is a separate weaker observation and a configured hint stays a hint.
-// https://help.mikrotik.com/docs/spaces/ROS/pages/8978519/SNMP
 func detectVendor(objectID, description, hint string) (string, []model.Evidence) {
-	var evidence []model.Evidence
-	if hint != "" {
-		evidence = append(evidence, model.Evidence{Source: "config.vendor_hint", Value: hint, Confidence: "low"})
-	}
-	if objectID != "" {
-		evidence = append(evidence, model.Evidence{Source: "snmp.sysObjectID", Value: objectID, Confidence: "high"})
-	}
-	if strings.HasPrefix(canonical(objectID), ".1.3.6.1.4.1.14988.") || canonical(objectID) == ".1.3.6.1.4.1.14988" {
-		evidence = append(evidence, model.Evidence{Source: "verified.sysObjectID.prefix", Value: "MikroTik", Confidence: "high"})
-		return "MikroTik", evidence
-	}
-	if strings.Contains(strings.ToLower(description), "mikrotik") {
-		evidence = append(evidence, model.Evidence{Source: "snmp.sysDescr", Value: "MikroTik", Confidence: "low"})
-		return "MikroTik", evidence
-	}
-	return "", evidence
+	return vendorprofiles.Detect(objectID, description, hint)
 }
 
 var _ driver.Driver = (*Driver)(nil)

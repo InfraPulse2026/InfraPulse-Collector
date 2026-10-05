@@ -1,0 +1,39 @@
+# Paths are examples: enable only the files actually present on this host.
+agent:
+  name: p2-collector
+  state_dir: ../state/p2
+controller:
+  address: 127.0.0.1:9443
+security:
+  mode: development
+local:
+  enabled: true
+  platform: auto
+logs:
+  interval: 1s
+  timeout: 2s
+  max_line_bytes: 8192
+  max_batch_records: 64
+  max_batch_bytes: 131072
+  max_read_bytes: 262144
+  sources:
+    - id: system
+      path: /var/log/syslog
+      format: syslog
+    - id: audit
+      path: /var/log/audit/audit.log
+      format: auditd
+telephony:
+  concurrency: 2
+  endpoints:
+    - id: pbx-main
+      address: 192.0.2.20
+      port: 5060
+      transport: udp
+      timeout: 2s
+      interval: 30s
+      failure_threshold: 3
+      latency_threshold: 250ms
+commands:
+  enabled: false
+devices: []

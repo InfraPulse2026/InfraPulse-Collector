@@ -2,12 +2,13 @@
 
 InfraPulse Agent — Go-компонент многовендорной NetOps Platform InfraPulse для
 сбора данных инфраструктуры и передачи их в Controller/Backend. Agent собирает
-локальный Linux-хост и удалённые устройства через SNMP v2c и RouterOS HTTPS REST,
-передаёт telemetry, inventory, topology observations и события.
+локальный Linux/OpenWrt-хост и удалённые устройства через SNMP v2c и RouterOS
+HTTPS REST, передаёт telemetry, inventory, topology observations, logs, SIP
+health и события.
 
 Production Backend, Web UI,
 AI и историческое хранилище находятся вне этого репозитория. Для разработки
-и демонстрации обмена данными поставляется Mock Controller.
+и демонстрации обмена данными поставляются Mock Controller и отдельный Simulator.
 
 ## Возможности
 
@@ -31,6 +32,14 @@ AI и историческое хранилище находятся вне эт
   защитой management interfaces и проверкой состояния после изменения.
   По умолчанию команды отключены.
 - Development Mock Controller для наблюдения данных и проверки команд.
+- Native OpenWrt: release/board, logical networks, procd services и read-only
+  UCI firewall configuration; Linux CPU/RAM/interfaces collectors переиспользуются.
+- Cisco/Huawei/MikroTik/Juniper/Eltex/QTECH detection profiles с подтверждёнными
+  enterprise prefixes и Generic SNMP fallback.
+- Ограниченный file log pipeline для rsyslog/common logs и auditd, sanitizer,
+  persistent cursors и обработка rotation/truncate/recreate.
+- SIP OPTIONS UDP/TCP: availability, latency, failure threshold и state events.
+- Development Simulator с deterministic scenarios/trends и `source=simulated`.
 
 ## Как это работает
 
@@ -121,7 +130,8 @@ go build -o bin/infrapulse-mock-controller ./cmd/infrapulse-mock-controller
 ./scripts/build.ps1
 ```
 
-Script создаёт `bin/infrapulse-agent.exe` и `bin/infrapulse-mock-controller.exe`.
+Script создаёт `bin/infrapulse-agent.exe`, `bin/infrapulse-mock-controller.exe`
+и отдельный `bin/infrapulse-simulator.exe`.
 Если Go не находится в `PATH`, используйте параметр `-GoPath <path-to-go>`.
 
 ### Cross-compilation
@@ -175,7 +185,7 @@ devices: []
 | `agent` | Имя Agent и каталог постоянного состояния |
 | `controller` | Адрес Controller и сетевые timeout/reconnect параметры |
 | `security` | Режим соединения, CA, сертификат, private key и имя сервера |
-| `local` | Включение локального сбора |
+| `local` | Включение локального сбора, platform auto/linux/openwrt |
 | `telemetry` | Интервалы fast, inventory, heartbeat и timeout сбора |
 | `queue` | Лимиты количества и размера сообщений |
 | `scheduler` | Число одновременно выполняемых collectors |
@@ -185,6 +195,8 @@ devices: []
 | `devices` | Стабильные ID, адреса, SNMP/RouterOS driver и настройки опроса |
 | `credentials` | Именованные ссылки на environment variables с credentials |
 | `remote` | Concurrency, лимиты responses/rows и срок актуальности topology |
+| `logs` | Configured file sources, read/line/batch limits и polling |
+| `telephony` | Stable SIP endpoints и bounded probe concurrency |
 
 Готовые примеры:
 
@@ -193,6 +205,8 @@ devices: []
   development-соединение без локального сбора, в том числе на Windows.
 - [config.remote.example.yaml](configs/config.remote.example.yaml) — remote
   SNMP/RouterOS collection с credentials из environment.
+- [config.p2.example.yaml](configs/config.p2.example.yaml) — OpenWrt auto mode,
+  configurable logs/audit и SIP OPTIONS.
 
 Для production замените адрес и параметры безопасности:
 
@@ -307,6 +321,51 @@ Probe проверяет configured driver без подключения к Cont
 
 ## Запуск
 
+### OpenWrt, logs и SIP
+
+`local.platform: auto` (default) выбирает Native OpenWrt по `ID=openwrt` либо
+`DISTRIB_ID=OpenWrt`; `linux` явно оставляет generic collector. Явный `openwrt`
+также требует distribution evidence. `/bin/ubus` читает system board, netifd,
+procd и UCI firewall. Без optional источника остаются Linux measurements;
+`services.read`/`firewall.read` отмечают фактическую доступность. Подробнее —
+[OpenWrt](docs/openwrt.md). Runtime конкретной firmware ещё не проверен.
+
+Добавьте только реально существующие файлы:
+
+```yaml
+logs:
+  sources:
+    - id: system
+      path: /var/log/syslog
+      format: syslog
+    - id: audit
+      path: /var/log/audit/audit.log
+      format: auditd
+telephony:
+  endpoints:
+    - id: pbx-main
+      address: 192.0.2.20
+      port: 5060
+      transport: udp
+      timeout: 2s
+      interval: 30s
+      failure_threshold: 3
+      latency_threshold: 250ms
+```
+
+Paths разрешаются относительно YAML; missing/permission-denied source виден
+в diagnostics. Agent не требует одновременно syslog и messages. Для OpenWrt
+`logread`/RAM ring buffer в file pipeline не входит. Cursor продвигается после
+RAM admission, delivery остаётся best effort. Правила rotation, восстановления
+corrupted state и audit correlation описаны в [logs](docs/logs.md).
+
+SIP probe самостоятельно формирует unauthenticated OPTIONS. UDP/TCP поддержаны;
+401/407 означают reachable/authentication required, а не успешный probe.
+TLS, REGISTER, credentials и media отсутствуют. Подробнее —
+[telephony](docs/telephony.md).
+
+### Agent
+
 ```sh
 ./bin/infrapulse-agent validate-config --config configs/config.example.yaml
 ./bin/infrapulse-agent run --config configs/config.example.yaml
@@ -358,8 +417,8 @@ Mock Controller предназначен только для разработк�
 ./bin/infrapulse-mock-controller --address 127.0.0.1:9443 --security-mode development
 ```
 
-Controller принимает AgentHello, heartbeat, telemetry, inventory, topology, events
-и CommandResult и выводит их JSON-строками. Для проверки typed command
+Controller принимает AgentHello, heartbeat, telemetry, inventory, topology,
+logs, telephony, events и CommandResult и выводит sanitized JSON-строками. Для проверки typed command
 остановите обычный экземпляр и запустите его с параметрами:
 
 ```sh
@@ -406,6 +465,20 @@ Mock использует stable target ID из config:
 Для соединения с mTLS Mock поддерживает параметры `--security-mode production`,
 `--ca-file`, `--cert-file`, `--key-file`. Требования к сертификатам и протоколу —
 в [security](docs/security.md) и [protocol](docs/protocol.md).
+
+## Development Simulator
+
+```sh
+go build -o bin/infrapulse-simulator ./cmd/infrapulse-simulator
+./bin/infrapulse-simulator --scenario cpu-increase --duration 30s --interval 3s --seed 42 --devices 3 --output json
+./bin/infrapulse-simulator --scenario all --duration 30s --interval 1s --config configs/config.simulator.example.yaml --output controller
+```
+
+Simulator — отдельный development component с обычным InfraPulse gRPC contract.
+Каждый synthetic sample/event/log/inventory device помечен `source=simulated`.
+Production Agent его не импортирует. Доступны CPU/RAM/traffic/error trends,
+flap/offline/recovery, topology, log/audit и SIP scenarios. Подробные параметры
+и limits — [Simulator](docs/simulator.md).
 
 ## Безопасность
 
@@ -486,14 +559,14 @@ sudo systemctl status infrapulse-agent
   amd64 и arm64.
 - **Windows:** локальный сбор отсутствует. Для development-соединения используйте
   `configs/config.collector.example.yaml` с `local.enabled: false`.
-- **OpenWrt:** native integrations отсутствуют; совместимость конкретной
-  архитектуры и firmware требует отдельной проверки.
+- **OpenWrt:** native read-only adapter реализован и проверен schema fixtures;
+  совместимость конкретной архитектуры и firmware требует runtime проверки.
 - **Remote devices:** Generic SNMP v2c и RouterOS HTTPS REST реализованы;
   mappings проверяются fixtures и локальными protocol servers. Поддержка
   конкретных моделей/firmware на реальном оборудовании отдельно не подтверждена.
   LLDP передаётся как observations с evidence, а reconciliation графа выполняет
-  Backend. Полные vendor profiles, SNMPv3 и дополнительные протоколы относятся
-  к следующим этапам.
+  Backend. Шесть detection profiles используют подтверждённые prefixes;
+  product-specific health mappings отсутствуют. SNMPv3 вне текущего scope.
 
 Подробная [матрица платформ, vendors и capabilities](docs/vendor-support.md).
 
@@ -507,6 +580,7 @@ go build ./...
 go vet ./...
 go test ./...
 go test -race ./...
+go mod verify
 ```
 
 `go fmt ./...` применяет gofmt к packages проекта. Для race detector необходимы
@@ -517,6 +591,7 @@ go test -race ./...
 
 ```sh
 go test -tags=integration ./internal/platform/linux
+go test -tags=integration ./internal/agent -run TestLiveLinuxLogsTelemetrySIPAndRotation
 ```
 
 Доступны также `make check` и `make race`. Конкретные результаты проведённых
@@ -551,13 +626,19 @@ sh scripts/generate-proto.sh
 - [Topology discovery](docs/topology.md) — физические связи и источники evidence.
 - [Матрица поддержки](docs/vendor-support.md) — платформы, vendors и capabilities.
 - [Результаты проверок](docs/validation.md) — проведённые validation и cross-build.
+- [OpenWrt](docs/openwrt.md), [vendor profiles](docs/vendor-profiles.md),
+  [logs/audit/cursors](docs/logs.md), [telephony](docs/telephony.md),
+  [Simulator](docs/simulator.md).
 
 ## Текущие ограничения
 
 Очередь хранится только в RAM: restart теряет её содержимое, а разрыв соединения
 может потерять отправляемое сообщение. Она не заменяет durable storage.
-SNMPv3, native OpenWrt, Windows local collection, service/firewall writes,
-vendor-specific profiles и Simulator не реализованы. Remote integrations
+Persistent log cursors не делают delivery durable: crash/eviction/Send error
+могут потерять принятые records. SNMPv3, Windows local collection,
+service/firewall writes, SIP TLS/authentication и product-specific vendor health
+OID не реализованы. OpenWrt runtime и remote integrations на реальном hardware
+не проверены. Remote integrations
 проверены fixtures/local servers; реальное hardware/firmware требует отдельной
 проверки. Interface writes доступны только RouterOS с явной policy/protection;
 rollback и persistent execution journal отсутствуют. Enrollment и автоматический

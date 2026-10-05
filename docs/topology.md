@@ -126,6 +126,7 @@ SNMP/MikroTik hardware. Фактические команды и результ�
 [validation](validation.md).
 
 Реальный equipment graph MikroTik→Eltex→server/AP отдельно не подтверждён.
-SNMP Generic MIB fixtures не означают vendor-specific support; Simulator
-не реализован. Неизвестные remote devices не объединяются по имени,
+SNMP Generic MIB fixtures не означают hardware support; Simulator topology
+scenarios имеют explicit simulated source и не доказывают реальные links.
+Неизвестные remote devices не объединяются по имени,
 взаимное подтверждение observations и graph reconciliation выполняет Backend.

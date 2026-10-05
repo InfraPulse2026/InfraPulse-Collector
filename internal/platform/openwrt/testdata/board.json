@@ -1,0 +1,15 @@
+{
+  "kernel": "6.6.73",
+  "hostname": "openwrt-schema-fixture",
+  "system": "Schema fixture CPU",
+  "model": "Schema fixture board",
+  "board_name": "fixture,schema-board",
+  "rootfs_type": "squashfs",
+  "release": {
+    "distribution": "OpenWrt",
+    "version": "24.10.0",
+    "revision": "r-schema-fixture",
+    "target": "fixture/generic",
+    "description": "OpenWrt 24.10.0 schema fixture"
+  }
+}

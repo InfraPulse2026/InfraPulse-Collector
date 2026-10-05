@@ -1,8 +1,9 @@
 # Архитектура InfraPulse Agent
 
 Module path — `InfraPulseAgent`, Go — 1.27. Agent совмещает локальный Linux
-collector и remote collector. Backend, Web UI, LLM, database и историческое
-хранилище находятся вне репозитория. Mock Controller — development-компонент.
+collector, Native OpenWrt, remote collection, file logs/audit и SIP health.
+Backend, Web UI, LLM, database и историческое хранилище находятся вне репозитория.
+Mock Controller и Simulator — development-компоненты.
 
 ## Границы компонентов
 
@@ -17,6 +18,11 @@ collector и remote collector. Backend, Web UI, LLM, database и историч�
 | Telemetry Pipeline | Общие Interface/Device models, presence, counters, безопасные deltas/rates и outbox |
 | Command Pipeline | Typed validation → target/deadline/capability/policy → canonical protection → mutation → verification |
 | gRPC Transport | Единственная wire mapping граница; один sender и один receiver на session |
+| OpenWrt Platform | Linux decorator, typed ubus read-only operations и allowlisted normalized inventory schemas |
+| Vendor Profiles | Подтверждённый sysObjectID namespace; capabilities и standard MIB mappings остаются у driver |
+| Log Pipeline | Bounded file reads, parsers, sanitizer, rotation и persistent admission cursors |
+| Telephony | Fixed SIP OPTIONS UDP/TCP, latency/response/error semantics и отдельные state transitions |
+| Simulator | Deterministic development scenarios с simulated source через настоящий transport |
 
 Core не знает OID, RouterOS endpoints и concrete protobuf types. Cross-platform
 описывает ОС запуска Agent; multi-vendor — удалённые устройства. На Windows
@@ -40,6 +46,11 @@ internal/telemetry/          local/remote rates
 internal/commands/           validation, policy, execution и bounded deduplication
 internal/queue/              volatile priority outbox и result reservations
 internal/transport/grpc/     protobuf mapping и verified TLS/mTLS
+internal/platform/openwrt/   decorator над Linux, typed ubus и schema mappings
+internal/vendorprofiles/     verified PEN detection, без отдельных SNMP drivers
+internal/logs/               file identity/cursors, syslog/audit parsing и redaction
+internal/telephony/          bounded OPTIONS и endpoint health state
+internal/simulator/          development-only generator и transport lifecycle
 ```
 
 Существующие P0 `Platform`, `Transport/Session`, `scheduler.Job`, queue и
@@ -114,10 +125,12 @@ SYSTEM даёт sysDescr/sysObjectID/sysUpTime/sysContact/sysName/sysLocation.
 Device-level model/serial выбираются только при единственной chassis.
 PhysicalLocation приходит из config, не из sysLocation/sysDescr.
 
-Vendor evidence сохраняет hint отдельно от подтверждения. Сейчас существует
-проверенный MikroTik PEN prefix `.1.3.6.1.4.1.14988`; literal MikroTik в sysDescr
-— слабое evidence. Hostname не используется для detection, vendor не создаёт
-model/serial. Cisco/Huawei/Juniper/Eltex/QTECH profiles не реализованы.
+Vendor evidence сохраняет hint отдельно от подтверждения. Шесть profiles
+определяют Cisco/Huawei/MikroTik/Juniper/Eltex/QTECH по подтверждённым IANA
+enterprise prefixes. Literal MikroTik в sysDescr — слабое P1 evidence.
+Hostname не используется для detection; vendor не создаёт model/serial и
+capabilities. Product-specific health OID не угадываются, inventory сохраняет
+стандартный ENTITY fallback. Evidence и пределы проверки — [profiles](vendor-profiles.md).
 
 ## Presence и rates
 
@@ -212,8 +225,52 @@ RouterOS operations: [REST API](https://manual.mikrotik.com/docs/developer-guide
 [interfaces](https://manual.mikrotik.com/docs/cli-reference/interface/),
 [neighbors](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery).
 
-P2 остаётся отдельным этапом: native OpenWrt, подтверждённые vendor profiles,
-logs/audit/cursors, firewall/services, SIP/PBX и Simulator. P3 — Windows
+P3 остаётся отдельным этапом: Windows
 LocalPlatform, SNMPv3/другие протоколы по необходимости, durable delivery,
 enrollment и snapshots/rollback. Их наличие в roadmap не означает capability.
 Фактически выполненные проверки находятся в [validation](validation.md).
+
+## OpenWrt, logs и telephony
+
+`platform.NewMode(auto/linux/openwrt)` сохраняет один Agent lifecycle. Native
+OpenWrt переиспользует Linux Identity/Collect и CPU/rate baselines; slow inventory
+дополняется board/release, network.interface dump, service list и UCI firewall.
+`/bin/ubus` вызывается через закрытый Operation enum и фиксированные arguments;
+stdout/stderr и каждый вызов ограничены. Optional reads делят общий deadline,
+missing ubus/rpcd оставляет working Linux data и unavailable evidence.
+Services/firewall доступны только read-only; snapshot UCI не подтверждает active
+ruleset. Подробности — [OpenWrt](openwrt.md).
+
+Logs используют отдельный scheduler с одним worker, SIP — отдельный bounded
+pool (default 2). Log burst не занимает local/remote telemetry workers.
+`logs.Pipeline.Poll` читает одну bounded batch, применяет literal configured
+secret redaction и known patterns до parsing/serialization. Audit records
+сохраняют source+EventID; exact correlation делается по этому ключу в batch
+или Backend, long-lived heuristic correlation cache отсутствует.
+
+Cursor state — отдельные protected файлы per source в `state_dir/log-cursors`.
+Device/inode identity, generation, admitted offset, anchor hash и PEM/discard
+state сохраняются crash-safe temp+sync+rename. Cursor advancement следует за
+RAM queue admission; reject не advance, persistence error блокирует новые reads.
+Rotation gaps и bounds видны как events/diagnostics. Crash после admission,
+очередь eviction и Pop/Send loss всё ещё теряют logs; запись cursor не durable
+transport ACK. О деталях — [logs](logs.md).
+
+SIP endpoint имеет stable ID и собственный state; это не remote device state.
+Fixed OPTIONS проверяет transaction identifiers, response framing и code,
+различает DNS/connect/timeout/malformed/authentication/server errors. Parent
+cancel не создаёт ложный outage; scheduler deadline оставляет небольшой запас
+после собственного probe timeout. Подробнее — [telephony](telephony.md).
+
+Device inventory дополнен services/firewall/networks/evidence, envelope —
+LogBatch и TelephonyUpdate. Services events возникают только при подтверждённом
+running↔stopped; каждый log record не превращается в Event. Diagnostics содержит
+bounded source states и SIP health, без raw log text/configuration/credentials.
+
+## Development Simulator
+
+Simulator — отдельный executable, production Agent его не импортирует.
+Generator создаёт bounded deterministic device set и временные trends. Runner
+использует тот же Transport/Session, gRPC handshake, reconnect и normalized
+envelopes; все вложенные synthetic observations имеют `source=simulated`.
+Это demonstration data, не hardware validation. [Simulator](simulator.md).

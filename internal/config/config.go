@@ -16,10 +16,13 @@ import (
 
 	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/model"
+	"InfraPulseAgent/internal/telephony"
 	"go.yaml.in/yaml/v3"
 )
 
 type Config struct {
+	Logs        Logs                             `yaml:"logs"`
+	Telephony   TelephonyHealth                  `yaml:"telephony"`
 	Agent       Agent                            `yaml:"agent"`
 	Controller  Controller                       `yaml:"controller"`
 	Security    Security                         `yaml:"security"`
@@ -53,7 +56,26 @@ type Security struct {
 	ServerName string `yaml:"server_name"`
 }
 type Local struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled  bool   `yaml:"enabled"`
+	Platform string `yaml:"platform"`
+}
+type LogSource struct {
+	ID     string `yaml:"id"`
+	Path   string `yaml:"path"`
+	Format string `yaml:"format"`
+}
+type Logs struct {
+	Sources         []LogSource   `yaml:"sources"`
+	Interval        time.Duration `yaml:"interval"`
+	Timeout         time.Duration `yaml:"timeout"`
+	MaxLineBytes    int           `yaml:"max_line_bytes"`
+	MaxBatchRecords int           `yaml:"max_batch_records"`
+	MaxBatchBytes   int           `yaml:"max_batch_bytes"`
+	MaxReadBytes    int           `yaml:"max_read_bytes"`
+}
+type TelephonyHealth struct {
+	Endpoints   []telephony.Endpoint `yaml:"endpoints"`
+	Concurrency int                  `yaml:"concurrency"`
 }
 type Telemetry struct {
 	FastInterval      time.Duration `yaml:"fast_interval"`
@@ -122,7 +144,9 @@ func Defaults() Config {
 		Security:   Security{Mode: "production"}, Local: Local{Enabled: true},
 		Telemetry: Telemetry{FastInterval: 3 * time.Second, MediumInterval: 30 * time.Second, InventoryInterval: 5 * time.Minute, TopologyInterval: 5 * time.Minute, HeartbeatInterval: 10 * time.Second, CollectTimeout: 2 * time.Second},
 		Queue:     Queue{MaxMessages: 256, MaxBytes: 8 << 20, MaxMessageBytes: 1 << 20}, Scheduler: Scheduler{Concurrency: 4}, Logging: Logging{Level: "info"},
-		Remote: Remote{Concurrency: 4, MaxRows: 4096, MaxResponseBytes: 1 << 20, TopologyTTL: 15 * time.Minute},
+		Remote:    Remote{Concurrency: 4, MaxRows: 4096, MaxResponseBytes: 1 << 20, TopologyTTL: 15 * time.Minute},
+		Logs:      Logs{Interval: time.Second, Timeout: 2 * time.Second, MaxLineBytes: 8192, MaxBatchRecords: 64, MaxBatchBytes: 128 << 10, MaxReadBytes: 256 << 10},
+		Telephony: TelephonyHealth{Concurrency: 2},
 	}
 }
 
@@ -168,6 +192,12 @@ func Load(path string) (Config, error) {
 			*p = filepath.Join(base, *p)
 		}
 	}
+	for i := range c.Logs.Sources {
+		p := &c.Logs.Sources[i].Path
+		if *p != "" && !filepath.IsAbs(*p) {
+			*p = filepath.Join(base, *p)
+		}
+	}
 	return c, c.Validate()
 }
 
@@ -202,6 +232,31 @@ func (c Config) Validate() error {
 	}
 	add(strings.TrimSpace(c.Agent.Name) != "" && len(c.Agent.Name) <= 128, "agent.name")
 	add(c.Agent.StateDir != "", "agent.state_dir")
+	add(c.Local.Platform == "" || c.Local.Platform == "auto" || c.Local.Platform == "linux" || c.Local.Platform == "openwrt", "local.platform")
+	add(len(c.Logs.Sources) <= 32, "logs.sources (maximum 32)")
+	add(c.Logs.Interval >= 10*time.Millisecond && c.Logs.Interval <= 24*time.Hour, "logs.interval")
+	add(c.Logs.Timeout >= 10*time.Millisecond && c.Logs.Timeout <= time.Minute, "logs.timeout")
+	add(c.Logs.MaxLineBytes >= 128 && c.Logs.MaxLineBytes <= 32768, "logs.max_line_bytes")
+	add(c.Logs.MaxBatchRecords >= 1 && c.Logs.MaxBatchRecords <= 1024, "logs.max_batch_records")
+	add(c.Logs.MaxBatchBytes >= 2*c.Logs.MaxLineBytes+4096 && c.Logs.MaxBatchBytes <= 1<<20 && (len(c.Logs.Sources) == 0 || c.Logs.MaxBatchBytes+1024 <= c.Queue.MaxMessageBytes), "logs.max_batch_bytes")
+	add(c.Logs.MaxReadBytes > c.Logs.MaxLineBytes && c.Logs.MaxReadBytes <= 4<<20, "logs.max_read_bytes")
+	logIDs := map[string]bool{}
+	for _, s := range c.Logs.Sources {
+		add(s.ID != "" && len(s.ID) <= 128 && !logIDs[s.ID] && !strings.ContainsAny(s.ID, "/\\\r\n\x00"), "logs.source.id")
+		logIDs[s.ID] = true
+		add(s.Path != "" && len(s.Path) <= 4096 && !strings.ContainsAny(s.Path, "\r\n\x00"), "logs.source.path")
+		add(s.Format == "syslog" || s.Format == "auditd" || s.Format == "raw", "logs.source.format")
+	}
+	add(len(c.Telephony.Endpoints) <= 128, "telephony.endpoints")
+	add(c.Telephony.Concurrency >= 1 && c.Telephony.Concurrency <= 16, "telephony.concurrency")
+	sipIDs := map[string]bool{}
+	for _, ep := range c.Telephony.Endpoints {
+		add(!sipIDs[ep.ID], "telephony.endpoint.id (duplicate)")
+		sipIDs[ep.ID] = true
+		if err := ep.WithDefaults().Validate(); err != nil {
+			problems = append(problems, fmt.Errorf("invalid telephony endpoint: %w", err))
+		}
+	}
 	host, port, err := net.SplitHostPort(c.Controller.Address)
 	add(err == nil && host != "" && port != "", "controller.address (host:port required)")
 	if err == nil {

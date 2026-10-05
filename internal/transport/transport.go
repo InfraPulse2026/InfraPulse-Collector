@@ -16,3 +16,10 @@ type Session interface {
 	// idempotent; implementations must not wait for an unresponsive peer.
 	Close() error
 }
+
+// SendCloser optionally finishes the outbound stream while leaving Receive
+// active. The single sender calls it after its final Send. A peer EOF can then
+// confirm graceful stream completion without an application delivery ACK.
+type SendCloser interface {
+	CloseSend() error
+}

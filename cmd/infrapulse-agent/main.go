@@ -108,7 +108,7 @@ func run(args []string) error {
 	defer stop()
 	var p platform.Platform
 	if cfg.Local.Enabled {
-		p, err = platform.New()
+		p, err = platform.NewMode(cfg.Local.Platform)
 		if err != nil {
 			return fmt.Errorf("%w; set local.enabled=false for collector-only development", err)
 		}

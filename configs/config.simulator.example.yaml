@@ -1,0 +1,22 @@
+# Simulator-only identity/controller settings. Scenario settings are CLI flags.
+# Examples: --scenario all --duration 10s --interval 1s --seed 42 --devices 4
+agent:
+  name: development-simulator
+  state_dir: ../state/simulator
+controller:
+  address: localhost:9443
+  connect_timeout: 5s
+  send_timeout: 10s
+  reconnect_initial: 1s
+  reconnect_max: 30s
+security:
+  mode: development
+local:
+  enabled: false
+queue:
+  max_messages: 256
+  max_bytes: 8388608
+  max_message_bytes: 1048576
+devices: []
+commands:
+  enabled: false
