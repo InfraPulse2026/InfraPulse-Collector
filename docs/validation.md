@@ -349,3 +349,140 @@ runtime cursors и временные configs остаются ignored artifacts
   universal anonymization и SIEM/AI inference не реализованы.
 - Windows LocalPlatform, SNMPv3, durable outbox/application ACK/enrollment/
   execution journal/rollback и прочие P3 функции не добавлены.
+
+## P3 — надёжность и безопасность, 2026-10-05
+
+Этот раздел описывает текущий P3; предыдущие P0/P1/P2 записи оставлены как
+исторические результаты соответствующего этапа. Windows LocalPlatform сознательно
+перенесён в post-MVP/backlog и не является критерием готовности P3. Commit/push
+не выполнялись, runtime artifacts не входят в Git.
+
+### Toolchain и общая regression
+
+Windows amd64, Go `go1.27.1`; production cross-builds используют `CGO_ENABLED=0`.
+Race detector выполнен с portable LLVM-MinGW из ignored `.tools`, без runtime
+зависимости production Agent от C compiler.
+
+Прошли:
+
+```text
+gofmt всех Go sources api/cmd/internal
+go build ./...
+go vet ./...
+go test ./...
+go test -race ./...
+go mod verify
+go test -tags=integration ./internal/queue ./internal/commands
+scripts/build.ps1
+scripts/build.ps1 -Cross
+```
+
+Обычная suite использует только local files/servers, не требует hardware,
+Internet, root, PBX, production CA или secrets. Crash tests выделены tag
+`integration`; это завершение/kill test subprocess, не power-loss испытания.
+Generated protobuf повторно получены pinned `generate-proto.ps1`; SHA-256 до
+и после повторной генерации совпал. Старые field numbers сохранены. Все семь
+example configs прошли CLI `validate-config`. Relative Markdown links и
+`git diff --check` проверены.
+
+### Unit / fixture / safety coverage
+
+| Блок | Проверенный результат |
+|---|---|
+| SNMP v3 | Local UDP USM engine discovery/reconnect, authPriv/authNoPriv, modern/explicit legacy algorithms, wrong user/auth/privacy secret, unsupported algorithm, downgrade/malformed response, timeout/cancellation и redaction; SNMPv2 mappings/rates/LLDP regression |
+| Durable outbox | Synced admission, stable IDs/restart/replay, duplicate/conflicting IDs, leased Send, delete after ACK, duplicate/unknown ACK, cancellation/timeout, ordering/priorities, protected result reservation, deterministic eviction/retention и hard physical file cap |
+| Corruption/storage | Checksum/metadata/schema/index validation, partial/truncated DB, preserved corrupted state, reduced config limits, invalid path/closed storage; journal ENOSPC/EROFS/permission fault fixtures сохраняют state и запрещают mutation |
+| Agent ↔ Mock | Actual loopback gRPC ACK/replay, Agent restart, Controller restart, negotiation, explicit legacy reject/send fallback и continued delivery при очереди меньше pending journal; corrupted journal не прерывает ACK telemetry |
+| Journal/results | Persistent admission/future result capacity, dedup after restart, historical result при disabled/expired request и persistent alias binding, result pending ACK/recovered delivery, reserved→rejected и executing→uncertain; автоматического повторения mutation нет |
+| Snapshot/rollback | Local HTTPS RouterOS fixture: snapshot before PATCH, restart persistence, verified rollback, wrong owner/resource, stale/expired/version-conflicting/superseded snapshot, protected aliases, failed/uncertain write, safe readback и duplicate command |
+| Enrollment/PKI | Local ECDSA key/CSR, enrollment/restart, invalid/expired/reused/wrong-Agent token, wrong CA/key/identity/EKU, expiry, malformed/oversized response, timeout/cancellation, atomic storage fault, renewal success/failure и сохранение старого credential |
+| PKI E2E | Настоящий Agent.Run ↔ verified mTLS Mock: issued certificate, rejected claimed identity mismatch, rotation/reconnect/restart с новым serial |
+| SIP | UDP/TCP regression; verified TLS OPTIONS, CA/SNI/server name/expiry failure, framing/timeout/cancellation и health recovery |
+| Linux/OpenWrt | Missing/invalid optional fields, disappearing interface metadata availability, large interface count, CPU/rate reset regression; missing ubus/RPC/partial/malformed responses и service/firewall changes recovery fixtures |
+| P0/P1/P2 | Scheduler, transport cancellation, generic SNMP/RouterOS, policy/protection, LLDP/topology, logs/audit/cursors, six profiles и Simulator scenarios/trends/Mock streaming |
+
+### Process crash и resource bounds
+
+Queue subprocess exits проверены после durable enqueue, Send lease и persisted
+ACK. Linux повтор: **100 циклов / 300 phase cases PASS**, stable pending ID
+сохраняется, acknowledged record отсутствует после reopen. Journal subprocess
+tests проверяют reserved, pre-write, external mutation marker, verification,
+result persistence, ACK и partial staging write; внешний marker — fixture,
+не RouterOS hardware. Linux journal stress: **20 циклов / 140 phase cases PASS**.
+
+При первом Linux повторе выявлен редкий startup `bolt.Open` lock timeout 100ms
+после child exit. Причина воспроизведена в isolated ignored diagnostic copy;
+production bounded wait увеличен до 1s и проверен указанным stress run.
+Mutation retries этим не вводятся.
+
+Windows development suite выявила отдельный fixture cleanup flake: NTFS после
+atomic replacement временно перечислял уже исчезнувший `SAFETY-STATE.JSON.tmp`.
+Test helpers делают bounded retry только для исчезнувших/delete-pending entries
+в собственном TempDir; реальные leftover files/handles остаются ошибкой. После
+исправления прошли commands integration **20 повторов** и Agent/RouterOS race
+**3 повтора**. Production/Linux код этим изменением не затронут.
+
+Отдельный Linux queue resource test выполнил **480 reconnect resets,
+320 admissions/ACK**: messages/bytes/in-flight не превышают config, после ACK
+очередь пуста, max physical file **65 536 bytes**, goroutines **2 → 2**.
+Это small fixture workload, не benchmark OpenWrt flash/RAM/CPU или proof фиксированного
+RSS mmap. Journal/snapshot retention, aliases, response/batch sizes и worker/backlog
+limits проверены tests; certificate retry cadence bounded, telemetry `NoSync`
+не используется. Hardware flash wear/power-loss не проверены.
+
+### Linux runtime
+
+Среда — WSL `docker-desktop`, kernel
+`6.18.33.2-microsoft-standard-WSL2`, Linux amd64, `/etc/os-release` Docker Desktop,
+uid 0; test state в `/tmp` на ext-family filesystem. Это не constrained OpenWrt.
+Docker engine не запускался, SDK/C compiler внутри WSL не устанавливались.
+
+CGO0 Linux test binaries собраны Go 1.27.1 в Windows и выполнены в соответствующих
+package directories через:
+
+```text
+wsl.exe -d docker-desktop --cd <package-directory> -- <test-binary> -test.v -test.timeout=120s
+```
+
+Прошли полные Linux suites: `platform/linux` (integration), `logs`, `queue`
+(integration), `commands` (integration), `protocol/snmp`, `driver/routeros`,
+`pki`, `platform/openwrt`, `agent` (integration), `simulator`, `telephony`,
+`transport/grpc`. Helper journal crash process ожидаемо skipped в parent,
+реальные child stages выполнены. Real `/proc`, `/sys`, addresses, Linux filesystem,
+log rotation/cursor restart и Agent/Mock stream проверены. Сетевые устройства,
+SIP/PBX и enrollment CA responses — local fixtures. Запуск как root не доказывает
+доступность источников у непривилегированного production service user.
+
+### Cross-build matrix
+
+| Executable | CGO0 Linux targets |
+|---|---|
+| Agent | amd64, arm64, arm (`GOARM=7`), mips/mipsle (`GOMIPS=hardfloat`) |
+| Mock Controller | amd64, arm64 |
+| Simulator | amd64, arm64 |
+| Mock Enrollment | amd64, arm64 |
+
+Windows amd64 development executables также собраны; это не Windows LocalPlatform
+runtime support. Binaries/test outputs остаются ignored. Cross-build не доказывает
+приемлемый RAM/flash budget конкретного OpenWrt устройства.
+
+### Пределы подтверждения
+
+- **Fixture verified:** SNMPv3 USM, RouterOS snapshots/rollback, verified SIP TLS,
+  enrollment/rotation, journal/storage faults, OpenWrt schemas, six vendor profiles.
+- **Runtime verified:** Linux amd64 в указанной WSL среде; file/proc/sys I/O,
+  queue/journal process crashes, actual loopback gRPC/UDP/HTTPS/TLS fixtures.
+- **Hardware verified:** сетевого оборудования нет; реальных OpenWrt firmware,
+  MikroTik/switch/PBX, flash endurance и power-loss tests не выполнялось.
+- Astra Linux, ALT Linux, RED OS runtime **unverified**. Compatibility оценена
+  по generic Linux interfaces; Ubuntu/Debian/WSL не выданы за эти дистрибутивы.
+- Vendor-specific health OID не добавлены. Eltex/QTECH и остальные profiles
+  сохраняют standard Generic fallback без выдуманных mappings.
+- SIP Digest/REGISTER/media, NETCONF/gNMI deferred; production Backend/CA,
+  revocation/CA rollover, HSM/TPM/encryption и container runtime validation отсутствуют.
+- Delivery — at-least-once retained messages, с explicit retention/eviction loss;
+  memory/legacy send fallback — best effort. Journal retention ограничивает dedup
+  horizon, remote PATCH не входит в atomic transaction Agent storage.
+- Mock enrollment one-time token state in-memory; expired cert требует operator
+  recovery. Filesystem sync guarantees и доступность persistent Agent identity
+  остаются deployment prerequisites.

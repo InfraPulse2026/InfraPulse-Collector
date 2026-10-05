@@ -95,7 +95,7 @@ func (s *tcpController) stop() { s.server.Stop(); _ = s.listener.Close() }
 func testConfig(t *testing.T, address string) config.Config {
 	t.Helper()
 	c := config.Defaults()
-	c.Agent.StateDir = t.TempDir()
+	c.Agent.StateDir = testTempDir(t)
 	c.Agent.Name = "e2e-agent"
 	c.Controller.Address = address
 	c.Controller.ConnectTimeout = 200 * time.Millisecond
@@ -124,6 +124,12 @@ func newTestAgent(t *testing.T, c config.Config, platform *fixturePlatform) *Age
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if a.commandStore != nil {
+			_ = a.commandStore.Close()
+		}
+		_ = a.queue.Close()
+	})
 	return a
 }
 

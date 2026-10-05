@@ -35,8 +35,9 @@ func (d *Deduplicator) Begin(c model.Command) (*model.CommandResult, error) {
 		Target    string
 		Interface *model.InterfaceAction
 		Service   *model.ServiceAction
+		Rollback  *model.RollbackAction
 		Initiator string
-	}{c.TargetDeviceID, c.Interface, c.Service, c.Initiator})
+	}{c.TargetDeviceID, c.Interface, c.Service, c.Rollback, c.Initiator})
 	fp := sha256.Sum256(data)
 	keys := []string{"id:" + c.ID}
 	if c.IdempotencyKey != "" {

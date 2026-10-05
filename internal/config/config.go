@@ -16,6 +16,7 @@ import (
 
 	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/model"
+	protocolsnmp "InfraPulseAgent/internal/protocol/snmp"
 	"InfraPulseAgent/internal/telephony"
 	"go.yaml.in/yaml/v3"
 )
@@ -49,11 +50,13 @@ type Controller struct {
 	ReconnectMax     time.Duration `yaml:"reconnect_max"`
 }
 type Security struct {
-	Mode       string `yaml:"mode"`
-	CAFile     string `yaml:"ca_file"`
-	CertFile   string `yaml:"cert_file"`
-	KeyFile    string `yaml:"key_file"`
-	ServerName string `yaml:"server_name"`
+	Enrollment  Enrollment    `yaml:"enrollment"`
+	RenewBefore time.Duration `yaml:"renew_before"`
+	Mode        string        `yaml:"mode"`
+	CAFile      string        `yaml:"ca_file"`
+	CertFile    string        `yaml:"cert_file"`
+	KeyFile     string        `yaml:"key_file"`
+	ServerName  string        `yaml:"server_name"`
 }
 type Local struct {
 	Enabled  bool   `yaml:"enabled"`
@@ -86,9 +89,17 @@ type Telemetry struct {
 	CollectTimeout    time.Duration `yaml:"collect_timeout"`
 }
 type Queue struct {
-	MaxMessages     int `yaml:"max_messages"`
-	MaxBytes        int `yaml:"max_bytes"`
-	MaxMessageBytes int `yaml:"max_message_bytes"`
+	Mode            string        `yaml:"mode"`
+	MaxStorageBytes int           `yaml:"max_storage_bytes"`
+	Retention       time.Duration `yaml:"retention"`
+	BatchDelay      time.Duration `yaml:"batch_delay"`
+	BatchSize       int           `yaml:"batch_size"`
+	MaxInflight     int           `yaml:"max_inflight"`
+	ACKTimeout      time.Duration `yaml:"ack_timeout"`
+	ACKFallback     string        `yaml:"ack_fallback"`
+	MaxMessages     int           `yaml:"max_messages"`
+	MaxBytes        int           `yaml:"max_bytes"`
+	MaxMessageBytes int           `yaml:"max_message_bytes"`
 }
 type Scheduler struct {
 	Concurrency int `yaml:"concurrency"`
@@ -124,17 +135,19 @@ type Polling struct {
 	Timeout           time.Duration `yaml:"timeout"`
 }
 type SNMP struct {
-	Port    uint16 `yaml:"port"`
-	Retries int    `yaml:"retries"`
+	protocolsnmp.Security `yaml:",inline"`
+	Port                  uint16 `yaml:"port"`
+	Retries               int    `yaml:"retries"`
 }
 type RemoteTLS struct {
 	CAFile string `yaml:"ca_file"`
 }
 type Commands struct {
-	Enabled             bool     `yaml:"enabled"`
-	ProtectedDevices    []string `yaml:"protected_devices"`
-	ProtectedInterfaces []string `yaml:"protected_interfaces"`
-	ProtectedServices   []string `yaml:"protected_services"`
+	Store               CommandStore `yaml:"store"`
+	Enabled             bool         `yaml:"enabled"`
+	ProtectedDevices    []string     `yaml:"protected_devices"`
+	ProtectedInterfaces []string     `yaml:"protected_interfaces"`
+	ProtectedServices   []string     `yaml:"protected_services"`
 }
 
 func Defaults() Config {
@@ -198,6 +211,13 @@ func Load(path string) (Config, error) {
 			*p = filepath.Join(base, *p)
 		}
 	}
+	for i := range c.Telephony.Endpoints {
+		p := &c.Telephony.Endpoints[i].TLS.CAFile
+		if *p != "" && !filepath.IsAbs(*p) {
+			*p = filepath.Join(base, *p)
+		}
+	}
+	ResolvePKIPaths(&c, base)
 	return c, c.Validate()
 }
 
@@ -270,7 +290,7 @@ func (c Config) Validate() error {
 		add(IsLoopback(host), "controller.address (development requires loopback)")
 	}
 	if c.Security.Mode == "production" {
-		add(c.Security.CAFile != "" && c.Security.CertFile != "" && c.Security.KeyFile != "", "security mTLS files")
+		add(c.Security.Enrollment.Enabled || c.Security.CAFile != "" && c.Security.CertFile != "" && c.Security.KeyFile != "", "security mTLS files")
 	}
 	for _, v := range []struct {
 		name string
@@ -301,11 +321,23 @@ func (c Config) Validate() error {
 	}
 	for ref, cr := range c.Credentials {
 		add(validRef(ref), "credential reference")
-		add((cr.CommunityEnv != "") != (cr.UsernameEnv != "" || cr.PasswordEnv != ""), "credential kind")
+		v2 := cr.CommunityEnv != "" && cr.UsernameEnv == "" && cr.PasswordEnv == "" && cr.AuthPasswordEnv == "" && cr.PrivacyPasswordEnv == ""
+		basic := cr.CommunityEnv == "" && cr.UsernameEnv != "" && cr.PasswordEnv != "" && cr.AuthPasswordEnv == "" && cr.PrivacyPasswordEnv == ""
+		v3 := cr.CommunityEnv == "" && cr.UsernameEnv != "" && cr.PasswordEnv == "" && cr.AuthPasswordEnv != ""
+		add(v2 || basic || v3, "credential kind")
 		if cr.CommunityEnv != "" {
 			add(validRef(cr.CommunityEnv), "credential community_env")
 		} else {
-			add(validRef(cr.UsernameEnv) && validRef(cr.PasswordEnv), "credential username_env/password_env")
+			add(validRef(cr.UsernameEnv), "credential username_env")
+			if cr.PasswordEnv != "" {
+				add(validRef(cr.PasswordEnv), "credential password_env")
+			}
+			if cr.AuthPasswordEnv != "" {
+				add(validRef(cr.AuthPasswordEnv), "credential auth_password_env")
+			}
+			if cr.PrivacyPasswordEnv != "" {
+				add(validRef(cr.PrivacyPasswordEnv), "credential privacy_password_env")
+			}
 		}
 	}
 	add(c.Logging.Level == "debug" || c.Logging.Level == "info" || c.Logging.Level == "warn" || c.Logging.Level == "error", "logging.level")
@@ -335,7 +367,16 @@ func (c Config) Validate() error {
 		}
 		add(d.SNMP.Retries >= 0 && d.SNMP.Retries <= 3, prefix+".snmp.retries")
 		if d.Driver == "snmp" {
-			add(cr.CommunityEnv != "", prefix+".credential_ref kind")
+			security := d.SNMP.Security.WithDefaults()
+			if err := security.Validate(); err != nil {
+				problems = append(problems, fmt.Errorf("%s.snmp: %w", prefix, err))
+			}
+			if security.Version == "v3" {
+				add(cr.CommunityEnv == "" && cr.PasswordEnv == "" && cr.UsernameEnv != "" && cr.AuthPasswordEnv != "", prefix+".credential_ref kind")
+				add((security.SecurityLevel == "authPriv") == (cr.PrivacyPasswordEnv != ""), prefix+".credential_ref privacy secret")
+			} else {
+				add(cr.CommunityEnv != "", prefix+".credential_ref kind")
+			}
 			add(!d.EnableMutations && d.TLS.CAFile == "", prefix+" SNMP read-only options")
 			add(!strings.ContainsAny(d.Address, "/@?#\\ \t\r\n") && len(d.Address) <= 253, prefix+".address (host or IP)")
 			add(net.ParseIP(d.Address) != nil || !strings.Contains(d.Address, ":"), prefix+".address (port is snmp.port)")
@@ -351,5 +392,7 @@ func (c Config) Validate() error {
 			add(e == nil && u != nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && (u.Path == "" || u.Path == "/"), prefix+".address (HTTPS origin without embedded credentials)")
 		}
 	}
+	problems = append(problems, c.validateCommandStore())
+	problems = append(problems, c.Queue.ValidateDurable(), ValidatePKI(c), c.validateCommandStore())
 	return errors.Join(problems...)
 }

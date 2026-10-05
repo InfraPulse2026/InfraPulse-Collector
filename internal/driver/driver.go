@@ -38,3 +38,9 @@ type InterfaceManager interface {
 	ResolveInterface(context.Context, string) (ResolvedInterface, error)
 	SetInterface(context.Context, ResolvedInterface, bool) (model.InterfaceVerification, error)
 }
+
+// SnapshotIdentityReader refreshes compatibility metadata for a concrete
+// snapshot-capable driver immediately before mutation or rollback.
+type SnapshotIdentityReader interface {
+	SnapshotIdentity(context.Context) (model.Device, error)
+}

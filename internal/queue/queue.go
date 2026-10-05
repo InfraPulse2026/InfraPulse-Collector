@@ -25,6 +25,7 @@ type entry struct {
 }
 
 type Queue struct {
+	disk             *diskQueue
 	mu               sync.Mutex
 	entries          []entry
 	changed          chan struct{}
@@ -50,6 +51,9 @@ func New(maxMessages, maxBytes, maxMessageBytes int) (*Queue, error) {
 // new results instead of silently destroying a previously accepted result.
 // In-memory delivery is best effort; this queue is not a persistent outbox.
 func (q *Queue) Push(envelope model.Envelope) error {
+	if q.disk != nil {
+		return q.disk.push(envelope)
+	}
 	priority, err := envelopePriority(envelope)
 	if err != nil {
 		return err
@@ -105,6 +109,9 @@ func (q *Queue) Push(envelope model.Envelope) error {
 }
 
 func (q *Queue) Pop(ctx context.Context) (model.Envelope, error) {
+	if q.disk != nil {
+		return q.disk.pop(ctx)
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return model.Envelope{}, err
@@ -141,9 +148,14 @@ func (q *Queue) Pop(ctx context.Context) (model.Envelope, error) {
 }
 
 func (q *Queue) State() model.QueueState {
+	if q.disk != nil {
+		return q.disk.state()
+	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return q.state
+	s := q.state
+	s.Mode = "memory"
+	return s
 }
 
 func (q *Queue) dropped(item entry) {
@@ -162,6 +174,14 @@ func envelopePriority(e model.Envelope) (int, error) {
 	if e.Logs != nil {
 		count++
 		priority = 6
+		if len(e.Logs.Records) > 0 {
+			for _, r := range e.Logs.Records {
+				if r.Audit != nil {
+					priority = 1
+					break
+				}
+			}
+		}
 	}
 	if e.Telephony != nil {
 		count++

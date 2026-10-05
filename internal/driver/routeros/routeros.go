@@ -59,14 +59,19 @@ func New(opts driver.Options, provider credentials.Provider, credentialRef strin
 	return &Driver{opts: opts, client: client, provider: provider, credentialRef: credentialRef, available: map[string]bool{}}, nil
 }
 
-func (d *Driver) Close() error              { return d.client.Close() }
-func (d *Driver) mark(name string, ok bool) { d.mu.Lock(); d.available[name] = ok; d.mu.Unlock() }
+func (d *Driver) Close() error { return d.client.Close() }
+
+func (d *Driver) SnapshotIdentity(ctx context.Context) (model.Device, error) { return d.Probe(ctx) }
+func (d *Driver) mark(name string, ok bool)                                  { d.mu.Lock(); d.available[name] = ok; d.mu.Unlock() }
 func (d *Driver) Capabilities() []model.Capability {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	var caps []model.Capability
-	for _, name := range []string{"system.read", "inventory.read", "interfaces.read", "telemetry.read", "topology.read", "interfaces.enable", "interfaces.disable"} {
+	for _, name := range []string{"system.read", "inventory.read", "interfaces.read", "telemetry.read", "topology.read", "interfaces.enable", "interfaces.disable", "snapshots.create", "resource.rollback"} {
 		ok := d.available[name]
+		if name == "snapshots.create" || name == "resource.rollback" {
+			ok = d.available["interfaces.enable"] && d.available["interfaces.disable"]
+		}
 		reason := ""
 		if !ok {
 			reason = "operation not yet observed or unavailable"
@@ -491,7 +496,7 @@ func (d *Driver) SetInterface(ctx context.Context, resolved driver.ResolvedInter
 		return v, err
 	}
 	current := interfaces[0]
-	if current.ID != resolved.Interface.ID || current.Name != resolved.Interface.Name || current.Alias != resolved.Interface.Alias || current.Description != resolved.Interface.Description || current.MAC != resolved.Interface.MAC || !current.Metadata.AdminStatus {
+	if current.ID != resolved.Interface.ID || current.Name != resolved.Interface.Name || current.Alias != resolved.Interface.Alias || current.Description != resolved.Interface.Description || current.MAC != resolved.Interface.MAC || current.AdminUp != resolved.Interface.AdminUp || !current.Metadata.AdminStatus {
 		return v, driver.ErrUnavailable
 	}
 	if current.AdminUp == adminUp {

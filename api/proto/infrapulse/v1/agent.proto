@@ -37,8 +37,12 @@ message ControllerEnvelope {
   oneof payload {
     HelloAck hello_ack = 1;
     Command command = 2;
+    MessageACK message_ack = 3;
   }
 }
+
+// ACK is emitted only after application acceptance. Send success is not ACK.
+message MessageACK { string message_id = 1; }
 
 message BuildInfo {
   string version = 1;
@@ -54,11 +58,13 @@ message AgentHello {
   google.protobuf.Timestamp started_at = 5;
   Device device = 6;
   uint32 protocol_version = 7;
+  bool application_ack = 8;
 }
 
 message HelloAck {
   bool accepted = 1;
   uint32 protocol_version = 2;
+  bool application_ack = 3;
 }
 
 message Capability {
@@ -287,6 +293,12 @@ message QueueState {
   uint64 dropped_telemetry = 3;
   uint64 dropped_other = 4;
   uint64 dropped_logs = 5;
+  string mode = 6;
+  uint64 storage_bytes = 7;
+  google.protobuf.Timestamp oldest_pending = 8;
+  uint64 unacked = 9;
+  uint64 pending_results = 10;
+  string storage_error = 11;
 }
 
 message Heartbeat {
@@ -296,6 +308,16 @@ message Heartbeat {
   string health = 4;
   uint32 remote_device_count = 5;
   QueueState queue = 6;
+  CertificateStatus certificate = 7;
+}
+
+message CertificateStatus {
+  google.protobuf.Timestamp expires_at = 1;
+  int64 remaining_seconds = 2;
+  string enrollment_state = 3;
+  string renewal_state = 4;
+  google.protobuf.Timestamp last_successful_renewal = 5;
+  string last_error = 6;
 }
 
 message InventoryUpdate {
@@ -415,8 +437,11 @@ message Command {
   oneof action {
     InterfaceAction interface = 10;
     ServiceAction service = 11;
+    RollbackAction rollback = 12;
   }
 }
+
+message RollbackAction { string snapshot_id = 1; }
 
 enum CommandStatus {
   COMMAND_STATUS_UNSPECIFIED = 0;
@@ -439,6 +464,7 @@ message CommandResult {
   string error_message = 7;
   InterfaceVerification verification = 8;
   bool uncertain = 9;
+  string snapshot_id = 10;
 }
 
 message InterfaceVerification {

@@ -1,21 +1,44 @@
 # Безопасность InfraPulse Agent
 
 Agent сам открывает исходящий gRPC bidirectional stream; входящего management
-listener нет. Remote integrations — SNMP v2c read-only и RouterOS HTTPS REST.
+listener нет. Remote integrations — SNMP v2c/v3 read-only, RouterOS HTTPS REST
+и fixed SIP OPTIONS UDP/TCP/TLS.
 Mock Controller — development endpoint, не production authorization Backend.
 
 ## Controller transport и identity
 
-`security.mode: production` требует CA, certificate/private key. Agent проверяет
-цепочку CA и hostname/SAN Controller, Mock server проверяет client certificate.
+`security.mode: production` требует verified mTLS: manual CA/certificate/private
+key либо явно настроенный enrollment. Agent проверяет цепочку CA и hostname/SAN
+Controller, Mock server проверяет client certificate.
 TLS ≥ 1.2, `InsecureSkipVerify` и silent plaintext fallback отсутствуют.
 `development` явно допускает plaintext только на localhost/loopback и не
 аутентифицирует участников. Remote RouterOS transport при этом всё равно HTTPS.
 
-Сертификаты provisioning выполняется оператором. Enrollment/rotation/revocation
-workflow и certificate-to-AgentID/tenancy authorization не реализованы.
-Persistent UUID сам по себе не credential; mTLS удостоверяет владение доверенным
-сертификатом, а не принадлежность заявленного ID конкретному tenant.
+Client certificate содержит единственный URI SAN
+`spiffe://infrapulse/agent/<persistent UUID>`. Agent проверяет свой manual
+certificate, а Mock Controller сопоставляет verified certificate identity
+с claimed `AgentHello.agent_id`. Trusted certificate другого Agent отклоняется;
+Common Name не заменяет binding. Этот contract не реализует SPIFFE attestation
+или tenancy authorization. Production Backend обязан отдельно проверять tenant
+и разрешения; persistent UUID сам по себе не credential.
+
+Agent-side enrollment генерирует локальный ECDSA P-256 private key и CSR.
+Bootstrap service проверяется через HTTPS CA/SAN; отправляются только CSR,
+Agent ID и one-time token из environment reference. Private key остаётся на
+Agent. Token после успешной публикации bundle больше не нужен для restart
+и renewal, не становится permanent credential и не включается в diagnostics.
+Development Mock проверяет invalid/expired/reused token и привязывает его к
+Agent ID; token registry Mock volatile и не является production service.
+
+Bundle `state_dir/pki/client-bundle.json` хранит matching key/cert/CA как encoding
+без encryption, Unix directory/file 0700/0600. Temporary file, file Sync,
+atomic Rename и directory Sync публикуют bundle целиком. Renewal создаёт новый
+local key/CSR, использует старый mTLS certificate, проверяет ответ, заменяет
+bundle и reconnects Controller. Failed renewal сохраняет рабочий certificate.
+Expiration после долгого offline требует operator recovery. TPM/HSM,
+hardware-backed keys, revocation/CRL/OCSP и server CA rollover не реализованы.
+Подробности, manual certificate migration и Mock boundaries —
+[enrollment](enrollment.md).
 
 Agent ID хранится в `state_dir/agent-id`, session ID создаётся на запуск.
 Повреждённый identity file вызывает ошибку. State directory/file используют
@@ -26,7 +49,8 @@ State/config/CA/private keys должны быть доступны service user
 ## Remote credentials
 
 YAML содержит только именованные environment references:
-`credentials.<ref>.community_env` либо `username_env`/`password_env`.
+`credentials.<ref>.community_env`, `username_env`/`password_env` либо SNMPv3
+`username_env`/`auth_password_env`/`privacy_password_env`.
 `devices[].credential_ref` выбирает reference. `credentials.Provider` допускает
 замену provider; Vault/Backend secret distribution сейчас отсутствуют.
 Environment читается на request, пустая/отсутствующая variable означает
@@ -34,11 +58,21 @@ unavailable. Literal community/password в schema отсутствуют. Creden
 не включаются в protobuf/domain Device/diagnostics; JSON сериализация
 credential fields и fmt String/GoString представление скрывают значения.
 
-SNMP использует только v2c read-only UDP. Community передаётся по сети без
-шифрования; нужны доверенная management network, ограничение source addresses
-и read-only access на оборудовании. SNMPv3 отсутствует. GoSNMP debug logger
-отключён; protocol errors заменяются безопасными категориями и не включают
-community/packet dump. Unsupported OID не считается connectivity failure.
+Generic SNMP adapter поддерживает v2c и v3 USM read-only UDP без автоматического
+downgrade. V2c community передаётся без шифрования; нужны доверенная management
+network, ограничение source addresses и read-only access. Явно выбранный v3
+использует default `authPriv`, `SHA256`/`AES`; `authNoPriv` явно разрешает
+authentication без confidentiality. `noAuthNoPriv` запрещён. MD5/SHA1/DES и
+другие поддерживаемые GoSNMP algorithms выбираются только явно; конкретная
+firmware compatibility не предполагается.
+
+Auth/privacy passwords получает только CredentialProvider; plaintext fields
+в device YAML, protobuf и diagnostics отсутствуют. GoSNMP debug logger
+отключён, unbounded global password cache отключён. Credentials и localized
+keys остаются в process memory; zeroization не заявляется. Protocol errors
+заменяются безопасными категориями без username/secret/packet dump, incompatible
+USM security-level response отклоняется. Unsupported OID не считается
+connectivity failure. Algorithms/limits/fixtures — [SNMPv3](snmpv3.md).
 
 RouterOS использует Basic Auth только по HTTPS. Config принимает origin без
 embedded credentials, `/rest` path, query/fragment. TLS проверяет CA/SAN обычным
@@ -56,29 +90,37 @@ Provider credentials существуют в памяти процесса и en
 ## Типизированные команды и admission
 
 Controller передаёт только target device ID, interface stable ID/name и
-ENABLE/DISABLE. Он не задаёт endpoint/path, HTTP method, arbitrary JSON, CLI,
+ENABLE/DISABLE либо typed `resource.rollback` с snapshot ID. Он не задаёт
+endpoint/path, HTTP method, arbitrary JSON, CLI,
 argv или shell. Local/SNMP writes и service actions unsupported. Human,
 ai_suggested и automation проходят одинаковые проверки; initiator не является
 доказательством отдельного human approval.
 
 Agent перед action резервирует 4096 bytes и слот для CommandResult в bounded
-RAM outbox. При полной очереди или меньшем max_message_bytes execution
-не запускается; session закрывается. Accepted results не вытесняются.
-Reservation защищает сохранение результата в RAM, не delivery на Backend.
+outbox, затем persistent command state и место будущего result в journal.
+При невозможном admission, storage full/unavailable/corrupt или недостаточных
+limits mutation не начинается. Accepted results не вытесняются ради telemetry.
+Journal обязателен при `commands.enabled: true` даже с memory telemetry;
+startup durable outbox failure переводит monitoring в degraded memory mode
+и блокирует mutations. Capacity reservation не гарантирует физический disk
+quota и не исключает последующее внешнее заполнение filesystem.
 
 Validation ограничивает identifiers 128 bytes, timeout 10ms–1m, requested time
 допустимым окном. Execution дополнительно проверяет expiry и ограничивает
-context deadline. Command receiver выполняет один command за раз; registry
-gate сериализует его с polls этого устройства. Dedup cache ограничен 256
-commands/results, проверяет command ID/idempotency key и fingerprint
-параметров; конфликт identity отклоняется, in-flight command не запускается
-повторно. Cache volatile: после restart или eviction повтор может выполниться
-снова. Persistent execution journal и exactly-once отсутствуют.
+context deadline. Command worker выполняет один command за раз; отдельный
+receiver продолжает принимать ACK, backlog commands bounded. Registry gate
+сериализует mutation с polls этого устройства. Persistent journal сохраняет
+command ID/idempotency key/fingerprint, execution/verification states и result
+envelope со stable message ID. Identity conflict отклоняется, повтор completed
+command возвращает сохранённый result. Pending results не удаляются по retention;
+dedup horizon ограничен retention acknowledged entries.
 
-Порядок исполнения: validation → target/deadline → observed capability →
-commands policy/protected device → canonical interface resolution → protection
-по aliases/dependencies → повторная capability/deadline/permission проверка →
-PATCH → read-after-write GET. `commands.enabled` по умолчанию false, per-device
+Порядок исполнения: validation → outbox reservation → persistent admission →
+target/deadline/observed capability → policy/protected device → canonical
+interface resolution → aliases/dependencies protection → fresh version/identity
+и persistent snapshot/executing boundary → повторная capability/deadline/permission
+проверка → PATCH once → read-after-write GET → persistent result → delivery/ACK.
+`commands.enabled` по умолчанию false, per-device
 `enable_mutations` также false. Наличие interface action в protobuf ничего
 не разрешает.
 
@@ -114,8 +156,29 @@ HTTP error и malformed/oversized ответ. Часть command deadline ост
 для verification; после network timeout допускается безопасное чтение, но
 PATCH не повторяется. Result содержит expected/observed state/time, verified,
 changed и evidence. Если отправленная mutation не подтверждена, возвращается
-uncertain timeout. Ни success, ни rollback в таком случае не предполагаются;
-configuration snapshots/rollback отсутствуют.
+uncertain timeout. Crash из persisted `executing` также восстанавливается как
+`uncertain` без повторной mutation; crash до execution boundary даёт rejected
+interrupted command. Result, сохранённый до crash, доставляется повторно со
+своим stable message ID. Exactly-once для внешнего сетевого устройства не
+заявляется.
+
+## Snapshots и безопасный rollback
+
+Snapshot сохраняется до поддерживаемой mutation и содержит только RouterOS
+interface admin state, canonical ID/aliases/dependencies, owner device,
+previous/expected state, observation/expiry, related command и schema/software
+compatibility. Это bounded persistent state, не full device backup и не
+telemetry history; credentials и произвольная конфигурация не сохраняются.
+
+`resource.rollback` использует Agent-owned snapshot и тот же fixed PATCH.
+Target/capability/policy/protected resources проверяются заново, включая resolved
+aliases/dependencies. Wrong owner/resource, expired/unverified/consumed/superseded
+snapshot, version mismatch и stale/conflicting current state запрещают write.
+Более новая mutation делает прежний snapshot superseded; retention нового
+snapshot не оживляет старый после ABA. Rollback создаёт snapshot текущего
+состояния, требует read-after-write verification и не считает uncertain write
+успехом. Remote API не даёт атомарного CAS с локальным journal; все внешние
+parallel changes предотвратить невозможно. Детали — [commands](commands.md).
 
 ## Bounds, diagnostics и delivery
 
@@ -124,31 +187,56 @@ worker counts, message/outbox bytes. Remote polling имеет отдельны�
 scheduler, timeout и per-device exclusion; network cancellation разблокирует
 SNMP/HTTP. Не используются unlimited goroutines/tables/buffers.
 
-Diagnostics выбирает безопасную сводку и normalized devices/collector states;
+Diagnostics выбирает безопасную сводку и normalized devices/collector states,
+queue mode/messages/bytes/oldest pending/unacked/results, journal/snapshot
+health/counts, certificate expiration/renewal и SNMP algorithms без credentials;
 полный config и credentials не печатаются. Remote errors в registry/scheduler
 сводятся к безопасным категориям. `DataSanitizer` дополнительно очищает известные
 password/token/community/authorization patterns в free-text errors/events и
 command results. Это ограниченная redaction: arbitrary device inventory text
 или бинарные identifiers не гарантированно очищены от всех возможных secrets.
 
-Outbox, reservations и dedup хранятся в RAM. Restart теряет очередь; Send после
-Pop может потерять telemetry/topology/result, успешный gRPC Send не означает
-commit на Backend. Delivery ACK/durable outbox/journal/enrollment относятся
-к следующим этапам. Agent не содержит LLM client и не отправляет данные AI
-напрямую; Backend должен отдельно решать допустимость дальнейшей передачи.
+Outbox имеет `memory` и `durable` modes. Memory telemetry остаётся best effort.
+Durable outbox использует pure-Go embedded bbolt, bounded payload/file limits,
+retention, deterministic priority eviction и synced admissions. SHA-256 records,
+schema/index/page checks обнаруживают corruption, но не защищают от владельца
+state. Persistent state не encrypted; directory/file на Unix 0700/0600,
+symlink storage paths отклоняются. Corrupted state не удаляется автоматически.
+Journal/snapshots используют отдельный bounded checksummed atomic state file,
+single-writer lock и собственную retention. Runtime state, keys/certificates
+и diagnostics не должны попадать в Git или публичные support bundles.
+
+Успешный gRPC Send не означает application commit. Negotiated ACK позволяет
+удалить record только после accepted stable message ID; unacked retained records
+replay после reconnect/restart. Semantics — at-least-once, не exactly-once.
+Low/medium priority retention/eviction допускает documented loss; pending
+CommandResult защищён. Legacy Controller по default durable policy отклоняется;
+explicit `ack_fallback: send` включается оператором и виден в diagnostics,
+его semantics best effort. Mock ACK подтверждает только development acceptance;
+production Backend должен выполнять durable dedup/commit перед ACK.
+
+Batching ограничивает commits, но не устраняет flash wear. Filesystem/device
+sync, physical disk space, RAM/page cache и power-loss behavior требуют
+deployment review; аппаратные power-loss/endurance guarantees не заявляются.
+Agent не содержит LLM client и не отправляет данные AI напрямую; Backend
+должен отдельно решать допустимость дальнейшей передачи. Storage/replay
+подробно описаны в [delivery](delivery.md).
 
 ## Logs, audit и persistent state
 
 Configured file sources читаются только как regular files, с limits строки,
 read budget, batch/JSON bytes, tracked identities и scanned directory entries.
-Отдельный worker pool и низкий queue priority защищают telemetry от log storm.
+Отдельный worker pool и batch bounds ограничивают log storm. Memory mode
+сохраняет низкий ordinary log priority; durable mode использует medium logs,
+а parsed audit batches имеют high priority в обоих modes.
 Diagnostics хранит source status/counters/offset и safe error category, не raw
 log messages. Права на syslog/audit files и state directory задаёт оператор;
 ordinary tests используют temp directories без root.
 
 Перед parsing/enqueue применяется sanitizer известных полей/Authorization
-Bearer/Basic, literal values configured SNMP community/RouterOS password и
-private-key blocks. PEM suppression state сохраняется в cursor для restart.
+Bearer/Basic, literal values configured SNMP community/auth/privacy passwords,
+RouterOS password/enrollment token и private-key blocks. PEM suppression state
+сохраняется в cursor для restart.
 Oversized line передаётся целиком как redacted marker: обрезанный credential
 может не совпасть с полной configured строкой. Значения environment обновляются
 при sanitization; недоступный/необъявленный secret не гарантированно скрывается.
@@ -161,8 +249,11 @@ inference. Audit records всё равно могут содержать usernam
 
 Cursor state защищён mode0700/0600 на Linux, strict validation и atomic
 temp/sync/rename с directory sync. Corruption fail-closed требует явного recovery;
-Agent не сбрасывает его молча. Это read position, не transport durability:
-RAM loss/eviction/Send error остаются возможны. Detailed semantics — [logs](logs.md).
+Agent не сбрасывает его молча. Это read position, отдельно от local admission
+и Controller ACK: cursor advances после успешного Push всей batch. Durable
+admission переживает restart; memory admission volatile. Retention/eviction
+может потерять уже прочитанные logs, crash до cursor persistence — дать replay.
+Detailed semantics — [logs](logs.md).
 
 ## OpenWrt typed access
 
@@ -176,12 +267,17 @@ UCI snapshot не подтверждает active firewall; службы/firewal
 
 ## SIP и Simulator
 
-SIP endpoint config validated against CRLF/URI injection, транспорт только
-UDP/TCP. Agent самостоятельно формирует fixed OPTIONS с уникальными transaction
+SIP endpoint config validated against CRLF/URI injection, транспорт UDP/TCP/TLS.
+Agent самостоятельно формирует fixed OPTIONS с уникальными transaction
 IDs, сопоставляет Call-ID/CSeq/Via branch, ограничивает messages/response bytes
 и время. Raw packets/network errors не логируются. 401/407 не обходятся через
-REGISTER; SIP authentication/TLS/media отсутствуют. UDP/TCP не обеспечивают
-шифрование SIP; probe не содержит passwords/tokens.
+REGISTER; Digest/SIP credentials/media отсутствуют. UDP/TCP не обеспечивают
+шифрование SIP; probe не содержит passwords/tokens. TLS использует trusted
+system/custom CA, server name verification/SNI, TLS ≥ 1.2 и context timeout/
+cancellation. `InsecureSkipVerify` option отсутствует. Latency включает handshake;
+raw TLS errors/certificates не публикуются. TLS обеспечивает transport security,
+не подтверждает OPTIONS authentication или качество звонков. Подробности —
+[telephony](telephony.md).
 
 Simulator — отдельный development binary. Production Agent не импортирует
 его packages и не подменяет collectors synthetic fallback. Synthetic nested

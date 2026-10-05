@@ -306,7 +306,7 @@ func TestEndpointValidationAndNetworkCategories(t *testing.T) {
 	if err := e.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	for _, mutate := range []func(*Endpoint){func(e *Endpoint) { e.Address = "sip://pbx" }, func(e *Endpoint) { e.FromUser = "agent\r\nBad: header" }, func(e *Endpoint) { e.Domain = "host;header" }, func(e *Endpoint) { e.Transport = "tls" }, func(e *Endpoint) { e.Timeout = 2 * time.Minute }, func(e *Endpoint) { e.FailureThreshold = 101 }} {
+	for _, mutate := range []func(*Endpoint){func(e *Endpoint) { e.Address = "sip://pbx" }, func(e *Endpoint) { e.FromUser = "agent\r\nBad: header" }, func(e *Endpoint) { e.Domain = "host;header" }, func(e *Endpoint) { e.Transport = "ws" }, func(e *Endpoint) { e.Timeout = 2 * time.Minute }, func(e *Endpoint) { e.FailureThreshold = 101 }} {
 		bad := e
 		mutate(&bad)
 		if bad.Validate() == nil {

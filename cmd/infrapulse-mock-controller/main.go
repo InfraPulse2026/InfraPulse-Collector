@@ -33,7 +33,9 @@ func run() error {
 	ca := flag.String("ca-file", "", "trusted client CA PEM")
 	cert := flag.String("cert-file", "", "server certificate PEM")
 	key := flag.String("key-file", "", "server private key PEM")
-	action := flag.String("command", "", "typed interface.enable/disable or service.start/stop/restart; P0 rejects mutations")
+	action := flag.String("command", "", "typed interface.enable/disable, resource.rollback or unsupported service action")
+	snapshot := flag.String("snapshot", "", "Agent-owned snapshot ID for resource.rollback")
+	disableACK := flag.Bool("disable-ack", false, "development legacy Controller fixture: no application ACK")
 	target := flag.String("target", "auto-local", "target device id or auto-local")
 	iface := flag.String("interface", "", "interface id/name for typed command")
 	service := flag.String("service", "", "service for typed command")
@@ -49,6 +51,11 @@ func run() error {
 			return errors.New("invalid typed command")
 		}
 		switch parts[0] {
+		case "resource":
+			if parts[1] != "rollback" {
+				return errors.New("unsupported resource operation")
+			}
+			c.Rollback = &model.RollbackAction{SnapshotID: *snapshot}
 		case "interface":
 			c.Interface = &model.InterfaceAction{InterfaceID: *iface, Operation: parts[1]}
 		case "service":
@@ -72,7 +79,9 @@ func run() error {
 	}
 	defer listener.Close()
 	server := grpc.NewServer(options...)
-	pb.RegisterAgentServiceServer(server, mockcontroller.New(os.Stdout, command, nil))
+	controller := mockcontroller.New(os.Stdout, command, nil)
+	controller.DisableACK = *disableACK
+	pb.RegisterAgentServiceServer(server, controller)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	done := make(chan error, 1)

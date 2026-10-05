@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -36,16 +39,37 @@ func Probe(parent context.Context, endpoint Endpoint) model.TelephonyHealth {
 	ctx, cancel := context.WithTimeout(parent, e.Timeout)
 	defer cancel()
 	started := time.Now()
-	conn, err := (&net.Dialer{}).DialContext(ctx, e.Transport, h.Address)
+	transport := e.Transport
+	var tlsConfig *tls.Config
+	if transport == "tls" {
+		transport = "tcp"
+		var err error
+		tlsConfig, err = e.tlsConfig()
+		if err != nil {
+			h.ErrorCategory = "tls_configuration"
+			return h
+		}
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, transport, h.Address)
 	if err != nil {
 		h.ErrorCategory = category(parent, ctx, err)
 		return h
 	}
 	defer conn.Close()
-	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	rawConn := conn
+	stop := context.AfterFunc(ctx, func() { _ = rawConn.Close() })
 	defer stop()
 	deadline, _ := ctx.Deadline()
 	_ = conn.SetDeadline(deadline)
+	if tlsConfig != nil {
+		secured := tls.Client(conn, tlsConfig)
+		if err = secured.HandshakeContext(ctx); err != nil {
+			h.ErrorCategory = category(parent, ctx, err)
+			return h
+		}
+		conn = secured
+		defer secured.Close()
+	}
 	var nonce [16]byte
 	if _, err = rand.Read(nonce[:]); err != nil {
 		h.ErrorCategory = "internal"
@@ -65,7 +89,11 @@ func Probe(parent context.Context, endpoint Endpoint) model.TelephonyHealth {
 	if e.ToUser != "" {
 		to = e.ToUser + "@" + to
 	}
-	request := fmt.Sprintf("OPTIONS sip:%s SIP/2.0\r\nVia: SIP/2.0/%s %s;branch=%s;rport\r\nMax-Forwards: 70\r\nFrom: <sip:%s@%s>;tag=%s\r\nTo: <sip:%s>\r\nCall-ID: %s\r\nCSeq: 1 OPTIONS\r\nUser-Agent: InfraPulse-Agent\r\nAccept: application/sdp\r\nContent-Length: 0\r\n\r\n", to, strings.ToUpper(e.Transport), conn.LocalAddr().String(), branch, e.FromUser, domain, transaction, to, callID)
+	scheme := "sip"
+	if e.Transport == "tls" {
+		scheme = "sips"
+	}
+	request := fmt.Sprintf("OPTIONS %s:%s SIP/2.0\r\nVia: SIP/2.0/%s %s;branch=%s;rport\r\nMax-Forwards: 70\r\nFrom: <%s:%s@%s>;tag=%s\r\nTo: <%s:%s>\r\nCall-ID: %s\r\nCSeq: 1 OPTIONS\r\nUser-Agent: InfraPulse-Agent\r\nAccept: application/sdp\r\nContent-Length: 0\r\n\r\n", scheme, to, strings.ToUpper(e.Transport), conn.LocalAddr().String(), branch, scheme, e.FromUser, domain, transaction, scheme, to, callID)
 	if _, err = io.WriteString(conn, request); err != nil {
 		h.ErrorCategory = category(parent, ctx, err)
 		return h
@@ -110,6 +138,14 @@ func category(parent, ctx context.Context, err error) string {
 	}
 	if errors.Is(err, errMalformed) {
 		return "malformed_sip"
+	}
+	var verification *tls.CertificateVerificationError
+	if errors.As(err, &verification) {
+		return "tls_certificate"
+	}
+	var record tls.RecordHeaderError
+	if errors.As(err, &record) {
+		return "tls_protocol"
 	}
 	var dns *net.DNSError
 	if errors.As(err, &dns) {
@@ -352,7 +388,7 @@ func parseResponse(data []byte, stream bool, callID, branch string) (uint32, err
 		return 0, errUnmatched
 	}
 	via := strings.Fields(strings.SplitN(topVia, ";", 2)[0])
-	if len(via) != 2 || !strings.EqualFold(via[0], "SIP/2.0/UDP") && !strings.EqualFold(via[0], "SIP/2.0/TCP") {
+	if len(via) != 2 || !strings.EqualFold(via[0], "SIP/2.0/UDP") && !strings.EqualFold(via[0], "SIP/2.0/TCP") && !strings.EqualFold(via[0], "SIP/2.0/TLS") {
 		return 0, errMalformed
 	}
 	if length, ok := h["content-length"]; ok {
@@ -368,6 +404,31 @@ func parseResponse(data []byte, stream bool, callID, branch string) (uint32, err
 		return 0, errMalformed
 	}
 	return code, nil
+}
+
+func (e Endpoint) tlsConfig() (*tls.Config, error) {
+	name := e.TLS.ServerName
+	if name == "" {
+		name = e.Address
+	}
+	c := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: name}
+	if e.TLS.CAFile == "" {
+		return c, nil
+	}
+	f, err := os.Open(e.TLS.CAFile)
+	if err != nil {
+		return nil, errors.New("SIP CA unavailable")
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
+	if err != nil || len(data) > 1<<20 {
+		return nil, errors.New("SIP CA unavailable or exceeds limit")
+	}
+	c.RootCAs = x509.NewCertPool()
+	if !c.RootCAs.AppendCertsFromPEM(data) {
+		return nil, errors.New("SIP CA has no certificates")
+	}
+	return c, nil
 }
 
 func contentLength(value string) (int, error) {

@@ -263,9 +263,16 @@ func (p *Platform) interfaceMetadata(ctx context.Context, interfaces []model.Int
 			return err
 		}
 		iface := &interfaces[i]
+		iface.Metadata = &model.InterfaceMetadata{}
 		root := filepath.Join(p.sysRoot, "class/net", iface.Name)
-		iface.Index, _ = strconv.Atoi(strings.TrimSpace(p.optional(ctx, filepath.Join(root, "ifindex"))))
-		iface.MTU, _ = strconv.Atoi(strings.TrimSpace(p.optional(ctx, filepath.Join(root, "mtu"))))
+		if index, err := strconv.ParseUint(strings.TrimSpace(p.optional(ctx, filepath.Join(root, "ifindex"))), 10, 31); err == nil {
+			iface.Index = int(index)
+			iface.Metadata.Index = index > 0
+		}
+		if mtu, err := strconv.ParseUint(strings.TrimSpace(p.optional(ctx, filepath.Join(root, "mtu"))), 10, 31); err == nil {
+			iface.MTU = int(mtu)
+			iface.Metadata.MTU = mtu > 0
+		}
 		iface.MAC = strings.TrimSpace(p.optional(ctx, filepath.Join(root, "address")))
 		if iface.MAC != "" {
 			if _, err := net.ParseMAC(iface.MAC); err != nil {
@@ -273,12 +280,15 @@ func (p *Platform) interfaceMetadata(ctx context.Context, interfaces []model.Int
 			}
 		}
 		iface.OperState = strings.TrimSpace(p.optional(ctx, filepath.Join(root, "operstate")))
-		if iface.OperState == "" {
+		switch iface.OperState {
+		case "unknown", "notpresent", "down", "lowerlayerdown", "testing", "dormant", "up":
+		default:
 			iface.OperState = "unknown"
 		}
 		flags, err := strconv.ParseUint(strings.TrimSpace(p.optional(ctx, filepath.Join(root, "flags"))), 0, 64)
 		if err == nil {
 			iface.AdminUp = flags&1 != 0 // IFF_UP is the administrative state.
+			iface.Metadata.AdminStatus = true
 		}
 		speed, err := strconv.ParseUint(strings.TrimSpace(p.optional(ctx, filepath.Join(root, "speed"))), 10, 64)
 		if err == nil && speed > 0 && speed <= math.MaxUint64/1000000 {

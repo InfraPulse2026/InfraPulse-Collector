@@ -1,4 +1,4 @@
-// Package snmp provides bounded, read-only SNMP v2c exchange. It does not
+// Package snmp provides bounded, read-only SNMP v2c/v3 exchange. It does not
 // interpret MIBs or depend on InfraPulse domain models.
 package snmp
 
@@ -17,10 +17,11 @@ import (
 )
 
 var (
-	ErrConnectivity = errors.New("SNMP connectivity failure")
-	ErrUnavailable  = errors.New("SNMP object or operation unavailable")
-	ErrMalformed    = errors.New("malformed SNMP response")
-	ErrLimit        = errors.New("SNMP response exceeds limit")
+	ErrConnectivity   = errors.New("SNMP connectivity failure")
+	ErrUnavailable    = errors.New("SNMP object or operation unavailable")
+	ErrMalformed      = errors.New("malformed SNMP response")
+	ErrLimit          = errors.New("SNMP response exceeds limit")
+	ErrAuthentication = errors.New("SNMP authentication or privacy failure")
 )
 
 type Type uint8
@@ -44,6 +45,7 @@ type Value struct {
 	Data any
 }
 type Options struct {
+	Security                  Security
 	Address                   string
 	Timeout                   time.Duration
 	Retries                   int
@@ -63,6 +65,10 @@ type Client struct {
 func New(opts Options, provider credentials.Provider, credentialRef string) (*Client, error) {
 	if provider == nil || credentialRef == "" || opts.Address == "" {
 		return nil, errors.New("SNMP requires address and credential reference")
+	}
+	opts.Security = opts.Security.WithDefaults()
+	if err := opts.Security.Validate(); err != nil {
+		return nil, err
 	}
 	if opts.Timeout == 0 {
 		opts.Timeout = 2 * time.Second
@@ -101,7 +107,7 @@ func (c *Client) session(ctx context.Context) (*gosnmp.GoSNMP, func(), error) {
 		return nil, nil, err
 	}
 	cred, err := c.provider.Get(ctx, c.ref)
-	if err != nil || cred.Community == "" {
+	if err != nil {
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
 		}
@@ -113,7 +119,27 @@ func (c *Client) session(ctx context.Context) (*gosnmp.GoSNMP, func(), error) {
 	if closed {
 		return nil, nil, ErrUnavailable
 	}
-	g := &gosnmp.GoSNMP{Target: c.host, Port: c.port, Transport: "udp", Version: gosnmp.Version2c, Community: cred.Community, Context: ctx, Timeout: c.opts.Timeout, Retries: c.opts.Retries, MaxOids: gosnmp.MaxOids, MaxRepetitions: c.opts.MaxRepetitions}
+	g := &gosnmp.GoSNMP{Target: c.host, Port: c.port, Transport: "udp", Version: gosnmp.Version2c, Context: ctx, Timeout: c.opts.Timeout, Retries: c.opts.Retries, MaxOids: gosnmp.MaxOids, MaxRepetitions: c.opts.MaxRepetitions}
+	if c.opts.Security.Version == "v3" {
+		if len(cred.Username) == 0 || len(cred.Username) > 32 || len(cred.AuthPassword) < 8 || len(cred.AuthPassword) > 1024 || c.opts.Security.SecurityLevel == "authPriv" && (len(cred.PrivacyPassword) < 8 || len(cred.PrivacyPassword) > 1024) {
+			return nil, nil, ErrUnavailable
+		}
+		g.Version = gosnmp.Version3
+		g.SecurityModel = gosnmp.UserSecurityModel
+		g.MsgFlags = gosnmp.AuthNoPriv
+		privacy := gosnmp.NoPriv
+		if c.opts.Security.SecurityLevel == "authPriv" {
+			g.MsgFlags = gosnmp.AuthPriv
+			privacy = privacyProtocols[c.opts.Security.PrivacyProtocol]
+		}
+		g.ContextName = c.opts.Security.ContextName
+		g.SecurityParameters = &gosnmp.UsmSecurityParameters{UserName: cred.Username, AuthenticationProtocol: authProtocols[c.opts.Security.AuthProtocol], AuthenticationPassphrase: cred.AuthPassword, PrivacyProtocol: privacy, PrivacyPassphrase: cred.PrivacyPassword}
+	} else {
+		if cred.Community == "" {
+			return nil, nil, ErrUnavailable
+		}
+		g.Community = cred.Community
+	}
 	// A zero library logger is intentional: GoSNMP packet debug strings contain
 	// the community. Only sanitized error categories leave this package.
 	if err := g.Connect(); err != nil {
@@ -139,6 +165,14 @@ func safeError(ctx context.Context, err error) error {
 	}
 	if errors.Is(err, ErrLimit) {
 		return ErrLimit
+	}
+	for _, authentication := range []error{gosnmp.ErrUnknownUsername, gosnmp.ErrWrongDigest, gosnmp.ErrDecryption, gosnmp.ErrUnknownSecurityLevel} {
+		if errors.Is(err, authentication) {
+			return ErrAuthentication
+		}
+	}
+	if strings.Contains(err.Error(), "not authentic") {
+		return ErrAuthentication
 	}
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() || strings.Contains(err.Error(), "timeout") {
@@ -176,6 +210,9 @@ func (c *Client) get(ctx context.Context, oids []string, next bool) ([]Value, er
 	if err != nil {
 		return nil, safeError(ctx, err)
 	}
+	if err := c.validateIdentity(packet, g); err != nil {
+		return nil, err
+	}
 	values, err := c.values(packet)
 	if err != nil {
 		return nil, err
@@ -193,9 +230,36 @@ func (c *Client) get(ctx context.Context, oids []string, next bool) ([]Value, er
 	return values, nil
 }
 
+func (c *Client) validateIdentity(packet *gosnmp.SnmpPacket, session *gosnmp.GoSNMP) error {
+	if c.opts.Security.Version != "v3" || packet == nil {
+		return nil
+	}
+	actual, ok := packet.SecurityParameters.(*gosnmp.UsmSecurityParameters)
+	expected, expectedOK := session.SecurityParameters.(*gosnmp.UsmSecurityParameters)
+	if !ok || !expectedOK || actual.UserName != expected.UserName || actual.AuthoritativeEngineID == "" || actual.AuthoritativeEngineID != expected.AuthoritativeEngineID {
+		return ErrAuthentication
+	}
+	if packet.ContextEngineID != session.ContextEngineID {
+		return ErrMalformed
+	}
+	return nil
+}
+
 func (c *Client) values(packet *gosnmp.SnmpPacket) ([]Value, error) {
 	if packet == nil {
 		return nil, ErrMalformed
+	}
+	if c.opts.Security.Version == "v3" {
+		level := gosnmp.AuthNoPriv
+		if c.opts.Security.SecurityLevel == "authPriv" {
+			level = gosnmp.AuthPriv
+		}
+		if packet.Version != gosnmp.Version3 || packet.SecurityModel != gosnmp.UserSecurityModel || packet.MsgFlags&gosnmp.AuthPriv != level {
+			return nil, ErrAuthentication
+		}
+		if packet.PDUType != gosnmp.GetResponse || packet.ContextName != c.opts.Security.ContextName {
+			return nil, ErrMalformed
+		}
 	}
 	if packet.Error != gosnmp.NoError {
 		if packet.Error == gosnmp.TooBig {
@@ -259,6 +323,9 @@ func (c *Client) walk(ctx context.Context, root string, bulk bool) ([]Value, err
 		}
 		if err != nil {
 			return result, safeError(ctx, err)
+		}
+		if e := c.validateIdentity(packet, g); e != nil {
+			return result, e
 		}
 		values, e := c.values(packet)
 		if e != nil {

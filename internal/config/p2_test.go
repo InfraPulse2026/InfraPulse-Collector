@@ -18,7 +18,7 @@ func TestP2ConfigBoundsAndTypedOperations(t *testing.T) {
 	}, func(c *Config) { c.Logs.Sources = []LogSource{{ID: "x", Path: "/var/log/syslog", Format: "command"}} }, func(c *Config) {
 		c.Telephony.Endpoints = []telephony.Endpoint{{ID: "pbx", Address: "host\r\nVia: injected"}}
 	}, func(c *Config) {
-		c.Telephony.Endpoints = []telephony.Endpoint{{ID: "pbx", Address: "localhost", Transport: "tls"}}
+		c.Telephony.Endpoints = []telephony.Endpoint{{ID: "pbx", Address: "localhost", Transport: "ws"}}
 	}, func(c *Config) {
 		c.Telephony.Endpoints = []telephony.Endpoint{{ID: "pbx", Address: "localhost"}, {ID: "pbx", Address: "localhost"}}
 	}, func(c *Config) { c.Telephony.Concurrency = 100 }} {

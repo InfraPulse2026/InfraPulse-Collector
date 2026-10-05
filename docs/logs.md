@@ -127,20 +127,47 @@ identity membership, offsets, anchor и bounds проверяются при з�
 ## Доставка
 
 Discovery identities с нулевыми offsets сохраняются до первой попытки batch,
-чтобы отказ RAM outbox не позволил забыть исходный файл после rotation.
+чтобы отказ outbox не позволил забыть исходный файл после rotation.
 Read offset продвигается только после успешного принятия соответствующего
-`LogBatch` в текущий bounded RAM outbox. Отказ admission сохраняет прежние
-offsets и приводит к повторному чтению. После admission cursor синхронно
-сохраняется; если persistence не удалась, новые reads прекращаются до успешной
-повторной записи. Crash между admission и cursor persistence допускает replay
-с теми же record IDs.
+`LogBatch` в bounded outbox. Отказ admission сохраняет прежние offsets и
+приводит к повторному чтению. После admission cursor синхронно сохраняется;
+если persistence не удалась, новые reads прекращаются до успешной повторной
+записи. Crash между admission и cursor persistence допускает replay с теми же
+record IDs, но batch может попасть в новый envelope с другим message ID.
 
-Persistent cursor не является durable outbox. Crash после успешного сохранения
-cursor, последующее queue eviction либо Send error после Pop могут потерять
-уже прочитанные logs. Успешный gRPC Send не подтверждает сохранение Backend.
-P2 использует best-effort delivery с возможными пропусками и повторами;
-exactly-once и durable delivery отсутствуют. Persistent outbox с application
-ACK относится к P3.
+P3 разделяет три состояния:
+
+| Состояние | Значение |
+|---|---|
+| Filesystem cursor | Сохранённая позиция чтения; определяет следующий read |
+| Local outbox admission | Batch принята memory queue либо synced durable transaction |
+| Controller ACK | Controller accepted stable envelope message ID; durable record можно удалить |
+
+`queue.mode: memory` сохраняет P2 best effort: admission volatile, restart,
+eviction и Send error после Pop могут потерять уже прочитанные logs. Persistent
+cursor сам по себе не сохраняет payload.
+
+При `queue.mode: durable` успешный Push возвращается после synced bbolt commit,
+поэтому cursor может продвигаться независимо от сети: batch переживает restart.
+Pop только leases record, Send его не удаляет. Negotiated application ACK
+подтверждает accepted message ID, затем local deletion синхронизируется.
+Unacked retained envelopes replay с прежними IDs после reconnect/restart;
+Controller должен deduplicate по `(agent_id,message_id)`, а для records,
+повторившихся после cursor failure, — также по stable log record IDs.
+
+Semantics — at-least-once для admitted retained records; exactly-once не
+заявляется. Durable queue bounded: deterministic retention/eviction могут
+потерять уже прочитанные обычные logs или audit records; cursor при этом
+не rewind автоматически. Ordinary logs имеют medium priority в durable mode
+и прежний низкий priority в memory mode; batches с parsed audit имеют high
+priority в обоих modes. Pending CommandResult никогда не вытесняется ради logs.
+Unknown/unparsed audit text не становится security event только по имени source.
+
+Успешный gRPC Send не подтверждает processing Backend. Durable peer без ACK
+по default `ack_fallback: reject` не запускает exchange; явный `send` fallback
+оператора имеет best-effort semantics и виден в diagnostics. Degraded memory
+fallback при corrupted/unavailable durable startup также не даёт durable log
+guarantee. Storage bounds, flash wear и retention — [delivery](delivery.md).
 
 ## Audit и чувствительные данные
 
@@ -155,21 +182,21 @@ source ID, device ID и node. Records не объединяются эврист
 быть partial, продолжаться в другом batch либо после restart. Agent не делает
 SIEM/AI inference и не создаёт security event из произвольного текста.
 
-Перед отправкой очищаются известные password/token/community/authorization
-patterns, Bearer/Basic headers и configured secret values. PEM private key
+Перед local admission очищаются известные password/token/community/authorization
+patterns, Bearer/Basic headers и configured secret values, включая SNMPv3
+auth/privacy passwords и enrollment token. PEM private key
 blocks подавляются построчно, флаг сохраняется через restart и rotation.
 Literal replacement выполняется за один проход; повторная очистка не увеличивает
 markers. Если configured value пересекается с обычным marker, используется
 безопасный альтернативный символ. Если ни один marker не подходит, текст
 подавляется целиком. Содержимое marker не является стабильным wire field.
-Literal replacements выполняются за один проход; вставленные markers не
-раздуваются повторными replacements. Если configured credential совпадает
-с обычным marker либо его частью, выбирается безопасный альтернативный
-символ. Повторная sanitation сохраняет уже очищенный bounded payload.
+Повторная sanitation сохраняет уже очищенный bounded payload.
 В diagnostics находятся только bounded source states и безопасные error
 categories. Sanitizer не гарантирует обнаружение неизвестных секретов,
 универсальную анонимизацию или декодирование arbitrary encoded payloads.
-Защищайте доступ service user к logs, audit records и state directory.
+Защищайте доступ service user к logs, audit records и state directory:
+sanitized durable payload всё равно может содержать usernames, paths и другие
+конфиденциальные данные; encryption at rest отсутствует.
 
 Parser основан на [RFC5424](https://www.rfc-editor.org/rfc/rfc5424.html),
 [RFC3164](https://www.rfc-editor.org/rfc/rfc3164.html),

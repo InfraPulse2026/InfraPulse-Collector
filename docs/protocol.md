@@ -19,8 +19,11 @@ service AgentService {
 
 Полное имя RPC: `/infrapulse.v1.AgentService/Connect`. Agent не открывает
 входящий management port. После открытия stream он отправляет `AgentHello`;
-Controller отвечает `HelloAck{accepted: true, protocol_version: 1}`. До этого
-подтверждения Agent не начинает отправлять сообщения из outbox. Отказ, другая
+Controller отвечает `HelloAck{accepted: true, protocol_version: 1}`. P3 Agent
+запрашивает `AgentHello.application_ack=8`; peer подтверждает
+`HelloAck.application_ack=3`. Отсутствующее поле означает legacy peer. До
+accepted HelloAck Agent не отправляет сообщения из outbox; после него legacy
+поведение зависит от queue mode и явной ACK fallback policy. Отказ, другая
 версия, команда вместо acknowledgement или истечение timeout закрывают session.
 
 Каждая session использует один последовательный sender и один receiver. Эти
@@ -167,8 +170,9 @@ conversion. Номера и типы существующих P0 fields сохр
 
 ## ControllerEnvelope и typed commands
 
-`ControllerEnvelope` содержит oneof: `hello_ack=1` или `command=2`.
-`HelloAck` содержит `accepted=1`, `protocol_version=2`.
+`ControllerEnvelope` содержит oneof: `hello_ack=1`, `command=2` или
+`message_ack=3`. `HelloAck` содержит `accepted=1`, `protocol_version=2`,
+`application_ack=3`; `MessageACK` — `message_id=1`.
 
 `Command` содержит `id=1`, `target_device_id=2`, `requested_at=3`,
 `timeout=4` (`google.protobuf.Duration`), `initiator=5`, `idempotency_key=6`
@@ -176,6 +180,7 @@ conversion. Номера и типы существующих P0 fields сохр
 
 - `interface=10`: interface ID и enum `ENABLE`/`DISABLE`;
 - `service=11`: service name и enum `START`/`STOP`/`RESTART`.
+- `rollback=12`: `RollbackAction.snapshot_id=1`, без произвольного payload.
 
 Initiator enum: `HUMAN`, `AI_SUGGESTED`, `AUTOMATION`. Значение `UNSPECIFIED`,
 неизвестные enum numbers, пустая action/resource, отсутствующий requested time,
@@ -195,6 +200,11 @@ verified/changed/uncertain и bounded safe evidence. `uncertain=9` у резул
 `TIMEOUT`/`FAILED`, а не автоматически `SUCCESS`; fake rollback не выполняется.
 Измеренный admin=false сохраняет optional presence. Verification с
 verified=true требует совпадающего наблюдения и uncertain=false.
+P3 `CommandResult.snapshot_id=10` связывает result с Agent-owned typed snapshot.
+Snapshot содержит только interface admin state/identity; его полный content
+не передаётся Controller произвольным configuration payload. Rollback проверяет
+ownership, latest/superseded state, retention, compatibility, current resource и
+обычную policy/protection; успешный rollback также требует verification.
 
 Реальные writes выполняются только RouterOS interface executor после capability,
 default-deny policy и canonical protection checks. Local/SNMP и service actions
@@ -204,27 +214,35 @@ Command deadline ограничивается requested timestamp/timeout и в�
 
 ## Доставка и backpressure
 
-Outbox ограничен числом сообщений, общим размером и размером одного envelope.
-Он хранит immutable serialized copies в RAM и соблюдает приоритеты. При
-переполнении разрешённый drop учитывается в heartbeat queue counters. Polling
-не ждёт медленный Controller, а sender не создаёт неограниченное число workers.
+Memory mode сохраняет best effort. Durable mode хранит immutable checksummed
+records в bounded local bbolt до application ACK. `ControllerEnvelope.message_ack=3`
+содержит `MessageACK.message_id=1`: accepted stable message ID. Успешный Send
+не удаляет запись. Restart/reconnect повторяет unacked record с тем же ID,
+текущими session/sequence/sent_at и исходными observed timestamps.
+Backend обязан deduplicate `(agent_id,message_id)` и ACK только после своего
+application commit. Mock ACK подтверждает development observer/output receipt,
+не production durable storage.
 
-Это best-effort delivery: успешный gRPC `Send` не является подтверждением
-сохранения сообщения на Backend. Очередь не переживает restart Agent. Ошибка
-отправки после извлечения из outbox также может потерять сообщение, включая
-CommandResult; dropped queue counters описывают drops очереди и не подтверждают
-доставку по сети. Следовательно, Agent не обещает exactly-once, durable command
-results или надёжную доставку логов. Receiver Backend должен использовать
-message/event IDs для deduplication при будущих retries. Persistent log cursors
-реализованы отдельно от delivery; durable logs/command results требуют persistent
-outbox и явный application acknowledgement вне P2.
+Semantics — at-least-once для admitted retained messages; exactly-once нет.
+Retention/eviction допускают потери telemetry/logs, но не pending CommandResult.
+In-flight window и ACK timeout ограничены; timeout приводит к reconnect/backoff.
+Duplicate/unknown ACK безопасны. Legacy peer в durable default `ack_fallback: reject`
+не получает exchange, records остаются bounded. Явный `send` fallback удаляет
+после Send и честно означает best effort; fallback виден в diagnostics/warning.
+Подробная storage/admission policy — [delivery](delivery.md).
 
-До execution Agent резервирует 4096 bytes/один message slot под result.
-При недостаточной capacity или `max_message_bytes < 4096` команда не исполняется,
-session закрывается; reservation гарантирует RAM admission, не доставку.
-Dedup cache ограничен 256 commands/results, сверяет command ID/idempotency key
-и fingerprint параметров, повторно выдаёт завершённый result с актуальным
-command ID. Cache теряется при restart/eviction, persistent journal отсутствует.
+До mutation резервируются outbox result slot/4096 bytes, persistent journal и
+future result capacity. Snapshot/executing сохраняются до write. Result envelope
+persist'ится до enqueue, включая стабильный message ID. Journal сохраняет
+deduplication до retention acknowledged record. Recovery persisted `reserved`
+отклоняет interrupted command; persisted `executing` становится uncertain
+без повторного PATCH. [Journal и rollback](commands.md).
+
+QueueState P3 fields: `mode=6`, `storage_bytes=7`, `oldest_pending=8`, `unacked=9`,
+`pending_results=10`, `storage_error=11`. Heartbeat `certificate=7` передаёт только
+expiresAt/remaining lifetime/enrollment/renewal state/last renewal/safe error.
+Private keys, tokens и certificates/CSR bytes через Agent stream не передаются.
+Все существующие P0/P1/P2 field numbers сохранены; protocol version остаётся 1.
 
 ## LogBatch и audit
 
@@ -241,20 +259,19 @@ Records одного event связываются exact source+device+host+event
 означает полный audit event, соседние строки не склеиваются. Agent не делает AI
 security inference; обычная log line не становится Event.
 
-Cursor advances только после успешного RAM queue admission всего batch.
-Rejected batch не advance. State persistence failure после admission блокирует
-новые чтения до успешной записи; restart может повторить records. Eviction,
-crash/restart RAM queue и Send после Pop могут потерять принятые logs. gRPC Send
-не является application ACK. Semantics — best effort с persistent read position,
-без exactly-once/guaranteed/durable delivery. `QueueState.dropped_logs=5`
-считает отказ и eviction log envelopes; dropped_other включает их также.
-Logs имеют более низкий priority, чем telemetry, и не вытесняют CommandResult.
+Cursor advances после успешной local admission всей batch: RAM для memory,
+synced transaction для durable. Rejected batch не advance. Cursor persistence
+failure блокирует reads и может дать record replay. Controller ACK независимо
+удаляет outbox envelope; не управляет filesystem cursor. Retention/eviction могут
+терять logs даже после durable admission. `QueueState.dropped_logs=5` считает
+отказы/eviction; dropped_other включает их тоже. Durable logs имеют medium,
+audit — high priority; memory сохраняет P2 lower log priority. CommandResult защищены.
 Подробнее — [logs](logs.md).
 
 ## TelephonyUpdate
 
 `AgentEnvelope.telephony=17` содержит observed time, source и bounded targets
-(wire limit256, config128). Health: stable target ID, address, UDP/TCP transport,
+(wire limit256, config128). Health: stable target ID, address, UDP/TCP/TLS transport,
 reachable, optional response code/latency milliseconds, observed time,
 consecutive failures, state и safe error category. Matching valid response
 подтверждает reachable; 2xx означает успешный unauthenticated OPTIONS, 401/407
@@ -284,12 +301,17 @@ production Agent не запускает Generator. Marker должен сохр
 В `production` Agent проверяет CA и hostname/SAN Controller и предъявляет
 client certificate. Server требует сертификат, подписанный доверенным client
 CA. Используются TLS ≥ 1.2 и обычная verification; `InsecureSkipVerify` не
-включается. CA, certificate и private key заданы файлами. Explicit `development`
+включается. Credentials заданы manual файлами либо enrollment bundle.
+Explicit `development`
 допускает plaintext только для loopback address, включая localhost.
 
-Enrollment RPC, one-time token exchange, выдача/rotation сертификатов и
-связывание certificate identity с конкретным `agent_id` не реализованы.
-Сертификаты provisioning выполняется вне Agent; будущий Backend обязан отдельно
-авторизовать certificate principal и проверить принадлежность Agent ID.
+Client URI SAN `spiffe://infrapulse/agent/<UUID>` должен совпадать с claimed
+`agent_id`; production Mock проверяет это до observe/HelloAck. Manual certificates
+без URI binding требуют reissue. Agent-side enrollment использует отдельные
+фиксированные HTTPS `/enroll` и `/renew`, не новый protobuf service. Запрос —
+Agent ID/CSR и только для enroll one-time token; ответ — certificate/CA chain,
+никогда private key. Renewal mTLS использует прежний certificate identity.
+[PKI contract/ограничения](enrollment.md). Tenancy/revocation/production CA service
+остаются обязанностью будущего Backend.
 Mock Controller даже с mTLS остаётся development-компонентом и не является
 production системой регистрации, авторизации или хранения данных.

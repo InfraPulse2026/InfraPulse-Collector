@@ -1,0 +1,23 @@
+agent:
+  name: enrolled-collector
+  state_dir: ../state
+controller:
+  address: localhost:9443
+security:
+  mode: production
+  server_name: localhost
+  renew_before: 168h
+  enrollment:
+    enabled: true
+    url: https://localhost:9444
+    ca_file: /etc/infrapulse/enrollment-ca.pem
+    server_name: localhost
+    token_env: INFRAPULSE_ENROLLMENT_TOKEN
+    timeout: 10s
+local:
+  enabled: true
+queue:
+  mode: durable
+commands:
+  enabled: false
+  protected_interfaces: [eth0]

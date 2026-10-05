@@ -1,4 +1,4 @@
-// Package telephony performs fixed, unauthenticated SIP OPTIONS health probes.
+// Package telephony performs fixed SIP OPTIONS health probes over UDP/TCP/TLS.
 // It never accepts requests, headers or arbitrary payloads from a Controller.
 package telephony
 
@@ -21,11 +21,20 @@ type Endpoint struct {
 	Domain           string        `yaml:"domain"`
 	FailureThreshold uint32        `yaml:"failure_threshold"`
 	LatencyThreshold time.Duration `yaml:"latency_threshold"`
+	TLS              TLS           `yaml:"tls"`
+}
+
+type TLS struct {
+	CAFile     string `yaml:"ca_file"`
+	ServerName string `yaml:"server_name"`
 }
 
 func (e Endpoint) WithDefaults() Endpoint {
 	if e.Port == 0 {
 		e.Port = 5060
+		if e.Transport == "tls" {
+			e.Port = 5061
+		}
 	}
 	if e.Transport == "" {
 		e.Transport = "udp"
@@ -50,8 +59,11 @@ func (e Endpoint) WithDefaults() Endpoint {
 
 func (e Endpoint) Validate() error {
 	e = e.WithDefaults()
-	if !token(e.ID, 128) || !host(e.Address) || e.Transport != "udp" && e.Transport != "tcp" || e.Timeout < 10*time.Millisecond || e.Timeout > time.Minute || e.Interval < 10*time.Millisecond || e.Interval > 24*time.Hour || e.FailureThreshold > 100 || e.LatencyThreshold < time.Millisecond || e.LatencyThreshold > time.Minute || !token(e.FromUser, 128) || e.ToUser != "" && !token(e.ToUser, 128) || e.Domain != "" && !host(e.Domain) {
-		return errors.New("invalid SIP endpoint: bounded ID, host, udp/tcp transport and typed settings are required")
+	if !token(e.ID, 128) || !host(e.Address) || e.Transport != "udp" && e.Transport != "tcp" && e.Transport != "tls" || e.Timeout < 10*time.Millisecond || e.Timeout > time.Minute || e.Interval < 10*time.Millisecond || e.Interval > 24*time.Hour || e.FailureThreshold > 100 || e.LatencyThreshold < time.Millisecond || e.LatencyThreshold > time.Minute || !token(e.FromUser, 128) || e.ToUser != "" && !token(e.ToUser, 128) || e.Domain != "" && !host(e.Domain) {
+		return errors.New("invalid SIP endpoint: bounded ID, host, udp/tcp/tls transport and typed settings are required")
+	}
+	if e.Transport != "tls" && (e.TLS.CAFile != "" || e.TLS.ServerName != "") || len(e.TLS.CAFile) > 4096 || strings.ContainsAny(e.TLS.CAFile, "\r\n\x00") || e.TLS.ServerName != "" && !host(e.TLS.ServerName) {
+		return errors.New("invalid SIP TLS settings")
 	}
 	return nil
 }

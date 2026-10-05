@@ -18,6 +18,8 @@ import (
 )
 
 type Controller struct {
+	// DisableACK exercises explicit legacy-controller fallback in fixtures.
+	DisableACK bool
 	pb.UnimplementedAgentServiceServer
 	Writer  io.Writer
 	Observe func(model.Envelope)
@@ -48,19 +50,25 @@ func (c *Controller) Connect(stream grpc.BidiStreamingServer[pb.AgentEnvelope, p
 	if e.Hello == nil || e.Hello.ProtocolVersion != 1 || e.AgentID != e.Hello.AgentID || e.SessionID != e.Hello.SessionID {
 		return status.Error(codes.FailedPrecondition, "first message must be a matching protocol-v1 hello")
 	}
+	if err = transportgrpc.VerifyPeerIdentity(stream.Context(), e.AgentID); err != nil {
+		return status.Error(codes.Unauthenticated, "certificate identity does not match agent identity")
+	}
 	if err = c.observe(e); err != nil {
 		return err
 	}
-	if err = stream.Send(&pb.ControllerEnvelope{Payload: &pb.ControllerEnvelope_HelloAck{HelloAck: &pb.HelloAck{Accepted: true, ProtocolVersion: 1}}}); err != nil {
+	applicationACK := e.Hello.ApplicationACK && !c.DisableACK
+	if err = stream.Send(&pb.ControllerEnvelope{Payload: &pb.ControllerEnvelope_HelloAck{HelloAck: &pb.HelloAck{Accepted: true, ProtocolVersion: 1, ApplicationAck: applicationACK}}}); err != nil {
 		return err
 	}
 	if c.Command != nil {
 		command := *c.Command
-		id, idErr := uuid.NewRandom()
-		if idErr != nil {
-			return status.Error(codes.Internal, "cannot generate command id")
+		if command.ID == "" {
+			id, idErr := uuid.NewRandom()
+			if idErr != nil {
+				return status.Error(codes.Internal, "cannot generate command id")
+			}
+			command.ID = id.String()
 		}
-		command.ID = id.String()
 		command.RequestedAt = time.Now().UTC()
 		if command.TargetDeviceID == "auto-local" {
 			command.TargetDeviceID = e.Hello.Device.ID
@@ -92,6 +100,14 @@ func (c *Controller) Connect(stream grpc.BidiStreamingServer[pb.AgentEnvelope, p
 		sequence = next.Sequence
 		if err = c.observe(next); err != nil {
 			return err
+		}
+		if applicationACK {
+			if next.MessageID == "" || len(next.MessageID) > 128 {
+				return status.Error(codes.InvalidArgument, "invalid message ID")
+			}
+			if err = stream.Send(&pb.ControllerEnvelope{Payload: &pb.ControllerEnvelope_MessageAck{MessageAck: &pb.MessageACK{MessageId: next.MessageID}}}); err != nil {
+				return err
+			}
 		}
 	}
 }

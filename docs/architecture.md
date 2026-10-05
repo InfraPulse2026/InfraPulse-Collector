@@ -2,8 +2,9 @@
 
 Module path — `InfraPulseAgent`, Go — 1.27. Agent совмещает локальный Linux
 collector, Native OpenWrt, remote collection, file logs/audit и SIP health.
-Backend, Web UI, LLM, database и историческое хранилище находятся вне репозитория.
-Mock Controller и Simulator — development-компоненты.
+Backend, Web UI, LLM, server database и историческое хранилище находятся вне
+репозитория; embedded durable state принадлежит Agent.
+Mock Controller, Mock Enrollment и Simulator — development-компоненты.
 
 ## Границы компонентов
 
@@ -13,21 +14,24 @@ Mock Controller и Simulator — development-компоненты.
 | Local Platform | Linux identity, CPU/memory/interfaces из `/proc` и `/sys`; не управляет удалёнными устройствами |
 | Remote Registry | Configured stable IDs, lifecycle drivers, bounded polling, per-device exclusion, last successful observation, connectivity failures и state events |
 | Remote Driver | Нормализация данных одного устройства и динамические capabilities; не читает YAML или protobuf |
-| Protocol Adapter | SNMP v2c/UDP или RouterOS HTTPS REST, authentication, deadlines, cancellation, response limits и безопасные категории ошибок |
+| Protocol Adapter | SNMP v2c/v3 USM/UDP или RouterOS HTTPS REST, authentication, deadlines, cancellation, response limits и безопасные категории ошибок |
 | CredentialProvider | Получение credentials по именованной ссылке из environment; заменяемый interface |
 | Telemetry Pipeline | Общие Interface/Device models, presence, counters, безопасные deltas/rates и outbox |
-| Command Pipeline | Typed validation → target/deadline/capability/policy → canonical protection → mutation → verification |
+| Command Pipeline | Typed validation → admission/journal → target/capability/policy/protection → persistent snapshot/executing → mutation → verification → persistent result/ACK |
+| Durable Outbox | Bounded bbolt admission, protected results, stable message IDs, leases/replay и deletion after ACK |
+| PKI Manager | Local private key/CSR, verified HTTPS enrollment, identity binding, atomic bundle rotation и safe status |
 | gRPC Transport | Единственная wire mapping граница; один sender и один receiver на session |
 | OpenWrt Platform | Linux decorator, typed ubus read-only operations и allowlisted normalized inventory schemas |
 | Vendor Profiles | Подтверждённый sysObjectID namespace; capabilities и standard MIB mappings остаются у driver |
 | Log Pipeline | Bounded file reads, parsers, sanitizer, rotation и persistent admission cursors |
-| Telephony | Fixed SIP OPTIONS UDP/TCP, latency/response/error semantics и отдельные state transitions |
+| Telephony | Fixed SIP OPTIONS UDP/TCP/TLS, verified CA/SAN/SNI, latency/response/error semantics и отдельные state transitions |
 | Simulator | Deterministic development scenarios с simulated source через настоящий transport |
 
 Core не знает OID, RouterOS endpoints и concrete protobuf types. Cross-platform
 описывает ОС запуска Agent; multi-vendor — удалённые устройства. На Windows
 доступен collector hosting с `local.enabled: false`; Windows LocalPlatform
-не реализован.
+не реализован и сознательно перенесён в post-MVP/backlog; готовность P3 от него
+не зависит.
 
 ## Packages и interfaces
 
@@ -43,8 +47,9 @@ internal/protocol/snmp/      read-only GoSNMP adapter
 internal/protocol/routeros/  fixed HTTPS REST operations
 internal/model/              normalized values и remote evidence
 internal/telemetry/          local/remote rates
-internal/commands/           validation, policy, execution и bounded deduplication
-internal/queue/              volatile priority outbox и result reservations
+internal/commands/           validation/policy, persistent journal и snapshots/rollback
+internal/queue/              memory/durable priority outbox, reservation и ACK/replay
+internal/pki/                enrollment/CSR, certificate lifecycle и private state
 internal/transport/grpc/     protobuf mapping и verified TLS/mTLS
 internal/platform/openwrt/   decorator над Linux, typed ubus и schema mappings
 internal/vendorprofiles/     verified PEN detection, без отдельных SNMP drivers
@@ -72,7 +77,8 @@ protocol options. ID не выводится из management IP и не меня
 
 Config ограничивает devices/credential references 1024 записями. Default remote
 concurrency — 4, rows — 4096, response bytes — 1 MiB. Секреты поступают через
-`credentials.<ref>.community_env` или `username_env`/`password_env`. Provider
+`credentials.<ref>.community_env`, `username_env`/`password_env` либо SNMPv3
+`username_env`/`auth_password_env`/`privacy_password_env`. Provider
 читает значения при request; отсутствие значения означает unavailable.
 Нельзя передать credential через Controller или включить его в diagnostics.
 
@@ -105,7 +111,7 @@ Unsupported OID, missing API и malformed data не считаются connectiv
 ## Generic SNMP и inventory
 
 Pure-Go `github.com/gosnmp/gosnmp` выполняет BER/SNMP. Adapter предоставляет
-Get/GetNext/Walk/BulkWalk только SNMP v2c read-only; driver разбирает стандартные
+Get/GetNext/Walk/BulkWalk SNMP v2c/v3 read-only; driver разбирает стандартные
 SYSTEM, ENTITY-MIB, IF-MIB/IF-X-MIB и LLDP-MIB. Library packet logging отключён:
 сообщество не появляется в errors или logs. Ошибки и partial walk сохраняются,
 поэтому оборванная таблица не выдаётся за complete snapshot.
@@ -199,20 +205,23 @@ protection любого связанного management alias запрещает
 Автоматическое определение management path отсутствует.
 
 До action Agent резервирует 4096 bytes и message slot для CommandResult;
-недостаточная queue capacity/малый message limit не допускают action. Receiver
-исполняет commands последовательно; per-device gate исключает конфликт poll.
-Bounded volatile dedup cache содержит до 256 commands/results и проверяет
-fingerprint target/action/initiator. In-flight identity не вытесняется.
+недостаточная queue capacity/малый message limit не допускают action. Отдельный
+последовательный worker с backlog=1 не блокирует receiver ACK. Per-device gate
+исключает конфликт poll. Persistent bounded journal проверяет command ID/key
+и fingerprint target/action/initiator; результат и execution state переживают restart.
 
 SetInterface проверяет текущий canonical record, выполняет один PATCH и
 read-after-write GET после любой отправленной попытки, включая HTTP error или
 невалидное тело ответа. Для verification оставляется часть deadline. Повторяется
 только безопасное чтение; если исход
-не подтверждён, result содержит uncertain. Fake rollback отсутствует.
+не подтверждён, result содержит uncertain. Автоматического retry PATCH или
+rollback нет; отдельный typed rollback требует проверенного snapshot.
 
-Outbox/result reservations/dedup находятся в RAM: restart теряет состояние,
-ошибка Send после Pop может потерять result. Это не durable execution journal
-и не exactly-once. Полная security model — [security](security.md).
+Memory telemetry outbox остаётся best effort. Durable outbox сохраняет records
+до ACK. Persistent execution journal работает независимо от queue mode и не
+даёт повторно исполнить retained duplicate после restart. Interrupted executing
+command становится uncertain; result replay не повторяет write. Это не
+exactly-once внешнего устройства. [Commands](commands.md), [security](security.md).
 
 ## Источники и следующие этапы
 
@@ -225,9 +234,10 @@ RouterOS operations: [REST API](https://manual.mikrotik.com/docs/developer-guide
 [interfaces](https://manual.mikrotik.com/docs/cli-reference/interface/),
 [neighbors](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery).
 
-P3 остаётся отдельным этапом: Windows
-LocalPlatform, SNMPv3/другие протоколы по необходимости, durable delivery,
-enrollment и snapshots/rollback. Их наличие в roadmap не означает capability.
+P3 повышает надёжность: SNMPv3, bounded durable delivery/ACK/replay,
+persistent journal/results, enrollment/rotation и typed interface rollback.
+Windows LocalPlatform относится к post-MVP/backlog. NETCONF/gNMI deferred:
+без подтверждённого typed use case новый protocol не добавляется.
 Фактически выполненные проверки находятся в [validation](validation.md).
 
 ## OpenWrt, logs и telephony
@@ -251,10 +261,10 @@ secret redaction и known patterns до parsing/serialization. Audit records
 Cursor state — отдельные protected файлы per source в `state_dir/log-cursors`.
 Device/inode identity, generation, admitted offset, anchor hash и PEM/discard
 state сохраняются crash-safe temp+sync+rename. Cursor advancement следует за
-RAM queue admission; reject не advance, persistence error блокирует новые reads.
-Rotation gaps и bounds видны как events/diagnostics. Crash после admission,
-очередь eviction и Pop/Send loss всё ещё теряют logs; запись cursor не durable
-transport ACK. О деталях — [logs](logs.md).
+local queue admission; в durable mode Push ждёт synced transaction. Reject не
+advance, cursor persistence error блокирует reads. Filesystem cursor, local
+admission и Controller ACK независимы. Retention/eviction могут терять logs;
+crash между admission/cursor persistence допускает record replay. [Logs](logs.md).
 
 SIP endpoint имеет stable ID и собственный state; это не remote device state.
 Fixed OPTIONS проверяет transaction identifiers, response framing и code,
@@ -274,3 +284,115 @@ Generator создаёт bounded deterministic device set и временные 
 использует тот же Transport/Session, gRPC handshake, reconnect и normalized
 envelopes; все вложенные synthetic observations имеют `source=simulated`.
 Это demonstration data, не hardware validation. [Simulator](simulator.md).
+
+## Durable delivery и safety state P3
+
+Queue abstraction сохраняет два режима. `memory` — совместимый best effort;
+`durable` — embedded [bbolt v1.5.0](https://github.com/etcd-io/bbolt/releases/tag/v1.5.0),
+pure Go без CGO/server. Выбор основан на maintained etcd implementation, synced
+ACID transactions, bounded file growth через `MaxSize` и переносимости Linux
+amd64/arm64/arm/mips/mipsle. Mmap использует OS page cache; это не обещание
+фиксированного RSS. Database endian-dependent, автоматической compaction нет.
+
+Immutable record сохраняет stable UUID, envelope, priority, creation time и
+checksum. Payload/messages, physical file, message size, retention и in-flight
+leases имеют независимые пределы. Concurrent admissions/ACK используют bounded
+Batch; Push ждёт synced commit, `NoSync` не используется. Flash wear остаётся
+deployment risk: OpenWrt может использовать memory или external writable volume.
+
+```text
+collect → immutable envelope → local admission → Send → application acceptance
+                                                   → ACK → local deletion
+command → policy/protection → durable reservation → snapshot/execution boundary
+        → one mutation → readback → durable journal result → outbox → ACK
+```
+
+Pop durable record выдаёт lease, не удаляет payload. Disconnect сбрасывает
+leases, timeout вызывает reconnect/backoff. Negotiated ACK отсутствует у старого
+peer: default durable `reject` сохраняет bounded очередь и явно сообщает ошибку;
+operator opt-in `send` даёт best effort deletion после Send. Controller должен
+deduplicate по `(agent_id,message_id)`. Semantics — at-least-once retained
+messages, с возможной потерей low/medium priority по retention/eviction.
+Pending CommandResult никогда не вытесняется telemetry.
+
+Journal/snapshots — отдельный bounded checksummed atomic JSON state, а не
+telemetry history. Это небольшие редкие state transitions; file/directory Sync
+используются на каждой durable execution границе. Один process владеет lock.
+Reserved capacity включает будущий result; storage failure до execution
+блокирует mutation. Полная физическая квота для внешнего filesystem не обещается.
+Reserved recovery отклоняет interrupted command; executing recovery создаёт
+uncertain result, не повторяя внешнюю mutation. Сохранённый result replay
+использует прежний message ID. Journal dedup horizon ограничен retention
+acknowledged entries. Подробности — [delivery](delivery.md), [commands](commands.md).
+
+Snapshots только для поддерживаемого RouterOS interface admin state. Typed
+rollback проверяет ownership, canonical aliases/dependencies, current protection,
+capability/policy, version/schema, TTL, latest generation и expected current
+state. Новый snapshot перед rollback и read-after-write verification используют
+обычный mutation pipeline. Remote REST не даёт atomic CAS, поэтому внешняя
+параллельная запись остаётся risk; blind overwrite и arbitrary payload отсутствуют.
+
+## Enrollment и certificate lifecycle P3
+
+PKI Manager получает persistent Agent UUID до transport creation. Local ECDSA
+P-256 key/CSR и one-time token дают certificate через verified HTTPS service.
+URI SAN `spiffe://infrapulse/agent/<UUID>` связывает credential с заявленным ID;
+Mock Controller проверяет binding после verified mTLS. Production Backend обязан
+сохранять ту же проверку и отдельно решать tenancy authorization.
+
+Matching key/certificate/CA хранятся одной atomic bundle с Unix permissions
+0700/0600. Key не покидает Agent. Renewal использует current mTLS certificate,
+новый local key/CSR и bounded one-minute cadence; token больше не требуется.
+Validation/storage failure сохраняет старый рабочий credential. Успешная
+rotation отменяет текущую session и reconnect получает новый TLS snapshot.
+Heartbeat/diagnostics показывают только expiry/remaining lifetime и safe status.
+
+Filesystem key protection не является HSM/TPM/encryption. Mock token registry
+in-memory и development-only; production CA, revocation, CA rollover, expired
+certificate recovery и tenant control не реализованы. Manual certificate mode
+сохраняется, но сертификаты без URI binding требуют reissue.
+[Enrollment contract](enrollment.md), [security](security.md).
+
+## Linux/OpenWrt и deployment review
+
+Generic Linux interfaces — procfs/sysfs, interface addresses и os-release; отдельные
+collectors для Astra Linux, ALT Linux и RED OS не нужны. Это оценка совместимости
+интерфейсов, не runtime validation дистрибутивов. Доступная runtime среда — WSL
+Linux amd64. Russian distributions и настоящая OpenWrt firmware runtime unverified.
+Restricted/missing optional sources должны сохранять unavailable/unknown evidence;
+container namespace и mounts определяют видимые CPU/network/log data.
+
+Native deployment использует host procfs/sysfs, local log permissions и persistent
+state directory. Container Collector может опрашивать SNMP/RouterOS/SIP без
+обещания полноценного host monitoring; для collector-only выбирается
+`local.enabled: false`. Durable state требует persistent writable volume.
+Docker не обязателен; отдельная container runtime validation и production
+Dockerfile в P3 не добавлены. Service user, log permissions, read-only rootfs с
+отдельным writable state, flash/RAM budget и management protection остаются
+responsibility deployment. Monitoring degraded storage не разрешает mutation.
+
+Vendor profiles поддерживают Eltex/QTECH наравне с остальными через standard
+MIB fallback. P3 не добавляет product health OID: ни одному mapping не получен
+полный комплект official semantics, достоверного ответа и fixture. Это не
+утверждение отсутствия vendor MIB; отсутствие доказанного mapping сохраняется
+явным. SIP расширен verified TLS OPTIONS с CA/SNI/name checks; Digest deferred.
+
+## Решение по NETCONF и gNMI
+
+**NETCONF — deferred.** Конкретный vendor/resource, который нельзя надёжно
+покрыть существующими reads/typed RouterOS mutation, не определён. Go candidate
+[nemith/netconf](https://github.com/nemith/netconf) предоставляет отдельную library,
+но pre-1.0 API/toolchain совместимость не проверялась как dependency. Потребуются
+typed operations, SSH host-key/TLS trust, bounded XML и официальные schemas с
+fixture strategy. Наличие library не является основанием добавить protocol.
+
+**gNMI — deferred.** [OpenConfig Go reference implementation](https://github.com/openconfig/gnmi)
+предоставляет client/collector, но подтверждённые device paths, supported model
+versions и потребность в subscription telemetry здесь отсутствуют. SNMP уже даёт
+нужные demo signals. Fixture strategy возможна через local gRPC server, однако
+она не подтверждает paths реального vendor. При появлении use case — отдельный
+read-only adapter, predefined paths и verified TLS; arbitrary writes запрещены.
+
+Production Backend/UI/AI/history, universal backup/configuration manager, media
+и Windows LocalPlatform остаются post-MVP или вне scope. P3 production readiness
+не означает hardware certification или готовый production PKI/Backend.

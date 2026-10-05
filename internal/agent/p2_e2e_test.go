@@ -106,7 +106,7 @@ func runP2Agent(t *testing.T, c config.Config, p platform.Platform) *Agent {
 }
 func TestAgentLogsAuditTelephonyStreamingAndRestart(t *testing.T) {
 	port, code := sipFixture(t)
-	dir := t.TempDir()
+	dir := testTempDir(t)
 	sys := filepath.Join(dir, "syslog")
 	audit := filepath.Join(dir, "audit.log")
 	t.Setenv("P2_SECRET", "p2-private-community-value")
@@ -191,7 +191,7 @@ func TestAgentLogsAuditTelephonyStreamingAndRestart(t *testing.T) {
 }
 
 func TestAgentCursorRestartOverGRPC(t *testing.T) {
-	dir := t.TempDir()
+	dir := testTempDir(t)
 	path := filepath.Join(dir, "syslog")
 	if err := os.WriteFile(path, []byte("first\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestAgentCursorRestartOverGRPC(t *testing.T) {
 }
 
 func TestLogStormPreservesTelemetry(t *testing.T) {
-	dir := t.TempDir()
+	dir := testTempDir(t)
 	path := filepath.Join(dir, "burst")
 	var lines strings.Builder
 	for i := 0; i < 4000; i++ {

@@ -2,7 +2,7 @@
 
 InfraPulse Agent — Go-компонент многовендорной NetOps Platform InfraPulse для
 сбора данных инфраструктуры и передачи их в Controller/Backend. Agent собирает
-локальный Linux/OpenWrt-хост и удалённые устройства через SNMP v2c и RouterOS
+локальный Linux/OpenWrt-хост и удалённые устройства через SNMP v2c/v3 и RouterOS
 HTTPS REST, передаёт telemetry, inventory, topology observations, logs, SIP
 health и события.
 
@@ -19,7 +19,7 @@ AI и историческое хранилище находятся вне эт
   расчёт traffic rates между измерениями.
 - Постоянный Agent ID и отдельный Session ID для каждого запуска.
 - Передача inventory, heartbeat и событий Agent.
-- Generic SNMP v2c read-only: SYSTEM, ENTITY-MIB при доступности, IF-MIB/IF-X-MIB
+- Generic SNMP v2c/v3 read-only: SYSTEM, ENTITY-MIB при доступности, IF-MIB/IF-X-MIB
   и LLDP-MIB с сохранением исходных идентификаторов и evidence.
 - RouterOS HTTPS REST: identity/resource/routerboard, interfaces и IP-адреса,
   neighbor discovery с фактическим LLDP/CDP/MNDP source.
@@ -27,7 +27,13 @@ AI и историческое хранилище находятся вне эт
   и события переходов состояния.
 - Настраиваемый интервал оперативной telemetry, по умолчанию 3 секунды.
 - Исходящее bidirectional gRPC-соединение, production mTLS и reconnect.
-- Ограниченная очередь отправки и диагностика состояния Agent.
+- Memory или bounded durable outbox со stable IDs, negotiated application ACK,
+  restart/replay и diagnostics. Durable delivery — at-least-once для retained
+  messages; exactly-once не заявляется.
+- Persistent command execution journal, durable results и typed RouterOS
+  interface snapshots/rollback с теми же policy/protection/verification checks.
+- Agent-side enrollment через verified HTTPS, локальный private key/CSR,
+  certificate identity и renewal/rotation foundation.
 - Типизированные RouterOS `interface.enable`/`interface.disable` с policy,
   защитой management interfaces и проверкой состояния после изменения.
   По умолчанию команды отключены.
@@ -38,7 +44,8 @@ AI и историческое хранилище находятся вне эт
   enterprise prefixes и Generic SNMP fallback.
 - Ограниченный file log pipeline для rsyslog/common logs и auditd, sanitizer,
   persistent cursors и обработка rotation/truncate/recreate.
-- SIP OPTIONS UDP/TCP: availability, latency, failure threshold и state events.
+- SIP OPTIONS UDP/TCP/TLS: availability, latency, failure threshold и state
+  events; TLS проверяет CA/SAN/SNI, Digest authentication пока отсутствует.
 - Development Simulator с deterministic scenarios/trends и `source=simulated`.
 
 ## Как это работает
@@ -77,7 +84,8 @@ Collector Mode опрашивает устройства из `devices` без �
   системных источников и записи в каталог состояния.
 - Для передачи данных — доступный Controller с совместимым протоколом
   либо development Mock Controller.
-- Для production-соединения — CA, сертификат Agent и private key.
+- Для production-соединения — trusted CA и manual сертификат Agent/private key
+  либо verified Agent-side enrollment с bootstrap CA и one-time token.
 - `protoc` не требуется для обычной сборки: generated Go sources находятся
   в репозитории. Установка сервиса требует Linux с systemd и прав администратора.
 
@@ -132,6 +140,7 @@ go build -o bin/infrapulse-mock-controller ./cmd/infrapulse-mock-controller
 
 Script создаёт `bin/infrapulse-agent.exe`, `bin/infrapulse-mock-controller.exe`
 и отдельный `bin/infrapulse-simulator.exe`.
+Development Mock Enrollment также собирается как `infrapulse-mock-enrollment`.
 Если Go не находится в `PATH`, используйте параметр `-GoPath <path-to-go>`.
 
 ### Cross-compilation
@@ -187,7 +196,7 @@ devices: []
 | `security` | Режим соединения, CA, сертификат, private key и имя сервера |
 | `local` | Включение локального сбора, platform auto/linux/openwrt |
 | `telemetry` | Интервалы fast, inventory, heartbeat и timeout сбора |
-| `queue` | Лимиты количества и размера сообщений |
+| `queue` | Memory/durable, message/payload/file limits, retention, batching и ACK fallback |
 | `scheduler` | Число одновременно выполняемых collectors |
 | `logging` | Уровень логирования: debug, info, warn, error |
 | `location` | Физическое расположение, заданное оператором |
@@ -207,6 +216,10 @@ devices: []
   SNMP/RouterOS collection с credentials из environment.
 - [config.p2.example.yaml](configs/config.p2.example.yaml) — OpenWrt auto mode,
   configurable logs/audit и SIP OPTIONS.
+- [config.p3.example.yaml](configs/config.p3.example.yaml) — durable delivery,
+  SNMPv3 authPriv и SIP TLS.
+- [config.enrollment.example.yaml](configs/config.enrollment.example.yaml) —
+  production Agent-side enrollment с bootstrap CA и token environment reference.
 
 Для production замените адрес и параметры безопасности:
 
@@ -221,8 +234,12 @@ security:
   server_name: controller.example.net
 ```
 
-Сертификаты подготавливаются отдельно; файлы должны быть доступны пользователю
-Agent. Подробнее — [безопасность](docs/security.md).
+Manual certificates должны содержать URI SAN
+`spiffe://infrapulse/agent/<persistent-Agent-UUID>`; старые сертификаты без этой
+привязки необходимо перевыпустить. Альтернатива — Agent-side enrollment с
+локальным key/CSR и one-time token. Renewal публикует новую certificate bundle
+атомарно; неудача сохраняет действующую bundle. Подробнее —
+[enrollment](docs/enrollment.md) и [безопасность](docs/security.md).
 
 Поддерживаемые environment overrides:
 
@@ -356,12 +373,13 @@ telephony:
 Paths разрешаются относительно YAML; missing/permission-denied source виден
 в diagnostics. Agent не требует одновременно syslog и messages. Для OpenWrt
 `logread`/RAM ring buffer в file pipeline не входит. Cursor продвигается после
-RAM admission, delivery остаётся best effort. Правила rotation, восстановления
+local admission; в durable режиме это synced disk admission, в memory — RAM
+best effort. Controller ACK отдельно удаляет outbox record. Правила rotation, восстановления
 corrupted state и audit correlation описаны в [logs](docs/logs.md).
 
-SIP probe самостоятельно формирует unauthenticated OPTIONS. UDP/TCP поддержаны;
+SIP probe самостоятельно формирует unauthenticated OPTIONS. UDP/TCP/TLS поддержаны;
 401/407 означают reachable/authentication required, а не успешный probe.
-TLS, REGISTER, credentials и media отсутствуют. Подробнее —
+REGISTER, Digest credentials и media отсутствуют. Подробнее —
 [telephony](docs/telephony.md).
 
 ### Agent
@@ -458,9 +476,22 @@ Mock использует stable target ID из config:
 
 Результат включает `changed` и read-after-write verification. Timeout после
 отправки изменения может вернуть `uncertain=true`; автоматического rollback
-нет. Очередь и кеш повторов хранятся в RAM. Для admission команды лимит
+нет. Journal и snapshots сохраняются при restart: `reserved` без execution
+boundary восстанавливается как rejected, `executing` — как uncertain без
+повторной mutation. Для admission команды лимит
 `queue.max_message_bytes` должен быть не меньше 4096 bytes и в очереди должно
 хватать места для результата.
+
+Result содержит `snapshot_id` для поддерживаемой interface mutation. Typed rollback:
+
+```sh
+./bin/infrapulse-mock-controller --command resource.rollback --target router-01 --snapshot <snapshot-id>
+```
+
+Agent проверяет snapshot ownership/retention/identity/version/latest generation,
+текущее expected state и protected dependency closure. Stale/conflicting snapshot
+отклоняется. Успех требует read-after-write verification. Это восстановление
+одного interface admin state, не full device backup. [Подробности](docs/commands.md).
 
 Для соединения с mTLS Mock поддерживает параметры `--security-mode production`,
 `--ca-file`, `--cert-file`, `--key-file`. Требования к сертификатам и протоколу —
@@ -557,16 +588,18 @@ sudo systemctl status infrapulse-agent
 
 - **Linux:** поддерживается локальный read-only collector; основные targets —
   amd64 и arm64.
-- **Windows:** локальный сбор отсутствует. Для development-соединения используйте
+- **Windows:** LocalPlatform сознательно остаётся post-MVP/backlog и не является
+  критерием P3. Для development-соединения используйте
   `configs/config.collector.example.yaml` с `local.enabled: false`.
 - **OpenWrt:** native read-only adapter реализован и проверен schema fixtures;
   совместимость конкретной архитектуры и firmware требует runtime проверки.
-- **Remote devices:** Generic SNMP v2c и RouterOS HTTPS REST реализованы;
+- **Remote devices:** Generic SNMP v2c/v3 и RouterOS HTTPS REST реализованы;
   mappings проверяются fixtures и локальными protocol servers. Поддержка
   конкретных моделей/firmware на реальном оборудовании отдельно не подтверждена.
   LLDP передаётся как observations с evidence, а reconciliation графа выполняет
   Backend. Шесть detection profiles используют подтверждённые prefixes;
-  product-specific health mappings отсутствуют. SNMPv3 вне текущего scope.
+  product-specific health mappings отсутствуют. SNMPv3 расширяет security mode
+  существующего adapter; mappings остаются общими. [SNMPv3 config](docs/snmpv3.md).
 
 Подробная [матрица платформ, vendors и capabilities](docs/vendor-support.md).
 
@@ -592,6 +625,7 @@ go mod verify
 ```sh
 go test -tags=integration ./internal/platform/linux
 go test -tags=integration ./internal/agent -run TestLiveLinuxLogsTelemetrySIPAndRotation
+go test -tags=integration ./internal/queue ./internal/commands
 ```
 
 Доступны также `make check` и `make race`. Конкретные результаты проведённых
@@ -622,6 +656,8 @@ sh scripts/generate-proto.sh
 
 - [Архитектура](docs/architecture.md) — компоненты, модели и внутренние pipelines.
 - [Протокол](docs/protocol.md) — обмен Agent ↔ Controller и правила доставки.
+- [Durable delivery](docs/delivery.md), [journal/snapshots/rollback](docs/commands.md),
+  [enrollment/PKI](docs/enrollment.md), [SNMPv3](docs/snmpv3.md).
 - [Безопасность](docs/security.md) — mTLS, команды, секреты и ограничения.
 - [Topology discovery](docs/topology.md) — физические связи и источники evidence.
 - [Матрица поддержки](docs/vendor-support.md) — платформы, vendors и capabilities.
@@ -632,14 +668,28 @@ sh scripts/generate-proto.sh
 
 ## Текущие ограничения
 
-Очередь хранится только в RAM: restart теряет её содержимое, а разрыв соединения
-может потерять отправляемое сообщение. Она не заменяет durable storage.
-Persistent log cursors не делают delivery durable: crash/eviction/Send error
-могут потерять принятые records. SNMPv3, Windows local collection,
-service/firewall writes, SIP TLS/authentication и product-specific vendor health
-OID не реализованы. OpenWrt runtime и remote integrations на реальном hardware
-не проверены. Remote integrations
-проверены fixtures/local servers; реальное hardware/firmware требует отдельной
-проверки. Interface writes доступны только RouterOS с явной policy/protection;
-rollback и persistent execution journal отсутствуют. Enrollment и автоматический
-выпуск сертификатов не поддерживаются; сертификаты устанавливаются отдельно.
+Memory mode и explicit Send fallback остаются best effort. Durable mode требует
+надёжного writable storage и ACK peer; retention/eviction могут терять данные
+низких приоритетов. Pending CommandResult не вытесняются. At-least-once не даёт
+exactly-once внешней mutation; uncertain outcome требует operator review.
+Production Backend/dedup/CA authorization/revocation/CA rollover не реализованы.
+Mock Enrollment token state хранится в RAM. Private keys защищены filesystem
+permissions, без encryption at rest/TPM/HSM.
+Windows LocalPlatform — post-MVP/backlog. Service/firewall writes, SIP Digest,
+NETCONF/gNMI и vendor-specific health OID не реализованы. OpenWrt, Astra/ALT/RED OS
+runtime и реальное сетевое оборудование/PBX не проверены. [Матрица](docs/vendor-support.md).
+
+## Production deployment
+
+Native Linux/OpenWrt запускается от отдельного service user с правами чтения
+нужных источников и записи private state directory. Durable mode рекомендуется
+на storage с достаточным свободным местом и working fsync; atomic journal
+replacement временно требует места для двух bounded files. Для constrained
+OpenWrt учитывайте flash wear, RAM и SNMPv3 key-localization CPU; допустим memory
+mode с явно менее надёжной telemetry delivery.
+
+Collector-only hosting (`local.enabled: false`) собирает SNMP/RouterOS/SIP и
+remote topology. В контейнере нужен persistent state volume и CA trust. Host
+monitoring/logs потребовали бы явных mounts и прав; обычный container namespace
+не является full host evidence. Production container image/runtime deployment
+не проверены; Docker не является обязательным способом установки.

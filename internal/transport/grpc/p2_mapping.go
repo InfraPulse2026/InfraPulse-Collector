@@ -107,7 +107,7 @@ func validateTelephony(u model.TelephonyUpdate) error {
 		return err
 	}
 	for _, h := range u.Targets {
-		if h.TargetID == "" || h.Address == "" || h.Source == "" || h.Transport != "udp" && h.Transport != "tcp" {
+		if h.TargetID == "" || h.Address == "" || h.Source == "" || h.Transport != "udp" && h.Transport != "tcp" && h.Transport != "tls" {
 			return errors.New("invalid telephony target or transport")
 		}
 		if h.State != "unknown" && h.State != "up" && h.State != "healthy" && h.State != "down" && h.State != "degraded" {

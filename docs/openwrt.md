@@ -77,3 +77,20 @@ services/firewall, timeout/cancellation, bounds, partial availability, Linux
 fallback и encode/decode настоящего gRPC wire contract. Fixtures не являются
 hardware dump. OpenWrt runtime/hardware validation пока не выполнена;
 cross-compilation не доказывает startup и потребление RAM на конкретной firmware.
+
+P3 regression дополнительно проверяет повторные inventory snapshots после
+исчезновения procd service, смены UCI port/enabled и удаления sections. Новый
+read не изменяет прежний normalized snapshot и не сохраняет stale service/rule
+в cache. Успешный пустой UCI read даёт `complete`; RPC permission failure и
+malformed UCI дают `failed`, неподдерживаемый include — `partial`. Ошибка ubus
+с secret-bearing text не попадает в evidence. Linux telemetry сохраняется.
+Эти проверки остаются schema fixtures; реальные rpcd/procd/fw4 runtime и
+ограничения RAM/flash на конкретном роутере не подтверждены.
+
+SNMPv3 Collector Mode использует USM cryptography. Неограниченный global
+password cache GoSNMP отключён; password-to-key вычисляется при новых exchanges.
+Это расходует CPU, поэтому fast polling/concurrency на слабом MIPS/ARM нужно
+настраивать по measurement конкретного устройства. Cross-build подтверждает
+portability binary, но не performance. Для ограниченного flash допустим memory
+outbox; durable state рекомендуется размещать на подходящем persistent storage
+с ограничениями bytes/messages/retention и batching.

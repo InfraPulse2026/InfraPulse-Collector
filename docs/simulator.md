@@ -59,7 +59,10 @@ Base YAML использует существующий strict config loader д�
 directory, даже если передана конфигурация обычного Agent. Это исключает
 совместное использование production Agent ID. Local/remote collectors из
 base config не запускаются. Example включает development plaintext только на
-loopback; при production transport действуют существующие mTLS правила.
+loopback; при production transport действуют mTLS правила и URI SAN binding
+к отдельному persistent Simulator UUID. Manual certificate настоящего Agent
+с другой identity не подходит; Simulator не запускает Agent enrollment/renewal
+manager.
 
 Controller output использует тот же protobuf/gRPC protocol-v1 stream,
 AgentHello/HelloAck и increasing sequence. Runner переиспользует RAM queue и

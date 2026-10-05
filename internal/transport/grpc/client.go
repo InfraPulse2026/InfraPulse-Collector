@@ -25,13 +25,16 @@ import (
 const DefaultMaxMessageBytes = 4 << 20
 
 type Options struct {
-	Address         string
-	Mode            string
-	CAFile          string
-	CertFile        string
-	KeyFile         string
-	ServerName      string
-	MaxMessageBytes int
+	// TLSConfigProvider supplies an immutable verified client TLS snapshot for
+	// each connection after enrollment or certificate rotation.
+	TLSConfigProvider func() (*tls.Config, error)
+	Address           string
+	Mode              string
+	CAFile            string
+	CertFile          string
+	KeyFile           string
+	ServerName        string
+	MaxMessageBytes   int
 }
 
 type client struct {
@@ -49,7 +52,7 @@ func New(options Options) (transport.Transport, error) {
 	if options.Mode == "development" {
 		creds = insecure.NewCredentials()
 	} else {
-		config, err := TLSConfig(options, false)
+		config, err := clientTLSConfig(options)
 		if err != nil {
 			return nil, err
 		}
@@ -59,8 +62,16 @@ func New(options Options) (transport.Transport, error) {
 }
 
 func (c *client) Connect(ctx context.Context) (transport.Session, error) {
+	creds := c.creds
+	if c.options.Mode == "production" {
+		config, err := clientTLSConfig(c.options)
+		if err != nil {
+			return nil, err
+		}
+		creds = credentials.NewTLS(config)
+	}
 	conn, err := grpcgo.NewClient(c.options.Address,
-		grpcgo.WithTransportCredentials(c.creds),
+		grpcgo.WithTransportCredentials(creds),
 		grpcgo.WithDefaultCallOptions(
 			grpcgo.MaxCallRecvMsgSize(c.options.MaxMessageBytes),
 			grpcgo.MaxCallSendMsgSize(c.options.MaxMessageBytes),
@@ -77,6 +88,20 @@ func (c *client) Connect(ctx context.Context) (transport.Session, error) {
 		return nil, fmt.Errorf("open controller stream: %w", err)
 	}
 	return &session{conn: conn, stream: stream, cancel: cancel}, nil
+}
+
+func clientTLSConfig(options Options) (*tls.Config, error) {
+	if options.TLSConfigProvider == nil {
+		return TLSConfig(options, false)
+	}
+	c, err := options.TLSConfigProvider()
+	if err != nil {
+		return nil, errors.New("client certificate unavailable")
+	}
+	if c == nil || c.InsecureSkipVerify || c.MinVersion < tls.VersionTLS12 || c.RootCAs == nil || len(c.Certificates) == 0 || c.VerifyConnection != nil || c.VerifyPeerCertificate != nil {
+		return nil, errors.New("unsafe dynamic TLS configuration")
+	}
+	return c.Clone(), nil
 }
 
 // A session supports one sender and one receiver concurrently, as gRPC does.
@@ -116,7 +141,12 @@ func (s *session) Receive() (model.ControllerMessage, error) {
 		if payload.HelloAck.ProtocolVersion == 0 {
 			return model.ControllerMessage{}, errors.New("hello acknowledgement has no protocol version")
 		}
-		return model.ControllerMessage{HelloAccepted: payload.HelloAck.Accepted, ProtocolVersion: payload.HelloAck.ProtocolVersion}, nil
+		return model.ControllerMessage{HelloAccepted: payload.HelloAck.Accepted, ProtocolVersion: payload.HelloAck.ProtocolVersion, ApplicationACK: payload.HelloAck.ApplicationAck}, nil
+	case *pb.ControllerEnvelope_MessageAck:
+		if payload == nil || payload.MessageAck == nil || payload.MessageAck.MessageId == "" || len(payload.MessageAck.MessageId) > 128 {
+			return model.ControllerMessage{}, errors.New("invalid message acknowledgement")
+		}
+		return model.ControllerMessage{ACKMessageID: payload.MessageAck.MessageId}, nil
 	case *pb.ControllerEnvelope_Command:
 		if payload == nil {
 			return model.ControllerMessage{}, errors.New("command payload is nil")

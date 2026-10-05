@@ -8,18 +8,22 @@ import (
 )
 
 type Credential struct {
-	Community string `json:"-"`
-	Username  string `json:"-"`
-	Password  string `json:"-"`
+	Community       string `json:"-"`
+	Username        string `json:"-"`
+	Password        string `json:"-"`
+	AuthPassword    string `json:"-"`
+	PrivacyPassword string `json:"-"`
 }
 
 func (Credential) String() string   { return "[redacted credential]" }
 func (Credential) GoString() string { return "[redacted credential]" }
 
 type Reference struct {
-	CommunityEnv string `yaml:"community_env" json:"-"`
-	UsernameEnv  string `yaml:"username_env" json:"-"`
-	PasswordEnv  string `yaml:"password_env" json:"-"`
+	CommunityEnv       string `yaml:"community_env" json:"-"`
+	UsernameEnv        string `yaml:"username_env" json:"-"`
+	PasswordEnv        string `yaml:"password_env" json:"-"`
+	AuthPasswordEnv    string `yaml:"auth_password_env" json:"-"`
+	PrivacyPasswordEnv string `yaml:"privacy_password_env" json:"-"`
 }
 type Provider interface {
 	Get(context.Context, string) (Credential, error)
@@ -51,8 +55,10 @@ func (p *Environment) Get(ctx context.Context, ref string) (Credential, error) {
 	c, a := read(r.CommunityEnv)
 	u, b := read(r.UsernameEnv)
 	s, d := read(r.PasswordEnv)
-	if !a || !b || !d {
+	auth, e := read(r.AuthPasswordEnv)
+	privacy, f := read(r.PrivacyPasswordEnv)
+	if !a || !b || !d || !e || !f {
 		return Credential{}, errors.New("credential environment unavailable")
 	}
-	return Credential{Community: c, Username: u, Password: s}, nil
+	return Credential{Community: c, Username: u, Password: s, AuthPassword: auth, PrivacyPassword: privacy}, nil
 }

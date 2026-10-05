@@ -20,7 +20,7 @@ import (
 // Live Linux filesystem/proc/sys and actual UDP/gRPC; SIP is a local fixture.
 // This does not claim access to a production rsyslog/auditd daemon or OpenWrt.
 func TestLiveLinuxLogsTelemetrySIPAndRotation(t *testing.T) {
-	dir := t.TempDir()
+	dir := testTempDir(t)
 	path := filepath.Join(dir, "system.log")
 	if err := os.WriteFile(path, []byte("2026-10-05T00:00:00Z live-host daemon: before\n"), 0600); err != nil {
 		t.Fatal(err)

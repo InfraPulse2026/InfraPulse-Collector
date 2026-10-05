@@ -68,6 +68,7 @@ type BuildInfo struct {
 }
 
 type AgentHello struct {
+	ApplicationACK  bool      `json:"application_ack,omitempty"`
 	AgentID         string    `json:"agent_id"`
 	SessionID       string    `json:"session_id"`
 	Name            string    `json:"name"`
@@ -161,20 +162,36 @@ type TelemetrySample struct {
 }
 
 type QueueState struct {
-	DroppedLogs      uint64 `json:"dropped_logs"`
-	Messages         int    `json:"messages"`
-	Bytes            int    `json:"bytes"`
-	DroppedTelemetry uint64 `json:"dropped_telemetry"`
-	DroppedOther     uint64 `json:"dropped_other"`
+	Mode             string    `json:"mode,omitempty"`
+	StorageError     string    `json:"storage_error,omitempty"`
+	StorageBytes     int64     `json:"storage_bytes,omitempty"`
+	OldestPending    time.Time `json:"oldest_pending,omitempty"`
+	Unacked          int       `json:"unacked,omitempty"`
+	PendingResults   int       `json:"pending_results,omitempty"`
+	DroppedLogs      uint64    `json:"dropped_logs"`
+	Messages         int       `json:"messages"`
+	Bytes            int       `json:"bytes"`
+	DroppedTelemetry uint64    `json:"dropped_telemetry"`
+	DroppedOther     uint64    `json:"dropped_other"`
 }
 
 type Heartbeat struct {
-	Timestamp         time.Time  `json:"timestamp"`
-	UptimeSeconds     float64    `json:"uptime_seconds"`
-	Build             BuildInfo  `json:"build"`
-	Health            string     `json:"health"`
-	RemoteDeviceCount int        `json:"remote_device_count"`
-	Queue             QueueState `json:"queue"`
+	Certificate       *CertificateStatus `json:"certificate,omitempty"`
+	Timestamp         time.Time          `json:"timestamp"`
+	UptimeSeconds     float64            `json:"uptime_seconds"`
+	Build             BuildInfo          `json:"build"`
+	Health            string             `json:"health"`
+	RemoteDeviceCount int                `json:"remote_device_count"`
+	Queue             QueueState         `json:"queue"`
+}
+
+type CertificateStatus struct {
+	ExpiresAt             time.Time `json:"expires_at"`
+	RemainingSeconds      int64     `json:"remaining_seconds"`
+	EnrollmentState       string    `json:"enrollment_state"`
+	RenewalState          string    `json:"renewal_state"`
+	LastSuccessfulRenewal time.Time `json:"last_successful_renewal,omitempty"`
+	LastError             string    `json:"last_error,omitempty"`
 }
 
 type InventoryUpdate struct {
@@ -218,6 +235,7 @@ type Command struct {
 	IdempotencyKey string           `json:"idempotency_key,omitempty"`
 	Interface      *InterfaceAction `json:"interface,omitempty"`
 	Service        *ServiceAction   `json:"service,omitempty"`
+	Rollback       *RollbackAction  `json:"rollback,omitempty"`
 }
 
 type CommandResult struct {
@@ -230,6 +248,7 @@ type CommandResult struct {
 	ErrorMessage string                 `json:"error_message,omitempty"`
 	Verification *InterfaceVerification `json:"verification,omitempty"`
 	Uncertain    bool                   `json:"uncertain,omitempty"`
+	SnapshotID   string                 `json:"snapshot_id,omitempty"`
 }
 
 // Envelope has one payload. Validate/mapping rejects missing or multiple payloads.
@@ -252,6 +271,8 @@ type Envelope struct {
 }
 
 type ControllerMessage struct {
+	ApplicationACK  bool
+	ACKMessageID    string
 	HelloAccepted   bool
 	ProtocolVersion uint32
 	Command         *Command

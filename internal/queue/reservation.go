@@ -9,12 +9,17 @@ import (
 // Reservation retains result capacity before a mutation starts. It guarantees
 // in-memory admission, not delivery or persistence across restart.
 type Reservation struct {
+	disk   *diskQueue
+	id     string
 	queue  *Queue
 	bytes  int
 	active bool
 }
 
 func (q *Queue) ReserveResult(bytes int) (*Reservation, error) {
+	if q.disk != nil {
+		return q.disk.reserve(bytes)
+	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if bytes < 1 || bytes > q.maxMessageBytes || bytes > q.maxBytes {
@@ -59,6 +64,10 @@ func (r *Reservation) Release() {
 	if r == nil {
 		return
 	}
+	if r.disk != nil {
+		r.disk.release(r)
+		return
+	}
 	q := r.queue
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -71,6 +80,9 @@ func (r *Reservation) Release() {
 func (r *Reservation) Commit(e model.Envelope) error {
 	if r == nil || e.CommandResult == nil {
 		return ErrInvalidEnvelope
+	}
+	if r.disk != nil {
+		return r.disk.commit(r, e)
 	}
 	p, err := envelopePriority(e)
 	if err != nil {

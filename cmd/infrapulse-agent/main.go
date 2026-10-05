@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -17,6 +18,7 @@ import (
 	"InfraPulseAgent/internal/agent"
 	"InfraPulseAgent/internal/config"
 	"InfraPulseAgent/internal/identity"
+	"InfraPulseAgent/internal/pki"
 	"InfraPulseAgent/internal/platform"
 	transportgrpc "InfraPulseAgent/internal/transport/grpc"
 	"InfraPulseAgent/internal/version"
@@ -113,7 +115,25 @@ func run(args []string) error {
 			return fmt.Errorf("%w; set local.enabled=false for collector-only development", err)
 		}
 	}
-	t, err := transportgrpc.New(transportgrpc.Options{Address: cfg.Controller.Address, Mode: cfg.Security.Mode, CAFile: cfg.Security.CAFile, CertFile: cfg.Security.CertFile, KeyFile: cfg.Security.KeyFile, ServerName: cfg.Security.ServerName, MaxMessageBytes: cfg.Queue.MaxMessageBytes})
+	transportOptions := transportgrpc.Options{Address: cfg.Controller.Address, Mode: cfg.Security.Mode, CAFile: cfg.Security.CAFile, CertFile: cfg.Security.CertFile, KeyFile: cfg.Security.KeyFile, ServerName: cfg.Security.ServerName, MaxMessageBytes: cfg.Queue.MaxMessageBytes}
+	var certificates *pki.Manager
+	if cfg.Security.Mode == "production" {
+		id, err := identity.LoadOrCreate(ctx, cfg.Agent.StateDir)
+		if err != nil {
+			return err
+		}
+		if cfg.Security.Enrollment.Enabled {
+			e := cfg.Security.Enrollment
+			certificates, err = pki.New(ctx, pki.Options{AgentID: id.AgentID, StateDir: cfg.Agent.StateDir, EnrollmentURL: e.URL, BootstrapCAFile: e.CAFile, BootstrapServerName: e.ServerName, TokenEnv: e.TokenEnv, ControllerCAFile: cfg.Security.CAFile, Timeout: e.Timeout, RenewBefore: cfg.Security.RenewBefore})
+			if err != nil {
+				return err
+			}
+			transportOptions.TLSConfigProvider = func() (*tls.Config, error) { return certificates.TLSConfig(cfg.Security.ServerName) }
+		} else if err = pki.VerifyCertificateFile(cfg.Security.CertFile, cfg.Security.KeyFile, id.AgentID); err != nil {
+			return err
+		}
+	}
+	t, err := transportgrpc.New(transportOptions)
 	if err != nil {
 		return err
 	}
@@ -121,5 +141,6 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.SetCertificateManager(certificates)
 	return a.Run(ctx)
 }

@@ -18,8 +18,13 @@ import (
 func (a *Agent) secretValues() []string {
 	// These are values of explicitly configured references, never arbitrary env.
 	var values []string
+	if name := a.cfg.Security.Enrollment.TokenEnv; name != "" {
+		if value := os.Getenv(name); value != "" {
+			values = append(values, value)
+		}
+	}
 	for _, ref := range a.cfg.Credentials {
-		for _, name := range []string{ref.CommunityEnv, ref.PasswordEnv} {
+		for _, name := range []string{ref.CommunityEnv, ref.PasswordEnv, ref.AuthPasswordEnv, ref.PrivacyPasswordEnv} {
 			if name != "" {
 				if value := os.Getenv(name); value != "" {
 					values = append(values, value)
@@ -44,6 +49,12 @@ func (a *Agent) p2CapabilitiesLocked() []model.Capability {
 	}
 	if len(a.cfg.Telephony.Endpoints) > 0 {
 		caps = append(caps, model.Capability{Name: "telephony.options", Supported: true}, model.Capability{Name: "telephony.health", Supported: true})
+		for _, ep := range a.cfg.Telephony.Endpoints {
+			if ep.Transport == "tls" {
+				caps = append(caps, model.Capability{Name: "telephony.options.tls", Supported: true})
+				break
+			}
+		}
 	}
 	return caps
 }

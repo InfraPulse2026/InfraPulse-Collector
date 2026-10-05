@@ -58,16 +58,18 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 		message.Payload = &pb.AgentEnvelope_Hello{Hello: &pb.AgentHello{
 			AgentId: h.AgentID, SessionId: h.SessionID, Name: h.Name,
 			Build: buildToProto(h.Build), StartedAt: timestamp(h.StartedAt),
-			Device: deviceToProto(h.Device), ProtocolVersion: h.ProtocolVersion,
+			Device: deviceToProto(h.Device), ProtocolVersion: h.ProtocolVersion, ApplicationAck: h.ApplicationACK,
 		}}
 	case envelope.Heartbeat != nil:
 		h := envelope.Heartbeat
 		message.Payload = &pb.AgentEnvelope_Heartbeat{Heartbeat: &pb.Heartbeat{
 			Timestamp: timestamp(h.Timestamp), UptimeSeconds: h.UptimeSeconds,
 			Build: buildToProto(h.Build), Health: h.Health,
+			Certificate:       certificateToProto(h.Certificate),
 			RemoteDeviceCount: uint32(h.RemoteDeviceCount), Queue: &pb.QueueState{
 				Messages: uint64(h.Queue.Messages), Bytes: uint64(h.Queue.Bytes),
 				DroppedTelemetry: h.Queue.DroppedTelemetry, DroppedOther: h.Queue.DroppedOther, DroppedLogs: h.Queue.DroppedLogs,
+				Mode: h.Queue.Mode, StorageBytes: uint64(h.Queue.StorageBytes), OldestPending: optionalTimestamp(h.Queue.OldestPending), Unacked: uint64(h.Queue.Unacked), PendingResults: uint64(h.Queue.PendingResults), StorageError: h.Queue.StorageError,
 			},
 		}}
 	case envelope.Telemetry != nil:
@@ -99,7 +101,7 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 			CommandId: r.CommandID, Status: commandStatuses[r.Status],
 			StartedAt: optionalTimestamp(r.StartedAt), FinishedAt: optionalTimestamp(r.FinishedAt),
 			Changed: r.Changed, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
-			Verification: verificationToProto(r.Verification), Uncertain: r.Uncertain,
+			Verification: verificationToProto(r.Verification), Uncertain: r.Uncertain, SnapshotId: r.SnapshotID,
 		}}
 	case envelope.Error != nil:
 		e := envelope.Error
@@ -161,7 +163,7 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 		e.Hello = &model.AgentHello{
 			AgentID: h.AgentId, SessionID: h.SessionId, Name: h.Name,
 			Build: buildFromProto(h.Build), StartedAt: startedAt,
-			Device: device, ProtocolVersion: h.ProtocolVersion,
+			Device: device, ProtocolVersion: h.ProtocolVersion, ApplicationACK: h.ApplicationAck,
 		}
 	case *pb.AgentEnvelope_Heartbeat:
 		if payload == nil || payload.Heartbeat == nil || payload.Heartbeat.Queue == nil {
@@ -175,11 +177,18 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 		if h.Queue.Messages > uint64(math.MaxInt) || h.Queue.Bytes > uint64(math.MaxInt) || uint64(h.RemoteDeviceCount) > uint64(math.MaxInt) {
 			return e, errors.New("heartbeat counts overflow native integer")
 		}
+		queue, err := queueFromProto(h.Queue)
+		if err != nil {
+			return e, err
+		}
+		certificate, err := certificateFromProto(h.Certificate)
+		if err != nil {
+			return e, err
+		}
 		e.Heartbeat = &model.Heartbeat{
 			Timestamp: at, UptimeSeconds: h.UptimeSeconds, Build: buildFromProto(h.Build),
 			Health: h.Health, RemoteDeviceCount: int(h.RemoteDeviceCount),
-			Queue: model.QueueState{Messages: int(h.Queue.Messages), Bytes: int(h.Queue.Bytes),
-				DroppedTelemetry: h.Queue.DroppedTelemetry, DroppedOther: h.Queue.DroppedOther, DroppedLogs: h.Queue.DroppedLogs},
+			Queue: queue, Certificate: certificate,
 		}
 	case *pb.AgentEnvelope_Telemetry:
 		if payload == nil || payload.Telemetry == nil || len(payload.Telemetry.Samples) != 1 {
@@ -257,7 +266,7 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 		e.CommandResult = &model.CommandResult{
 			CommandID: r.CommandId, Status: status, StartedAt: startedAt, FinishedAt: finishedAt,
 			Changed: r.Changed, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
-			Verification: verification, Uncertain: r.Uncertain,
+			Verification: verification, Uncertain: r.Uncertain, SnapshotID: r.SnapshotId,
 		}
 	case *pb.AgentEnvelope_Error:
 		if payload == nil || payload.Error == nil {
@@ -296,7 +305,13 @@ func EncodeCommand(command model.Command) (*pb.Command, error) {
 	if initiator == pb.CommandInitiator_COMMAND_INITIATOR_UNSPECIFIED {
 		return nil, errors.New("command initiator is unsupported")
 	}
-	if (command.Interface == nil) == (command.Service == nil) {
+	actions := 0
+	for _, present := range []bool{command.Interface != nil, command.Service != nil, command.Rollback != nil} {
+		if present {
+			actions++
+		}
+	}
+	if actions != 1 {
 		return nil, errors.New("command requires exactly one typed action")
 	}
 	message := &pb.Command{
@@ -311,6 +326,11 @@ func EncodeCommand(command model.Command) (*pb.Command, error) {
 			return nil, errors.New("interface action has missing resource or unknown operation")
 		}
 		message.Action = &pb.Command_Interface{Interface: &pb.InterfaceAction{InterfaceId: action.InterfaceID, Operation: operation}}
+	} else if command.Rollback != nil {
+		if command.Rollback.SnapshotID == "" || len(command.Rollback.SnapshotID) > 128 {
+			return nil, errors.New("rollback requires a bounded snapshot ID")
+		}
+		message.Action = &pb.Command_Rollback{Rollback: &pb.RollbackAction{SnapshotId: command.Rollback.SnapshotID}}
 	} else {
 		action := command.Service
 		operation := map[string]pb.ServiceOperation{"start": pb.ServiceOperation_SERVICE_OPERATION_START, "stop": pb.ServiceOperation_SERVICE_OPERATION_STOP, "restart": pb.ServiceOperation_SERVICE_OPERATION_RESTART}[action.Operation]
@@ -352,6 +372,11 @@ func DecodeCommand(message *pb.Command) (model.Command, error) {
 		Timeout: message.Timeout.AsDuration(), Initiator: initiator, IdempotencyKey: message.IdempotencyKey,
 	}
 	switch action := message.Action.(type) {
+	case *pb.Command_Rollback:
+		if action == nil || action.Rollback == nil {
+			return command, errors.New("rollback action is nil")
+		}
+		command.Rollback = &model.RollbackAction{SnapshotID: action.Rollback.SnapshotId}
 	case *pb.Command_Interface:
 		if action == nil || action.Interface == nil {
 			return command, errors.New("interface action is nil")

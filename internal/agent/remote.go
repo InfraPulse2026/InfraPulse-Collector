@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"InfraPulseAgent/internal/commands"
 	"InfraPulseAgent/internal/config"
 	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/driver"
@@ -11,7 +10,6 @@ import (
 	protocolrouteros "InfraPulseAgent/internal/protocol/routeros"
 	protocolsnmp "InfraPulseAgent/internal/protocol/snmp"
 	"InfraPulseAgent/internal/remote"
-	"InfraPulseAgent/internal/sanitize"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -40,7 +38,7 @@ func RemoteFactory(cfg config.Config, provider credentials.Provider) remote.Fact
 			if port == 0 {
 				port = 161
 			}
-			return driversnmp.New(opts, provider, dc.CredentialRef, protocolsnmp.Options{Address: net.JoinHostPort(dc.Address, strconv.Itoa(int(port))), Timeout: timeout, Retries: dc.SNMP.Retries, MaxRows: opts.MaxRows, MaxResponseBytes: opts.MaxResponseBytes})
+			return driversnmp.New(opts, provider, dc.CredentialRef, protocolsnmp.Options{Security: dc.SNMP.Security, Address: net.JoinHostPort(dc.Address, strconv.Itoa(int(port))), Timeout: timeout, Retries: dc.SNMP.Retries, MaxRows: opts.MaxRows, MaxResponseBytes: opts.MaxResponseBytes})
 		case "routeros":
 			tc := &tls.Config{MinVersion: tls.VersionTLS12}
 			if dc.TLS.CAFile != "" {
@@ -91,57 +89,5 @@ func ProbeDevice(ctx context.Context, cfg config.Config, id string) (model.Devic
 }
 
 func (a *Agent) handleCommand(ctx context.Context, c model.Command) error {
-	now := time.Now()
-	policy := commands.Policy{Enabled: a.cfg.Commands.Enabled, ProtectedDevices: a.cfg.Commands.ProtectedDevices, ProtectedInterfaces: a.cfg.Commands.ProtectedInterfaces, ProtectedServices: a.cfg.Commands.ProtectedServices}
-	// Reserve the maximum safe result before admitting any mutation. A full or
-	// undersized outbox closes the session and no action is started.
-	reservation, err := a.queue.ReserveResult(4096)
-	if err != nil {
-		return err
-	}
-	defer reservation.Release()
-	result := model.CommandResult{CommandID: c.ID, StartedAt: now.UTC(), FinishedAt: now.UTC(), Status: "rejected"}
-	if err = commands.Validate(c, now); err != nil {
-		result.ErrorCode = "invalid_command"
-		result.ErrorMessage = err.Error()
-	} else {
-		cached, dedupErr := a.commands.Begin(c)
-		if dedupErr != nil {
-			result.ErrorCode = "duplicate_conflict"
-			result.ErrorMessage = dedupErr.Error()
-		} else if cached != nil {
-			result = *cached
-		} else {
-			devices := append([]model.Device{a.deviceSnapshot()}, a.remote.Devices()...)
-			var target *model.Device
-			for i := range devices {
-				if devices[i].ID == c.TargetDeviceID {
-					target = &devices[i]
-					break
-				}
-			}
-			if target == nil || c.TargetDeviceID == a.deviceSnapshot().ID {
-				result = commands.RejectUnsupported(c, devices, policy, now)
-			} else {
-				deadline := c.RequestedAt.Add(c.Timeout)
-				if limit := now.Add(c.Timeout); limit.Before(deadline) {
-					deadline = limit
-				}
-				commandCtx, cancel := context.WithDeadline(ctx, deadline)
-				result, err = a.remote.WithDevice(commandCtx, c.TargetDeviceID, func(d driver.Driver) model.CommandResult {
-					return commands.Execute(commandCtx, c, *target, d, policy, time.Now())
-				})
-				cancel()
-				if err != nil {
-					result = model.CommandResult{CommandID: c.ID, StartedAt: now.UTC(), FinishedAt: time.Now().UTC(), Status: "timeout", ErrorCode: "command_timeout", ErrorMessage: "command expired while waiting for device"}
-				}
-			}
-			a.commands.Complete(c, result)
-		}
-	}
-	e, err := a.envelope(model.Envelope{CommandResult: &result})
-	if err != nil {
-		return err
-	}
-	return reservation.Commit((sanitize.KnownSecrets{}).Sanitize(e))
+	return a.executePersistentCommand(ctx, c)
 }

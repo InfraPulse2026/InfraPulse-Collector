@@ -5,3 +5,11 @@
 /state/
 *.log
 /configs/config.local.yaml
+**/outbox.db
+**/outbox.db-*
+**/safety-state.json
+**/.safety-state.tmp
+**/safety-state.lock
+**/client-bundle.json
+**/.client-bundle-*
+*.key

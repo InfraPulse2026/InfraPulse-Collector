@@ -1,0 +1,60 @@
+# Development durable delivery; production uses mTLS/enrollment separately.
+agent:
+  name: durable-collector
+  state_dir: ../state
+controller:
+  address: 127.0.0.1:9443
+security:
+  mode: development
+local:
+  enabled: false
+queue:
+  mode: durable
+  max_messages: 256
+  max_bytes: 8388608
+  max_message_bytes: 1048576
+  max_storage_bytes: 67108864
+  retention: 24h
+  batch_delay: 50ms
+  batch_size: 64
+  max_inflight: 16
+  ack_timeout: 30s
+  ack_fallback: reject
+commands:
+  enabled: false
+  protected_interfaces: [ether1]
+  store:
+    journal_max_entries: 256
+    journal_max_bytes: 4194304
+    journal_retention: 168h
+    snapshot_max_entries: 256
+    snapshot_max_bytes: 2097152
+    snapshot_retention: 24h
+credentials:
+  switch-usm:
+    username_env: INFRAPULSE_SNMP_USER
+    auth_password_env: INFRAPULSE_SNMP_AUTH
+    privacy_password_env: INFRAPULSE_SNMP_PRIV
+devices:
+  - id: switch-v3
+    name: switch-v3
+    driver: snmp
+    address: 192.0.2.10
+    credential_ref: switch-usm
+    snmp:
+      version: v3
+      security_level: authPriv
+      auth_protocol: SHA256
+      privacy_protocol: AES
+      port: 161
+      retries: 1
+telephony:
+  endpoints:
+    - id: pbx-tls
+      address: pbx.example.net
+      transport: tls
+      port: 5061
+      timeout: 2s
+      interval: 30s
+      tls:
+        server_name: pbx.example.net

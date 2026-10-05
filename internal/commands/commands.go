@@ -36,7 +36,13 @@ func Validate(c model.Command, now time.Time) error {
 	if len(c.IdempotencyKey) > 128 {
 		return errors.New("invalid idempotency key")
 	}
-	if (c.Interface == nil) == (c.Service == nil) {
+	actions := 0
+	for _, present := range []bool{c.Interface != nil, c.Service != nil, c.Rollback != nil} {
+		if present {
+			actions++
+		}
+	}
+	if actions != 1 {
 		return errors.New("command requires exactly one typed action")
 	}
 	if c.Interface != nil {
@@ -49,10 +55,16 @@ func Validate(c model.Command, now time.Time) error {
 			return errors.New("invalid service action")
 		}
 	}
+	if c.Rollback != nil && !identifier(c.Rollback.SnapshotID) {
+		return errors.New("invalid rollback snapshot identifier")
+	}
 	return nil
 }
 
 func RequiredCapability(c model.Command) string {
+	if c.Rollback != nil {
+		return "resource.rollback"
+	}
 	if c.Interface != nil {
 		return "interfaces." + c.Interface.Operation
 	}
@@ -84,8 +96,8 @@ func (p Policy) Check(c model.Command, aliases ...string) error {
 	if contains(p.ProtectedDevices, c.TargetDeviceID) {
 		return ErrProtected
 	}
-	if c.Interface != nil {
-		if containsInterface(p.ProtectedInterfaces, c.Interface.InterfaceID) {
+	if c.Interface != nil || c.Rollback != nil {
+		if c.Interface != nil && containsInterface(p.ProtectedInterfaces, c.Interface.InterfaceID) {
 			return ErrProtected
 		}
 		for _, a := range aliases {

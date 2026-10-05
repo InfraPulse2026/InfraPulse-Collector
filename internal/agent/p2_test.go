@@ -40,7 +40,7 @@ func TestP2HeartbeatHealthRecovery(t *testing.T) {
 	}
 }
 func TestCorruptedLogCursorRejectsAgentStartup(t *testing.T) {
-	dir := t.TempDir()
+	dir := testTempDir(t)
 	path := filepath.Join(dir, "log")
 	if err := os.WriteFile(path, []byte("one\n"), 0600); err != nil {
 		t.Fatal(err)

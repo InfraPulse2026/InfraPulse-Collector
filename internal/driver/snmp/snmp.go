@@ -1,4 +1,4 @@
-// Package snmp normalizes standard MIB observations from read-only SNMP v2c.
+// Package snmp normalizes standard MIB observations from read-only SNMP v2c/v3.
 package snmp
 
 import (

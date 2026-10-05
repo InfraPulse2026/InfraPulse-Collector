@@ -1,8 +1,8 @@
 # SIP OPTIONS health
 
-Agent отправляет фиксированный unauthenticated SIP `OPTIONS` probe по UDP или
-TCP. Request формируется внутри Agent, а config задаёт только typed endpoint
-settings. SIP credentials, REGISTER, calls, RTP, media, TLS и PBX statistics
+Agent отправляет фиксированный unauthenticated SIP `OPTIONS` probe по UDP,
+TCP или TLS. Request формируется внутри Agent, а config задаёт только typed endpoint
+settings. SIP credentials, Digest, REGISTER, calls, RTP, media и PBX statistics
 не реализованы. Обычные tests используют локальный protocol fixture server.
 
 ```yaml
@@ -27,6 +27,32 @@ latency threshold 250ms. Endpoint ID стабилен и уникален в con
 меняет SIP URI, но сетевой destination задаётся address/port. Поддерживается
 обычный DNS lookup hostname; SIP SRV discovery и redirect follow отсутствуют.
 Ни credentials, ни request/response bodies не выводятся в diagnostics.
+
+TLS endpoint использует default port 5061, проверяет certificate chain и
+server name; минимальная версия TLS 1.2. TLS bypass отсутствует даже в
+development mode Controller. Системные CA применяются, если `ca_file` не задан.
+`server_name` по умолчанию равен `address`; DNS name также используется для SNI.
+Custom CA file ограничен 1 MiB, путь разрешается относительно YAML.
+
+```yaml
+telephony:
+  endpoints:
+    - id: secure-pbx
+      address: pbx.example.net
+      transport: tls
+      tls:
+        ca_file: /etc/infrapulse/pbx-ca.pem
+        server_name: pbx.example.net
+      timeout: 3s
+```
+
+TLS request содержит `sips:` URI и `Via: SIP/2.0/TLS`. TCP framing/transaction
+limits переиспользуются. Latency включает TLS handshake. Invalid CA/name/expired
+certificate возвращают sanitized `tls_certificate`; missing/malformed/oversized
+CA — `tls_configuration`, неподходящий TLS record — `tls_protocol`. Deadline и
+cancellation действуют на dial, handshake и response; peer certificates и raw
+TLS errors в diagnostics не попадают. Capability `telephony.options.tls`
+объявляется при configured TLS endpoint; `telephony.auth` не объявляется.
 
 Normalized health содержит target ID, network address, transport, observedAt,
 reachable, optional response code/latency, consecutiveFailures, state и error
@@ -56,7 +82,7 @@ failures. События telephony.up/down/degraded появляются тол�
 UDP использует ограниченные Timer E retransmissions по
 [RFC 3261](https://www.rfc-editor.org/rfc/rfc3261.html): 500ms с удвоением до 4s,
 в пределах timeout. TCP использует Content-Length framing. Лимит response —
-32 KiB, максимум 64 UDP reads / 8 TCP messages на probe; сети обслуживаются
+32 KiB, максимум 64 UDP reads / 8 TCP/TLS messages на probe; сети обслуживаются
 с context deadline и закрываются при cancellation. Все config URI components
 проверяются на допустимые символы; произвольные headers/payloads недоступны.
 
@@ -65,3 +91,11 @@ Probe подтверждает только response выбранного SIP en
 Hardware/PBX runtime validation отсутствует; UDP/TCP fixture verification
 включает 200/401/407/404/5xx, latency, timeout, malformed frames, cancellation,
 retransmission, transitions и recovery.
+
+TLS offline fixtures дополнительно проверяют trusted/wrong CA, SNI, wrong
+server name, expired certificate, TLS timeout/handshake cancellation, malformed
+SIP response, authentication-required health, failure threshold и recovery,
+CA/path/configuration bounds и protobuf roundtrip с `transport=tls`.
+Digest deferred: надёжная реализация требует challenge selection, RFC 8760
+algorithm negotiation, qop/nonce handling и bounded retries; TLS не означает
+OPTIONS authentication. Нет external PBX/hardware validation.

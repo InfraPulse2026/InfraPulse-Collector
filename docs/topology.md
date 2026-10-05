@@ -112,8 +112,11 @@ Registry выдаёт `topology.link.observed` при появлении нов�
 наблюдавшийся link и его ExpiresAt уже наступил. Partial/failed не инициируют
 expiry. Local dedup history ограничена `remote.max_rows`; при memory eviction
 expiry event не выдаётся. История volatile, после restart/eviction observed
-событие может повториться. Outbox best effort; timestamp сохранён даже после
-ожидания в очереди, durable delivery отсутствует.
+событие может повториться. Timestamp сохраняется после ожидания в очереди.
+Memory outbox остаётся best effort; durable mode сохраняет retained envelopes
+до negotiated application ACK, replay сохраняет message ID. Retention/eviction
+могут потерять topology update/event; persistent outbox не делает registry
+dedup history постоянной. Подробности — [delivery](delivery.md).
 
 ## Проверка и ограничения
 

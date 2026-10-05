@@ -92,7 +92,7 @@ func configureRouterFixture(t *testing.T, c *config.Config, f *remoteRouterFixtu
 	t.Helper()
 	server := httptest.NewTLSServer(f)
 	t.Cleanup(server.Close)
-	ca := filepath.Join(t.TempDir(), "ca.pem")
+	ca := filepath.Join(testTempDir(t), "ca.pem")
 	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func configureRouterFixture(t *testing.T, c *config.Config, f *remoteRouterFixtu
 }
 func TestAgentRouterOSRemoteStreamingMutationsAndProtection(t *testing.T) {
 	observed := make(chan model.Envelope, 1024)
-	command := &model.Command{TargetDeviceID: "remote-router", Timeout: time.Second, Initiator: "ai_suggested", IdempotencyKey: "disable-once", Interface: &model.InterfaceAction{InterfaceID: "ether2", Operation: "disable"}}
+	command := &model.Command{ID: "fixture-disable", TargetDeviceID: "remote-router", Timeout: time.Second, Initiator: "ai_suggested", IdempotencyKey: "disable-once", Interface: &model.InterfaceAction{InterfaceID: "ether2", Operation: "disable"}}
 	controller := startTCPController(t, "127.0.0.1:0", mockcontroller.New(io.Discard, command, observeChannel(observed)))
 	c := testConfig(t, controller.listener.Addr().String())
 	fixture := &remoteRouterFixture{}
@@ -124,7 +124,7 @@ func TestAgentRouterOSRemoteStreamingMutationsAndProtection(t *testing.T) {
 	}
 	cancel()
 	stop := runTestAgent(t, a)
-	result := waitEnvelope(t, observed, func(e model.Envelope) bool { return e.CommandResult != nil })
+	result := waitEnvelope(t, observed, func(e model.Envelope) bool { return e.CommandResult != nil && e.CommandResult.CommandID == command.ID })
 	if r := result.CommandResult; r.Status != "success" || !r.Changed || r.Verification == nil || !r.Verification.Verified || !fixture.disabled.Load() {
 		t.Fatal("disable not verified", r)
 	}
@@ -143,25 +143,29 @@ func TestAgentRouterOSRemoteStreamingMutationsAndProtection(t *testing.T) {
 	address := controller.listener.Addr().String()
 	controller.stop()
 	controller = startTCPController(t, address, mockcontroller.New(nil, command, observeChannel(observed)))
-	result = waitEnvelope(t, observed, func(e model.Envelope) bool { return e.CommandResult != nil })
+	result = waitEnvelope(t, observed, func(e model.Envelope) bool { return e.CommandResult != nil && e.CommandResult.CommandID == command.ID })
 	if result.CommandResult.Status != "success" || fixture.writes.Load() != 1 {
 		t.Fatal("duplicate executed mutation")
 	}
 	controller.stop()
 	enable := *command
+	enable.ID = "fixture-enable"
 	enable.IdempotencyKey = "enable-once"
 	enable.Interface = &model.InterfaceAction{InterfaceID: "*2", Operation: "enable"}
 	controller = startTCPController(t, address, mockcontroller.New(nil, &enable, observeChannel(observed)))
-	result = waitEnvelope(t, observed, func(e model.Envelope) bool { return e.CommandResult != nil })
+	result = waitEnvelope(t, observed, func(e model.Envelope) bool { return e.CommandResult != nil && e.CommandResult.CommandID == enable.ID })
 	if result.CommandResult.Status != "success" || fixture.disabled.Load() || fixture.writes.Load() != 2 {
 		t.Fatal("enable failed", result.CommandResult)
 	}
 	controller.stop()
 	protected := *command
+	protected.ID = "fixture-protected"
 	protected.IdempotencyKey = "protected"
 	protected.Interface = &model.InterfaceAction{InterfaceID: "*1", Operation: "disable"}
 	controller = startTCPController(t, address, mockcontroller.New(nil, &protected, observeChannel(observed)))
-	result = waitEnvelope(t, observed, func(e model.Envelope) bool { return e.CommandResult != nil })
+	result = waitEnvelope(t, observed, func(e model.Envelope) bool {
+		return e.CommandResult != nil && e.CommandResult.CommandID == protected.ID
+	})
 	if result.CommandResult.Status != "rejected" || result.CommandResult.ErrorCode != "protected_resource" || fixture.writes.Load() != 2 {
 		t.Fatal("management interface not protected", result.CommandResult)
 	}

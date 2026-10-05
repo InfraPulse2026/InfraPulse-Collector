@@ -21,6 +21,7 @@ import (
 	"InfraPulseAgent/internal/identity"
 	"InfraPulseAgent/internal/logs"
 	"InfraPulseAgent/internal/model"
+	"InfraPulseAgent/internal/pki"
 	"InfraPulseAgent/internal/platform"
 	"InfraPulseAgent/internal/queue"
 	"InfraPulseAgent/internal/remote"
@@ -34,6 +35,11 @@ import (
 )
 
 type Agent struct {
+	commandStore *commands.Store
+	certificates *pki.Manager
+	activeCancel context.CancelFunc
+	storageError string
+	ackFallback  bool
 	cfg          config.Config
 	id           identity.Identity
 	started      time.Time
@@ -57,6 +63,10 @@ type Agent struct {
 }
 
 type Diagnostics struct {
+	SNMP              []SNMPSecurityStatus    `json:"snmp,omitempty"`
+	CommandState      *commands.StoreHealth   `json:"command_state,omitempty"`
+	Certificate       *pki.Status             `json:"certificate,omitempty"`
+	ACKFallback       bool                    `json:"ack_fallback,omitempty"`
 	AgentID           string                  `json:"agent_id"`
 	SessionID         string                  `json:"session_id"`
 	Build             model.BuildInfo         `json:"build"`
@@ -88,14 +98,31 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 	if err != nil {
 		return nil, err
 	}
-	q, err := queue.New(cfg.Queue.MaxMessages, cfg.Queue.MaxBytes, cfg.Queue.MaxMessageBytes)
+	var q *queue.Queue
+	var storageError string
+	if cfg.Queue.WithDefaults().Mode == "durable" {
+		q, err = queue.NewDurable(cfg.Queue.DurableOptions(cfg.Agent.StateDir))
+		if err != nil {
+			storageError = "durable_outbox_unavailable"
+			cfg.Commands.Enabled = false
+			q, err = queue.New(cfg.Queue.MaxMessages, cfg.Queue.MaxBytes, cfg.Queue.MaxMessageBytes)
+		}
+	} else {
+		q, err = queue.New(cfg.Queue.MaxMessages, cfg.Queue.MaxBytes, cfg.Queue.MaxMessageBytes)
+	}
 	if err != nil {
 		return nil, err
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	a := &Agent{cfg: cfg, id: id, started: time.Now(), platform: p, transport: t, queue: q, rates: telemetry.NewRateTracker(), logger: logger.With("component", "agent", "agent_id", id.AgentID)}
+	a := &Agent{cfg: cfg, id: id, started: time.Now(), platform: p, transport: t, queue: q, storageError: storageError, rates: telemetry.NewRateTracker(), logger: logger.With("component", "agent", "agent_id", id.AgentID)}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = q.Close()
+		}
+	}()
 	host, _ := os.Hostname()
 	a.device = model.Device{ID: "local:" + id.AgentID, Name: cfg.Agent.Name, Hostname: host, Type: "unknown", OS: runtime.GOOS, Architecture: runtime.GOARCH, Driver: "none", Online: true, LastSeen: time.Now().UTC(), Location: cfg.Location}
 	if cfg.Local.Enabled {
@@ -124,6 +151,15 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 		}
 		return nil, err
 	}
+	if e := a.initCommandStore(); e != nil {
+		a.recordError("commands.storage: " + e.Error())
+		a.logger.Warn("durable command storage unavailable; mutations blocked")
+	}
+	if storageError != "" {
+		a.recordError(storageError)
+		a.event("durable.outbox.degraded", "error", storageError)
+	}
+	initialized = true
 	return a, nil
 }
 
@@ -173,12 +209,28 @@ func (a *Agent) jobs() error {
 	}
 	return a.scheduler.Add(scheduler.Job{Name: "agent.heartbeat", Interval: a.cfg.Telemetry.HeartbeatInterval, Timeout: a.cfg.Telemetry.CollectTimeout, Collect: func(ctx context.Context) error {
 		h := model.Heartbeat{Timestamp: time.Now().UTC(), UptimeSeconds: time.Since(a.started).Seconds(), Build: version.Info(), Health: a.health(), Queue: a.queue.State(), RemoteDeviceCount: len(a.cfg.Devices)}
+		if a.storageError != "" {
+			h.Queue.StorageError = a.storageError
+		}
+		if a.certificates != nil {
+			s := a.certificates.Status()
+			h.Certificate = &model.CertificateStatus{ExpiresAt: s.ExpiresAt, RemainingSeconds: s.RemainingSeconds, EnrollmentState: s.EnrollmentState, RenewalState: s.RenewalState, LastSuccessfulRenewal: s.LastSuccessfulRenewal, LastError: s.LastError}
+		}
 		err := a.push(model.Envelope{Heartbeat: &h})
 		return errors.Join(err, a.saveDiagnostics())
 	}})
 }
 
 func (a *Agent) health() string {
+	if a.certificates != nil {
+		s := a.certificates.Status()
+		if s.RemainingSeconds <= 0 || s.RenewalState == "failed" {
+			return "degraded"
+		}
+	}
+	if a.storageError != "" || a.queue.State().StorageError != "" || a.commandStore != nil && !a.commandStore.Health().Available {
+		return "degraded"
+	}
 	for _, c := range a.sip {
 		if state := c.State().State; state == "down" || state == "degraded" {
 			return "degraded"
@@ -206,7 +258,9 @@ func (a *Agent) envelope(e model.Envelope) (model.Envelope, error) {
 	if err != nil {
 		return e, err
 	}
-	e.MessageID = id.String()
+	if e.MessageID == "" {
+		e.MessageID = id.String()
+	}
 	e.AgentID = a.id.AgentID
 	e.SessionID = a.id.SessionID
 	e.SentAt = time.Now().UTC()
@@ -260,6 +314,10 @@ func (a *Agent) recordError(message string) {
 
 // Run cancels network IO and collectors together and bounds shutdown waiting.
 func (a *Agent) Run(ctx context.Context) (resultErr error) {
+	if a.commandStore != nil {
+		defer func() { resultErr = errors.Join(resultErr, a.commandStore.Close()) }()
+	}
+	defer func() { resultErr = errors.Join(resultErr, a.queue.Close()) }()
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer a.remote.Close()
@@ -267,12 +325,13 @@ func (a *Agent) Run(ctx context.Context) (resultErr error) {
 		defer func() { resultErr = errors.Join(resultErr, a.logs.Close()) }()
 	}
 	a.event("agent.started", "info", "agent started")
-	done := make(chan error, 5)
+	done := make(chan error, 6)
 	go func() { done <- a.scheduler.Run(runCtx) }()
 	go func() { done <- a.remote.Run(runCtx) }()
 	go func() { done <- a.supervise(runCtx) }()
 	go func() { done <- a.logScheduler.Run(runCtx) }()
 	go func() { done <- a.sipScheduler.Run(runCtx) }()
+	go func() { done <- a.certificateLoop(runCtx) }()
 	var err error
 	finished := 0
 	select {
@@ -283,7 +342,7 @@ func (a *Agent) Run(ctx context.Context) (resultErr error) {
 	cancel()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
-	for finished < 5 {
+	for finished < 6 {
 		select {
 		case e := <-done:
 			err = errors.Join(err, e)
@@ -298,11 +357,13 @@ func (a *Agent) Run(ctx context.Context) (resultErr error) {
 func (a *Agent) supervise(ctx context.Context) error {
 	backoff := transport.NewBackoff(a.cfg.Controller.ReconnectInitial, a.cfg.Controller.ReconnectMax)
 	for ctx.Err() == nil {
+		a.queue.ResetInflight()
 		sessionCtx, cancel := context.WithCancel(ctx)
+		applicationACK := false
 		watchdog := time.AfterFunc(a.cfg.Controller.ConnectTimeout, cancel)
 		session, err := a.transport.Connect(sessionCtx)
 		if err == nil {
-			hello := model.AgentHello{AgentID: a.id.AgentID, SessionID: a.id.SessionID, Name: a.cfg.Agent.Name, Build: version.Info(), StartedAt: a.started.UTC(), Device: a.deviceSnapshot(), ProtocolVersion: 1}
+			hello := model.AgentHello{AgentID: a.id.AgentID, SessionID: a.id.SessionID, Name: a.cfg.Agent.Name, Build: version.Info(), StartedAt: a.started.UTC(), Device: a.deviceSnapshot(), ProtocolVersion: 1, ApplicationACK: true}
 			e, eErr := a.envelope(model.Envelope{Hello: &hello})
 			err = eErr
 			if err == nil {
@@ -311,23 +372,35 @@ func (a *Agent) supervise(ctx context.Context) error {
 			if err == nil {
 				var ack model.ControllerMessage
 				ack, err = session.Receive()
+				applicationACK = ack.ApplicationACK
 				if err == nil && (!ack.HelloAccepted || ack.ProtocolVersion != 1 || ack.Command != nil) {
 					err = errors.New("controller rejected protocol handshake")
 				}
 			}
 		}
 		watchdog.Stop()
+		if err == nil && a.queue.IsDurable() && !applicationACK && a.cfg.Queue.WithDefaults().ACKFallback == "reject" {
+			err = errors.New("controller lacks required application ACK; durable records retained within configured bounds")
+		}
 		if err == nil && sessionCtx.Err() != nil {
 			err = sessionCtx.Err()
+		}
+		if err == nil {
+			err = a.recoverCommandResults()
 		}
 		if err == nil {
 			backoff.Reset()
 			a.mu.Lock()
 			a.connected = true
+			a.activeCancel = cancel
+			a.ackFallback = a.queue.IsDurable() && !applicationACK
 			a.mu.Unlock()
 			a.logger.Info("controller connected", "controller", a.cfg.Controller.Address)
 			a.event("agent.connected", "info", "controller connected")
-			err = a.exchange(sessionCtx, cancel, session)
+			if !applicationACK && a.queue.IsDurable() {
+				a.logger.Warn("application ACK unavailable; explicit best-effort send fallback active")
+			}
+			err = a.exchange(sessionCtx, cancel, session, applicationACK)
 		}
 		cancel()
 		if session != nil {
@@ -335,6 +408,7 @@ func (a *Agent) supervise(ctx context.Context) error {
 		}
 		a.mu.Lock()
 		a.connected = false
+		a.activeCancel = nil
 		a.mu.Unlock()
 		if ctx.Err() != nil {
 			return nil
@@ -361,6 +435,7 @@ func (a *Agent) send(ctx context.Context, cancel context.CancelFunc, s transport
 		return err
 	}
 	e.SentAt = time.Now().UTC()
+	e.SessionID = a.id.SessionID
 	e.Sequence = a.sequence.Add(1)
 	timer := time.AfterFunc(a.cfg.Controller.SendTimeout, cancel)
 	err := s.Send(e)
@@ -371,8 +446,25 @@ func (a *Agent) send(ctx context.Context, cancel context.CancelFunc, s transport
 	return err
 }
 
-func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s transport.Session) error {
+func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s transport.Session, applicationACK bool) error {
 	received := make(chan error, 1)
+	commandsDone := make(chan error, 1)
+	commandWork := make(chan model.Command, 1)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				commandsDone <- ctx.Err()
+				return
+			case c := <-commandWork:
+				if err := a.handleCommand(ctx, c); err != nil {
+					commandsDone <- err
+					cancel()
+					return
+				}
+			}
+		}
+	}()
 	go func() {
 		for ctx.Err() == nil {
 			message, err := s.Receive()
@@ -382,6 +474,21 @@ func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s trans
 				return
 			}
 			if message.Command == nil {
+				if applicationACK && message.ACKMessageID != "" {
+					_, err = a.queue.Acknowledge(message.ACKMessageID)
+					if err == nil {
+						err = a.acknowledgeCommandResult(message.ACKMessageID)
+					}
+					if err == nil {
+						err = a.recoverCommandResults()
+					}
+					if err != nil {
+						received <- err
+						cancel()
+						return
+					}
+					continue
+				}
 				received <- errors.New("unexpected controller message after handshake")
 				cancel()
 				return
@@ -389,8 +496,13 @@ func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s trans
 			if ctx.Err() != nil {
 				break
 			}
-			if err = a.handleCommand(ctx, *message.Command); err != nil {
-				received <- err
+			select {
+			case commandWork <- *message.Command:
+			case <-ctx.Done():
+				received <- ctx.Err()
+				return
+			default:
+				received <- errors.New("controller command backlog exceeds bounded worker capacity")
 				cancel()
 				return
 			}
@@ -408,11 +520,28 @@ func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s trans
 			sendErr = err
 			break
 		}
+		if !applicationACK {
+			if _, err = a.queue.Acknowledge(e.MessageID); err != nil {
+				sendErr = err
+				break
+			}
+			if e.CommandResult != nil {
+				if err = a.acknowledgeCommandResult(e.MessageID); err != nil {
+					sendErr = err
+					break
+				}
+			}
+			if err = a.recoverCommandResults(); err != nil {
+				sendErr = err
+				break
+			}
+		}
 	}
 	cancel()
 	_ = s.Close()
 	receiveErr := <-received
-	return errors.Join(sendErr, receiveErr)
+	commandErr := <-commandsDone
+	return errors.Join(sendErr, receiveErr, commandErr)
 }
 
 func (a *Agent) Snapshot() Diagnostics {
@@ -420,6 +549,21 @@ func (a *Agent) Snapshot() Diagnostics {
 	d := Diagnostics{AgentID: a.id.AgentID, SessionID: a.id.SessionID, Build: version.Info(), Platform: runtime.GOOS + "/" + runtime.GOARCH, ControllerAddress: a.cfg.Controller.Address, TLSMode: a.cfg.Security.Mode, Connected: a.connected, ObservedAt: time.Now().UTC(), RecentErrors: append([]string(nil), a.recentErrors...)}
 	a.mu.Unlock()
 	d.Queue = a.queue.State()
+	d.SNMP = a.snmpSecurityStatus()
+	if a.storageError != "" {
+		d.Queue.StorageError = a.storageError
+	}
+	a.mu.Lock()
+	d.ACKFallback = a.ackFallback
+	a.mu.Unlock()
+	if a.commandStore != nil {
+		s := a.commandStore.Health()
+		d.CommandState = &s
+	}
+	if a.certificates != nil {
+		s := a.certificates.Status()
+		d.Certificate = &s
+	}
 	d.Collectors = a.scheduler.Stats()
 	d.Collectors = append(d.Collectors, a.remote.Stats()...)
 	d.Collectors = append(d.Collectors, a.logScheduler.Stats()...)
