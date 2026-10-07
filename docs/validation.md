@@ -641,3 +641,135 @@ options/schemas/fixtures ещё нужны; multi-resource inventory потре�
 bounded batch reader. Remote Syslog/Audit receiver не реализован: existing
 pipeline читает files. Backend-managed target reconciliation также отсутствует.
 Zabbix/Prometheus/Ansible/Grafana/TSDB/Asset merge остаются Backend scope.
+
+## Collector Phase 2 — Corporate NTP, 2026-10-07
+
+Phase 2 использует стандартную службу ОС: explicit deployment apply и один
+bounded read-only startup status. Собственный NTP protocol, clock discipline,
+offset estimation, virtual clock, Backend wire/API и remote-device time
+management не добавлены. Temporal model Phase 1 продолжает использовать
+системное время и сохранять отдельный source timestamp.
+Contract и administrative setup описаны в [time-sync](time-sync.md).
+
+### Baseline до изменения кода
+
+Исходный `git status --short` пуст. SDK — `go version go1.27.1 windows/amd64`;
+выполнен `go env GOOS GOARCH CGO_ENABLED GOPATH GOMODCACHE GOCACHE CC`.
+Использованы ignored local caches `.cache/gopath`, `.cache/modules`,
+`.cache/build`; для Windows race — portable LLVM-MinGW и `CGO_ENABLED=1`.
+
+| Команда | Фактический результат baseline |
+|---|---|
+| `gofmt -l` всех Go sources в `api`, `cmd`, `internal` | PASS, список пуст |
+| `go build ./...` | PASS |
+| `go vet ./...` | PASS |
+| `go test -count=1 ./...` | PASS |
+| `go test -race -count=1 ./...` | FAIL: существующий LLDP timeout test вернул malformed response вместо DeadlineExceeded |
+| Повтор `go test -race -count=1 ./...` | FAIL: Windows TempDir cleanup в двух existing durable queue tests; LLDP прошёл |
+| `go mod verify` | PASS, all modules verified |
+
+Это test failures, а не сообщения race detector о data race. LLDP test ожидал
+timer callback через `Sleep(1ms)`; заменён только этот test wait на
+`<-ctx.Done()`. Production SNMP code не менялся. Queue code/tests не менялись:
+последующий полный race и Windows/Linux integration прошли. Windows cleanup
+flake baseline сохранён в records, не выдан за исходный PASS.
+Logs — `.cache/collector-phase2-baseline/{status,gofmt,build,vet,test,race,race-retry,mod-verify}.log`.
+
+### Новые config/provider/runtime tests
+
+| Scope | Подтверждённые сценарии |
+|---|---|
+| Config | Default/disabled, IPv4, IPv6, несколько servers, DNS normalization, duplicate removal, empty enabled list, invalid address/URL/port/option/control characters, unknown fields/types и bounded server count |
+| Linux selection | Active chrony preferred, active timesyncd при inactive chrony, available/inactive/absent services, conflicting active clients, unit aliases |
+| Chrony | Два distro paths, actual process `-f`, confdir/sourcedir/include fragments, idempotency, replacement only owned sources, correct administrator config no-op, refusal other sources/local/refclock/custom layouts/`-x` |
+| Timesyncd | Managed drop-in, explicit corporate `NTP` и `FallbackNTP`, no-op, unchanged file/runtime mismatch без repeated restart, old persistent file update, refusal noncorporate per-link/DHCP sources |
+| Ownership/failures | Marker required, symlink/nonregular refusal, bounded command output/cancellation, restart failure restores old/absent file, canceled apply still restores through bounded cleanup |
+| OpenWrt | Fixed `system.ntp` UCI read, current/desired servers, enabled/use_dhcp, procd sysntpd state, synchronization unknown, permission/missing/malformed/bounded responses; повторный Apply всегда read-only unsupported, commit/restart отсутствуют |
+| Runtime/CLI | Structured apply error, disabled no-op, diagnostic clone ownership; telemetry и heartbeat продолжаются при permission denied/service unavailable/not synchronized |
+
+Tests используют temporary fixture filesystem и закрытые command runner
+operations. Реальные NTP servers, clock changes и system service writes не
+требуются. На Windows symlink test может skip при отсутствии privileges;
+в Linux WSL `TestNTPManagedSymlinkRefused` фактически выполнен — PASS.
+
+Targeted проверки:
+
+- `go test -count=1 ./internal/config ./internal/platform/... ./internal/agent ./cmd/infrapulse-agent` — PASS.
+- `go test -count=1 ./internal/platform/openwrt` и `go vet ./internal/platform/openwrt` — PASS.
+- `go test -race -count=1 ./internal/platform/openwrt` — PASS.
+- `go test ./internal/platform/linux` и `go test -race ./internal/platform/linux` — PASS.
+- `go test -race -run '^TestLLDPChurnTimeoutAndMalformed$' -count=20 ./internal/driver/snmp` — PASS.
+- Независимый review повторил `go test -count=1 ./internal/platform/... ./internal/config ./cmd/infrapulse-agent ./internal/agent` — PASS.
+
+Промежуточный targeted запуск `go test -count=1 ./internal/config
+./internal/platform/timesync ./internal/platform/openwrt` во время параллельного
+написания provider завершился FAIL: Linux method `chronyLayout` ещё отсутствовал.
+После завершения реализации общие targeted и full builds/tests — PASS.
+
+### Полный regression после code freeze
+
+Ignored script `.cache/collector-phase2-regression/run.ps1` выполнен полностью,
+все checks exit=0. Logs — `.cache/collector-phase2-regression/status.log` и
+отдельные logs; артефакты не входят в Git.
+
+| Команда/проверка | Результат |
+|---|---|
+| `gofmt -w` всех Go sources, затем `gofmt -l` | PASS, список пуст |
+| `go build ./...` | PASS |
+| `go vet ./...` | PASS |
+| `go test -count=1 ./...` | PASS, без test cache |
+| `go test -race -count=1 ./...` | PASS, без test cache |
+| `go mod verify` | PASS |
+| `go test -count=1 -tags=integration ./internal/queue ./internal/commands` | PASS |
+| `scripts/build.ps1 -GoPath <SDK>` | PASS, все четыре executables |
+| `scripts/build.ps1 -Cross -GoPath <SDK>` | PASS, прежняя target matrix |
+| `bin/infrapulse-agent.exe validate-config --config <каждый configs/*.yaml>` | PASS, все 8 examples |
+| Linux WSL test suites ниже | PASS, все 14 |
+| Linux `time-sync-status` на реальной WSL среде | PASS: read-only detection выдал unavailable diagnostic |
+| Relative Markdown file links и `git diff --check` | PASS |
+
+Cross-build CGO0: Collector Linux amd64/arm64/arm (`GOARM=7`)/mips/mipsle
+(`GOMIPS=hardfloat`); Mock Controller, Simulator, Mock Enrollment — amd64/arm64.
+Windows development builds не означают Windows LocalPlatform support.
+
+Linux binaries собирались на Windows, затем запускались в WSL `docker-desktop`:
+
+```text
+go test -c -tags=integration -o .cache/collector-phase2-regression/linux-<package>.test ./internal/<package>
+wsl.exe -d docker-desktop --cd <package-directory> -- <test-binary> -test.v=true -test.count=1 -test.timeout=120s
+```
+
+Все suites: `platform/linux`, `logs`, `queue`, `commands`, `protocol/snmp`,
+`driver/routeros`, `pki`, `platform/openwrt`, `agent`, `simulator`, `telephony`,
+`transport/grpc`, `config`, `platform`. Parent command crash helper ожидаемо
+skipped; actual child crash stages выполнены. Проверены реальные Linux
+`/proc`/`/sys`, file I/O, log cursors, process crash/replay и loopback
+gRPC/UDP/HTTPS/TLS fixtures. Real default-3s Linux Collector → Mock Controller
+с durable ACK прошёл: интервалы 3.000627522s и 3.000208578s.
+
+### Runtime NTP validation и пределы
+
+Команда выполнялась только read-only:
+
+```text
+wsl.exe -d docker-desktop --cd <workspace> -- <workspace>/bin/infrapulse-agent-linux-amd64 time-sync-status --config configs/config.time-sync.example.yaml
+```
+
+Ответ: enabled=true, available=false, active=false, synchronized=null,
+configured=false, changed=false; diagnostic сообщает, что `systemctl`
+недоступен. PID1 в этой WSL среде — init, не systemd; chrony/timesyncd/ubus
+не установлены. Поэтому actual successful chrony/timesyncd apply и NTP
+synchronization achieved не проверены. Их configuration/status semantics
+проверены fixtures и primary documentation, включая compiled-fallback nuance
+systemd v257. Никакие службы, NTP configuration или часы development host
+не менялись. OpenWrt UCI/procd — fixtures; firmware/hardware runtime не проверен.
+Автоматический Linux apply требует существующий systemd provider и supported
+safe layout; другие init/custom installations настраивает администратор.
+
+Полный regression подтверждает сохранение existing SNMPv2c/v3, RouterOS,
+LLDP/CDP/MNDP, SIP, file logs/audit, gRPC, durable outbox/ACK/replay, PKI,
+command journal/snapshots/rollback и Simulator в пределах unit/fixture и
+Linux runtime suites. Реальное оборудование и production Backend не участвовали.
+Protobuf/generated sources, temporal model, dependencies и systemd unit
+не изменены. Remote Syslog/Audit Receiver остаётся следующим самостоятельным
+этапом; Phase 3 не начиналась. Git commit/push/merge/rebase не выполнялись.

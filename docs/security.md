@@ -46,6 +46,30 @@ Agent ID хранится в `state_dir/agent-id`, session ID создаётся
 State/config/CA/private keys должны быть доступны service user и защищены
 от изменения посторонними пользователями.
 
+## Corporate NTP и права deployment
+
+`time_sync` читается только из trusted local YAML. NTP addresses не получаются
+из SNMP/LLDP/Syslog, remote Device fields или Controller commands. Backend dynamic
+configuration на этой фазе отсутствует. Серверы проходят bounded IPv4/IPv6/DNS
+validation; shell fragments, URLs, ports и process arguments в этом contract
+не допускаются. Public NTP fallback не задаётся.
+
+Linux `apply-time-sync` — отдельное административное действие с правами записи
+system config и управления выбранной существующей NTP-службой. Оно ограничено
+InfraPulse-managed fragment/drop-in; main administrator config не заменяется.
+Active conflict между NTP clients приводит к отказу apply: helper не отключает
+службы, не устанавливает пакеты и не запускает новый client вместо администратора.
+OpenWrt global UCI section не принадлежит InfraPulse, поэтому automatic UCI
+mutation отсутствует; setup и rollback выполняет администратор.
+
+Обычный `run` выполняет read-only status check с конечным timeout. Недоступность
+service/status, permission denied и ещё не достигнутая synchronization дают
+warning/diagnostic, без panic и остановки SNMP/RouterOS/SIP monitoring. Service
+user сохраняет прежние права; systemd sandbox не ослабляется ради NTP setup.
+Collector не исполняет NTP protocol, не корректирует timestamps вручную и не
+управляет NTP удалённых устройств. Ownership и rollback —
+[time-sync](time-sync.md).
+
 ## Remote credentials
 
 YAML содержит только именованные environment references:

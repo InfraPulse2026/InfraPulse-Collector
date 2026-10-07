@@ -24,6 +24,7 @@ import (
 	"InfraPulseAgent/internal/model"
 	"InfraPulseAgent/internal/pki"
 	"InfraPulseAgent/internal/platform"
+	"InfraPulseAgent/internal/platform/timesync"
 	"InfraPulseAgent/internal/queue"
 	"InfraPulseAgent/internal/remote"
 	"InfraPulseAgent/internal/sanitize"
@@ -36,6 +37,7 @@ import (
 )
 
 type Agent struct {
+	timeSync     *timesync.Status
 	localTarget  model.Target
 	commandStore *commands.Store
 	certificates *pki.Manager
@@ -69,6 +71,7 @@ type Agent struct {
 type Collector = Agent
 
 type Diagnostics struct {
+	TimeSync          *timesync.Status        `json:"time_sync,omitempty"`
 	Targets           []model.Target          `json:"targets,omitempty"`
 	SNMP              []SNMPSecurityStatus    `json:"snmp,omitempty"`
 	CommandState      *commands.StoreHealth   `json:"command_state,omitempty"`
@@ -559,6 +562,10 @@ func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s trans
 func (a *Agent) Snapshot() Diagnostics {
 	a.mu.Lock()
 	d := Diagnostics{AgentID: a.id.AgentID, SessionID: a.id.SessionID, Build: version.Info(), Platform: runtime.GOOS + "/" + runtime.GOARCH, ControllerAddress: a.cfg.Controller.Address, TLSMode: a.cfg.Security.Mode, Connected: a.connected, ObservedAt: time.Now().UTC(), RecentErrors: append([]string(nil), a.recentErrors...)}
+	if a.timeSync != nil {
+		s := timesync.Clone(*a.timeSync)
+		d.TimeSync = &s
+	}
 	a.mu.Unlock()
 	d.Queue = a.queue.State()
 	d.Targets = a.configuredTargets()

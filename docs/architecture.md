@@ -21,6 +21,7 @@ Domain boundaries и архитектурный freeze Phase 1 описаны в
 |---|---|
 | Collector Core (`internal/agent`) | Identity/session, targets, lifecycle adapters, запуск scheduler, normalized observations, outbound stream, diagnostics и admission команд |
 | Local Platform | Linux identity, CPU/memory/interfaces из `/proc` и `/sys`; не управляет удалёнными устройствами |
+| Host Time Setup | Trusted local `time_sync`, выбор стандартной NTP-службы ОС, opt-in deployment apply и read-only status; не создаёт clock model или remote-device command |
 | Remote Registry | Configured targets, lifecycle adapters, bounded polling, per-target exclusion, last successful observation, connectivity failures и state events |
 | Remote Driver | Нормализация данных источника и динамические capabilities; не читает YAML или protobuf и не выполняет глобальный Asset merge |
 | Protocol Adapter | SNMP v2c/v3 USM/UDP или RouterOS HTTPS REST, authentication, deadlines, cancellation, response limits и безопасные категории ошибок |
@@ -263,8 +264,10 @@ RouterOS operations: [REST API](https://manual.mikrotik.com/docs/developer-guide
 Реализованный P3 содержит SNMPv3, bounded durable delivery/ACK/replay,
 persistent journal/results, enrollment/rotation и typed interface rollback.
 Collector Core Phase 1 сохраняет этот фундамент и добавляет Target/Source,
-identity evidence и временную модель. Remote Syslog/Audit receiver, Redfish,
-IPMI и Collector ↔ Backend clock offset estimation остаются следующими этапами;
+identity evidence и временную модель. Phase 2 использует standard OS corporate
+NTP через отдельный deployment apply. Local Platform collection interface,
+observation clocks, gRPC и Backend не меняются. Remote Syslog/Audit receiver,
+Redfish/IPMI и Collector ↔ Backend clock offset estimation пока отсутствуют;
 capabilities для них не объявлены. [Architecture freeze](collector-core.md).
 Windows LocalPlatform относится к post-MVP/backlog. NETCONF/gNMI deferred:
 без подтверждённого typed use case новый protocol не добавляется.

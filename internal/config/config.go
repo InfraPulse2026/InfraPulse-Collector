@@ -16,12 +16,14 @@ import (
 
 	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/model"
+	"InfraPulseAgent/internal/platform/timesync"
 	protocolsnmp "InfraPulseAgent/internal/protocol/snmp"
 	"InfraPulseAgent/internal/telephony"
 	"go.yaml.in/yaml/v3"
 )
 
 type Config struct {
+	TimeSync    timesync.Settings                `yaml:"time_sync"`
 	Logs        Logs                             `yaml:"logs"`
 	Telephony   TelephonyHealth                  `yaml:"telephony"`
 	Agent       Agent                            `yaml:"agent"`
@@ -232,6 +234,11 @@ func Parse(data []byte) (Config, error) {
 	if err := d.Decode(&extra); err != io.EOF {
 		return Config{}, errors.New("configuration must contain exactly one YAML document")
 	}
+	var err error
+	c.TimeSync, err = timesync.Normalize(c.TimeSync)
+	if err != nil {
+		return Config{}, err
+	}
 	return c, nil
 }
 
@@ -245,6 +252,9 @@ func IsLoopback(host string) bool {
 
 func (c Config) Validate() error {
 	var problems []error
+	if _, err := timesync.Normalize(c.TimeSync); err != nil {
+		problems = append(problems, err)
+	}
 	add := func(ok bool, field string) {
 		if !ok {
 			problems = append(problems, fmt.Errorf("invalid %s", field))

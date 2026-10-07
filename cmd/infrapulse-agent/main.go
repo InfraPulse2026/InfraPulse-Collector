@@ -33,7 +33,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: infrapulse-agent <run|version|validate-config|diagnostics|probe-device> [--config path]")
+		return errors.New("usage: infrapulse-agent <run|version|validate-config|diagnostics|probe-device|apply-time-sync|time-sync-status> [--config path]")
 	}
 	if args[0] == "version" {
 		return json.NewEncoder(os.Stdout).Encode(version.Info())
@@ -48,6 +48,11 @@ func run(args []string) error {
 		return err
 	}
 	switch args[0] {
+	case "apply-time-sync", "time-sync-status":
+		if fs.NArg() != 0 {
+			return errors.New("time synchronization commands take no positional arguments")
+		}
+		return timeSyncCommand(context.Background(), cfg, args[0] == "apply-time-sync", os.Stdout)
 	case "validate-config":
 		if fs.NArg() != 0 {
 			return errors.New("validate-config takes no positional arguments")
@@ -62,6 +67,7 @@ func run(args []string) error {
 			return err
 		}
 		diagnostic := map[string]any{"agent_id": id.AgentID, "session_id": nil, "platform": runtime.GOOS + "/" + runtime.GOARCH, "build": version.Info(), "config_path": *path, "controller_address": cfg.Controller.Address, "tls_mode": cfg.Security.Mode, "local_enabled": cfg.Local.Enabled, "remote_device_count": len(cfg.Devices), "note": "persisted runtime snapshot; observed_at may be stale after process exit; session_id is unavailable until an agent run writes a snapshot"}
+		diagnostic["time_sync"] = platform.TimeSyncStatus(ctx, cfg.Local.Platform, cfg.TimeSync)
 		p := filepath.Join(cfg.Agent.StateDir, "diagnostics.json")
 		f, err := os.Open(p)
 		if err == nil {
@@ -142,5 +148,6 @@ func run(args []string) error {
 		return err
 	}
 	a.SetCertificateManager(certificates)
+	a.SetTimeSyncStatus(platform.TimeSyncStatus(ctx, cfg.Local.Platform, cfg.TimeSync))
 	return a.Run(ctx)
 }

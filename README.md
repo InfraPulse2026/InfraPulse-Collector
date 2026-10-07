@@ -56,6 +56,8 @@ AI и историческое хранилище находятся вне эт
 - SIP OPTIONS UDP/TCP/TLS: availability, latency, failure threshold и state
   events; TLS проверяет CA/SAN/SNI, Digest authentication пока отсутствует.
 - Development Simulator с deterministic scenarios/trends и `source=simulated`.
+- Корпоративный NTP через стандартную службу ОС: отдельный Linux deployment
+  helper для chrony/systemd-timesyncd и read-only status при запуске Collector.
 
 ## Как это работает
 
@@ -208,6 +210,7 @@ devices: []
 | `controller` | Адрес Controller и сетевые timeout/reconnect параметры |
 | `security` | Режим соединения, CA, сертификат, private key и имя сервера |
 | `local` | Включение локального сбора, platform auto/linux/openwrt |
+| `time_sync` | Opt-in corporate NTP servers для системной службы ОС; apply выполняется отдельно от monitoring |
 | `telemetry` | Интервалы fast, inventory, heartbeat и timeout сбора |
 | `queue` | Memory/durable, message/payload/file limits, retention, batching и ACK fallback |
 | `scheduler` | Число одновременно выполняемых collectors |
@@ -233,6 +236,8 @@ devices: []
   SNMPv3 authPriv и SIP TLS.
 - [config.enrollment.example.yaml](configs/config.enrollment.example.yaml) —
   production Agent-side enrollment с bootstrap CA и token environment reference.
+- [config.time-sync.example.yaml](configs/config.time-sync.example.yaml) —
+  corporate NTP и отдельный deployment apply без локального сбора.
 
 Для production замените адрес и параметры безопасности:
 
@@ -670,6 +675,8 @@ sh scripts/generate-proto.sh
 - [Архитектура](docs/architecture.md) — компоненты, модели и внутренние pipelines.
 - [Collector Core](docs/collector-core.md) — Target/Source, identity evidence,
   temporal semantics и границы совместимости Phase 1.
+- [Корпоративный NTP](docs/time-sync.md) — конфигурация chrony/timesyncd,
+  права, idempotency, status и ручной OpenWrt setup.
 - [Протокол](docs/protocol.md) — обмен Agent ↔ Controller и правила доставки.
 - [Durable delivery](docs/delivery.md), [journal/snapshots/rollback](docs/commands.md),
   [enrollment/PKI](docs/enrollment.md), [SNMPv3](docs/snmpv3.md).
@@ -693,14 +700,45 @@ permissions, без encryption at rest/TPM/HSM.
 Remote Syslog/Audit receiver, Redfish и IPMI относятся к roadmap; Phase 1
 подготавливает domain model и adapter registration, сами протоколы не реализованы.
 Collector ↔ Backend clock offset estimation также отложен; unknown offset
-не считается нулём. Production deployment использует NTP/chrony или аналог,
-Collector не меняет часы устройств и не запускает собственный NTP service.
+не считается нулём. Phase 2 передаёт corporate servers стандартной службе ОС
+через отдельный deployment helper. Collector использует системное время,
+не меняет часы удалённых устройств и не запускает собственный NTP service.
 
 Windows LocalPlatform — post-MVP/backlog. Service/firewall writes, SIP Digest,
 NETCONF/gNMI и vendor-specific health OID не реализованы. OpenWrt, Astra/ALT/RED OS
 runtime и реальное сетевое оборудование/PBX не проверены. [Матрица](docs/vendor-support.md).
 
 ## Production deployment
+
+Для корреляции metrics/events/logs/topology/SIP синхронизируйте Backend host,
+все Collector hosts и network/server equipment, где это возможно, с одной
+корпоративной NTP hierarchy. Например:
+
+```yaml
+time_sync:
+  enabled: true
+  servers:
+    - ntp1.company.local
+    - ntp2.company.local
+```
+
+По умолчанию `time_sync.enabled: false`; публичного fallback нет. Enabled
+configuration требует 1–16 IPv4/IPv6/DNS servers. Сначала администратор
+выбирает и запускает единственную системную NTP-службу, затем на Linux выполняет:
+
+```sh
+sudo /usr/local/bin/infrapulse-agent apply-time-sync --config /etc/infrapulse/config.yaml
+/usr/local/bin/infrapulse-agent time-sync-status --config /etc/infrapulse/config.yaml
+```
+
+Helper не устанавливает пакеты и не переключает конкурирующие NTP clients.
+Обычный `run` выполняет только ограниченный status read, предупреждает о
+несинхронизированных часах и продолжает monitoring. Применение системного
+config не требует изменения прав существующего service user. Chrony без
+подключённого managed fragment требует administrator setup; OpenWrt настройка
+выполняется администратором через UCI. Ownership, rollback и ограничения —
+[time-sync](docs/time-sync.md). Backend NTP остаётся deployment requirement;
+Collector не меняет Backend protocol и NTP config удалённых устройств.
 
 Native Linux/OpenWrt запускается от отдельного service user с правами чтения
 нужных источников и записи private state directory. Durable mode рекомендуется

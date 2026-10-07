@@ -19,6 +19,7 @@ const (
 	Networks
 	Services
 	Firewall
+	NTPConfig
 )
 
 const (
@@ -49,6 +50,8 @@ func arguments(op Operation) ([]string, error) {
 		return []string{"-S", "call", "service", "list", `{"verbose":false}`}, nil
 	case Firewall:
 		return []string{"-S", "call", "uci", "get", `{"config":"firewall"}`}, nil
+	case NTPConfig:
+		return []string{"-S", "call", "uci", "get", `{"config":"system","section":"ntp"}`}, nil
 	default:
 		return nil, errors.New("unsupported OpenWrt operation")
 	}

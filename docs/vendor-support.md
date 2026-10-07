@@ -33,6 +33,7 @@ capabilities автоматически. [Domain model](collector-core.md).
 | Компонент | Фактические функции | Fixture verified | Runtime verified | Hardware / внешние системы |
 |---|---|---|---|---|
 | Local Linux | Identity, OS/kernel/architecture/uptime, optional DMI, CPU/load, RAM/swap/optional PSI, interfaces/IP/counters/rates | Isolated procfs/sysfs fixtures | WSL Linux amd64: реальные `/proc`, `/sys`, interface addresses и Agent/Mock stream | WSL runtime; сетевое оборудование не требуется и не проверялось |
+| Corporate NTP host setup | Linux chrony/timesyncd deployment apply; bounded read-only status; OpenWrt status и administrator UCI setup | Isolated provider/config/ownership/idempotency fixtures; результаты — в Phase 2 validation | Live chrony/timesyncd synchronization и OpenWrt runtime не подтверждены | NTP удалённых устройств и Backend protocol не реализуются; [границы](time-sync.md) |
 | Native OpenWrt | Linux collector плюс board/release evidence, netifd logical networks, procd services, UCI firewall configuration read | Official implementation schema fixtures; timeout/cancellation/partial availability и настоящий wire encode/decode | **OpenWrt runtime unverified**: доступная WSL среда не содержит OpenWrt release/ubus | OpenWrt router/firmware и RAM/flash consumption не проверены |
 | Linux system logs | Configurable regular files, syslog/rsyslog/raw parsing, sanitizer, bounded batches, persistent cursors, rotation/truncate/recreate | Temp files, burst/rotation/restart/errors/cancellation | WSL Linux amd64: настоящие file reads, rotation, cursor restart и gRPC delivery | Production rsyslog deployment не проверен; paths задаются оператором |
 | auditd file source | Sanitized raw records, exact event ID/time/type, известные uid/auid/pid/exe/syscall/success/result; bounded correlation внутри batch | Audit syntax fixtures и Agent/Mock delivery | Linux file pipeline выполнен; содержимое audit records в tests — fixtures | Реальный audit daemon/audit rules не проверены |
@@ -164,7 +165,7 @@ Production Backend/CA service, Web UI, LLM/AI analysis, historical database
 | Remote Syslog/Audit receiver | Не реализован. Существующий syslog/auditd pipeline читает локальные files; сетевого receiver/listener нет |
 | Redfish | Не реализован. Target/Source/Observation/IdentityEvidence model подготовлена; HTTP schemas, resource traversal и реальные mapping fixtures ещё нужны |
 | IPMI | Не реализован. Target/Source/Observation model подготовлена; protocol client, authentication/security semantics и реальные fixtures ещё нужны |
-| Collector ↔ Backend time exchange | Не реализован. Optional offset/uncertainty и clock quality существуют во внутренней модели; измерения и additive wire fields относятся к следующей фазе |
+| Collector ↔ Backend time exchange | Отложен. Optional offset/uncertainty и clock quality существуют во внутренней модели; измерения и additive wire fields не входят в corporate NTP Phase 2 |
 
 Zabbix, Prometheus, Ansible, Grafana, TSDB и global Asset/entity resolution
 относятся к Backend/Control Plane и не являются adapters Collector.

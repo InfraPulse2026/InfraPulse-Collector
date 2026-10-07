@@ -210,10 +210,20 @@ Go `time.Duration` сохраняет internal numeric nanoseconds в JSON.
 Модель не требует монотонного порядка wall-clock timestamps: корректировка часов
 может сдвигать их назад. Для polling/rates сохраняется существующая логика.
 
-Production deployment предполагает NTP/chrony/equivalent. Collector не реализует
-NTP daemon/server, не меняет system/device clock и не конфигурирует синхронизацию.
-TimeSyncRequest/Response, four-timestamp exchange, RTT/offset estimation и
-Backend skew monitoring отсутствуют в Phase 1.
+Production deployment предполагает корпоративную NTP hierarchy для Backend,
+Collector hosts и оборудования, где синхронизация поддерживается. Phase 2
+добавляет opt-in `time_sync` в существующий YAML и отдельный administrative
+`apply-time-sync` для стандартных Linux NTP clients. Обычный `run` читает status
+без записи system config и продолжает monitoring при unavailable/unsynchronized
+состоянии. OpenWrt setup остаётся administrator-owned UCI configuration.
+Подробности — [time-sync](time-sync.md).
+
+NTP daemon/server и manual timestamp correction отсутствуют. Часы дисциплинирует
+ОС; `observed_at`/`collected_at` используют прежнее системное время, исходный
+source timestamp сохраняется отдельно. TimeSyncRequest/Response,
+four-timestamp exchange, RTT/offset estimation и Backend skew monitoring
+не реализуются в Phase 2. Unknown clock quality/offset/uncertainty в observation
+model не заменяются результатом проверки NTP-службы.
 
 ## Existing adapters после adaptation
 
@@ -254,10 +264,12 @@ old wire не может передать эти сведения целиком
 описаны в [protocol](protocol.md). Wire metadata нельзя молча упаковать в vendor,
 hostname или generic string.
 
-Readiness для следующей фазы — domain foundation готов; для Collector ↔ Backend
-offset estimation ещё нужны negotiated exchange, measured quality/uncertainty,
-additive wire metadata и Backend implementation/validation. Backend received_at
-остаётся server-owned. Phase 2 автоматически не запускается.
+Domain foundation готов для следующего Remote Syslog/Audit Receiver этапа.
+Ему потребуются отдельный bounded input lifecycle/admission, источник и target
+attribution, protocol/parser fixtures и проверки pressure/restart. Existing file
+reader остаётся file pipeline. Collector ↔ Backend offset estimation отложен;
+exchange, additive wire metadata и Backend implementation отсутствуют.
+Backend received_at остаётся server-owned. Phase 3 автоматически не запускается.
 
 Redfish/IPMI можно подключить через зарегистрированный Adapter и небольшие readers,
 но protocol implementations, credentials/security options, реальные schemas/mappings

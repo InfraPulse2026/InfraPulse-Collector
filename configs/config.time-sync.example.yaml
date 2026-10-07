@@ -1,0 +1,20 @@
+# Corporate NTP addresses are supplied by your organization.
+# This development config is safe to validate on any host; apply is a separate
+# administrator action. Replace controller/security for production deployment.
+agent:
+  name: collector-dc-01
+  state_dir: ../state
+controller:
+  address: localhost:9443
+security:
+  mode: development
+local:
+  enabled: false
+time_sync:
+  enabled: true
+  servers:
+    - ntp1.company.local
+    - ntp2.company.local
+commands:
+  enabled: false
+devices: []

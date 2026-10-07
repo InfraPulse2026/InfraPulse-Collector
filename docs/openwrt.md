@@ -94,3 +94,27 @@ password cache GoSNMP отключён; password-to-key вычисляется �
 portability binary, но не performance. Для ограниченного flash допустим memory
 outbox; durable state рекомендуется размещать на подходящем persistent storage
 с ограничениями bytes/messages/retention и batching.
+
+## Corporate NTP на OpenWrt
+
+Phase 2 читает configured `system.ntp` и состояние procd `sysntpd` через
+фиксированные ubus operations. Это read-only status: active daemon не доказывает
+достигнутую synchronization, поэтому synchronization остаётся unknown.
+`time_sync` работает и при `local.enabled: false`; отключение Linux collection
+не меняет системную NTP-службу.
+
+Automatic UCI apply не реализован: стандартный sysntpd использует общую секцию
+`system.ntp`, которой управляет администратор. Дополнительный InfraPulse-owned
+timeserver section не является безопасной заменой этой секции. Collector
+не перезаписывает `/etc/config/system`, не коммитит чужие pending UCI changes
+и не перезапускает sysntpd автоматически.
+
+Администратор задаёт corporate servers, `enabled=1` и `use_dhcp=0`, затем
+выполняет commit/restart только при изменении настроек. Отключение DHCP NTP
+исключает добавление серверов вне corporate hierarchy для этого sysntpd config.
+Вариант для стандартного OpenWrt v24.10, preflight, idempotency и rollback —
+[time-sync](time-sync.md#openwrt-administrator-setup). Семантика подтверждена
+[sysntpd v24.10.0](https://github.com/openwrt/openwrt/blob/v24.10.0/package/utils/busybox/files/sysntpd);
+JSON UCI read — [rpcd UCI implementation](https://github.com/openwrt/rpcd/blob/master/uci.c).
+Version/firmware-specific deviations требуют administrator review; OpenWrt
+hardware/runtime и real corporate NTP synchronization остаются unverified.

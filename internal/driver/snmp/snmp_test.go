@@ -375,7 +375,7 @@ func TestLLDPChurnTimeoutAndMalformed(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
-	time.Sleep(time.Millisecond)
+	<-ctx.Done()
 	u, e = newFixtureDriver(f).Topology(ctx)
 	if !errors.Is(e, driver.ErrConnectivity) || !errors.Is(e, context.DeadlineExceeded) || u.Completeness == "complete" {
 		t.Fatalf("timeout: %+v %v", u, e)
