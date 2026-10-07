@@ -21,6 +21,8 @@ type PhysicalLocation struct {
 }
 
 type Device struct {
+	Observation       *ObservationMetadata `json:"observation,omitempty"`
+	IdentityEvidence  []IdentityEvidence   `json:"identity_evidence,omitempty"`
 	Source            string               `json:"source,omitempty"`
 	BoardName         string               `json:"board_name,omitempty"`
 	PlatformEvidence  []Evidence           `json:"platform_evidence,omitempty"`
@@ -147,18 +149,20 @@ type Metric struct {
 }
 
 type TelemetrySample struct {
-	DeviceID        string       `json:"device_id"`
-	ObservedAt      time.Time    `json:"observed_at"`
-	CollectedAt     time.Time    `json:"collected_at"`
-	Source          string       `json:"source"`
-	BootID          string       `json:"boot_id,omitempty"`
-	UptimeSeconds   float64      `json:"uptime_seconds"`
-	CPU             *CPUStats    `json:"cpu,omitempty"`
-	Memory          *MemoryStats `json:"memory,omitempty"`
-	Interfaces      []Interface  `json:"interfaces,omitempty"`
-	Metrics         []Metric     `json:"metrics,omitempty"`
-	UptimeAvailable *bool        `json:"uptime_available,omitempty"`
-	UptimeSource    string       `json:"uptime_source,omitempty"`
+	Observation      *ObservationMetadata `json:"observation,omitempty"`
+	IdentityEvidence []IdentityEvidence   `json:"identity_evidence,omitempty"`
+	DeviceID         string               `json:"device_id"`
+	ObservedAt       time.Time            `json:"observed_at"`
+	CollectedAt      time.Time            `json:"collected_at"`
+	Source           string               `json:"source"`
+	BootID           string               `json:"boot_id,omitempty"`
+	UptimeSeconds    float64              `json:"uptime_seconds"`
+	CPU              *CPUStats            `json:"cpu,omitempty"`
+	Memory           *MemoryStats         `json:"memory,omitempty"`
+	Interfaces       []Interface          `json:"interfaces,omitempty"`
+	Metrics          []Metric             `json:"metrics,omitempty"`
+	UptimeAvailable  *bool                `json:"uptime_available,omitempty"`
+	UptimeSource     string               `json:"uptime_source,omitempty"`
 }
 
 type QueueState struct {
@@ -195,18 +199,20 @@ type CertificateStatus struct {
 }
 
 type InventoryUpdate struct {
-	ObservedAt time.Time `json:"observed_at"`
-	Devices    []Device  `json:"devices"`
+	Observation *ObservationMetadata `json:"observation,omitempty"`
+	ObservedAt  time.Time            `json:"observed_at"`
+	Devices     []Device             `json:"devices"`
 }
 
 type Event struct {
-	ID        string    `json:"id"`
-	Type      string    `json:"type"`
-	DeviceID  string    `json:"device_id,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
-	Severity  string    `json:"severity"`
-	Message   string    `json:"message"`
-	Source    string    `json:"source"`
+	Observation *ObservationMetadata `json:"observation,omitempty"`
+	ID          string               `json:"id"`
+	Type        string               `json:"type"`
+	DeviceID    string               `json:"device_id,omitempty"`
+	Timestamp   time.Time            `json:"timestamp"`
+	Severity    string               `json:"severity"`
+	Message     string               `json:"message"`
+	Source      string               `json:"source"`
 }
 
 type ErrorReport struct {

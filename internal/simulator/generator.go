@@ -72,6 +72,14 @@ func (g *Generator) enabled(s string) bool {
 	return g.options.Scenario == s || g.options.Scenario == "all"
 }
 func deviceID(index int) string { return fmt.Sprintf("simulated:device-%03d", index+1) }
+
+func (g *Generator) source(index int, kind model.SourceType) model.SourceRef {
+	return model.SourceRef{Type: kind, TargetID: fmt.Sprintf("simulated:target-%03d", index+1), Protocol: "simulator", InstanceID: g.options.Scenario, Provenance: model.ProvenanceSimulated}
+}
+
+func (g *Generator) fleetSource(kind model.SourceType, target string) model.SourceRef {
+	return model.SourceRef{Type: kind, TargetID: target, Protocol: "simulator", InstanceID: g.options.Scenario, Provenance: model.ProvenanceSimulated}
+}
 func (g *Generator) uptime(step uint64) float64 {
 	return 3600 + float64(step)*g.options.Interval.Seconds()
 }
@@ -93,24 +101,26 @@ func (g *Generator) Tick(step uint64) []model.Envelope {
 			lastSeen = g.options.Start.Add(g.options.Interval).UTC() // last online step 1
 		}
 		devices = append(devices, model.Device{ID: deviceID(i), Source: "simulated", Name: fmt.Sprintf("Simulated device %d", i+1), Hostname: fmt.Sprintf("sim-device-%03d", i+1), ManagementAddress: fmt.Sprintf("192.0.2.%d", i+1), Vendor: "simulated", Model: "development-simulator", Type: "switch", Driver: "simulated", OS: "simulated", Online: online, LastSeen: lastSeen, UptimeSeconds: g.uptime(step), UptimeSource: "simulated", Capabilities: []model.Capability{{Name: "inventory.read", Supported: true}, {Name: "telemetry.read", Supported: true}, {Name: "topology.lldp", Supported: true}}})
+		devices[len(devices)-1] = model.ObserveDevice(devices[len(devices)-1], g.source(i, model.SourceSNMP), now, now)
 		if online {
-			envelopes = append(envelopes, model.Envelope{Telemetry: g.telemetry(step, i, now)})
+			envelopes = append(envelopes, model.ObserveEnvelope(model.Envelope{Telemetry: g.telemetry(step, i, now)}, g.source(i, model.SourceSNMP), now))
 		}
 	}
-	envelopes = append([]model.Envelope{{Inventory: &model.InventoryUpdate{ObservedAt: now, Devices: devices}}}, envelopes...)
+	inv := model.ObserveEnvelope(model.Envelope{Inventory: &model.InventoryUpdate{ObservedAt: now, Devices: devices}}, g.fleetSource(model.SourceLocal, "simulated:fleet"), now)
+	envelopes = append([]model.Envelope{inv}, envelopes...)
 	for i := 0; i < g.options.Devices; i++ {
-		envelopes = append(envelopes, model.Envelope{Topology: g.topology(step, i, now)})
+		envelopes = append(envelopes, model.ObserveEnvelope(model.Envelope{Topology: g.topology(step, i, now)}, g.source(i, model.SourceSNMP), now))
 	}
 	if records := g.logs(step, now); len(records) > 0 {
-		envelopes = append(envelopes, model.Envelope{Logs: &model.LogBatch{ObservedAt: now, Source: "simulated", Records: records}})
+		envelopes = append(envelopes, model.ObserveEnvelope(model.Envelope{Logs: &model.LogBatch{ObservedAt: now, Source: "simulated", Records: records}}, g.fleetSource(model.SourceSyslog, "simulated:logs"), now))
 	}
 	targets := make([]model.TelephonyHealth, 0, g.options.Devices)
 	for i := 0; i < g.options.Devices; i++ {
 		targets = append(targets, g.sip(step, i, now))
 	}
-	envelopes = append(envelopes, model.Envelope{Telephony: &model.TelephonyUpdate{ObservedAt: now, Source: "simulated", Targets: targets}})
+	envelopes = append(envelopes, model.ObserveEnvelope(model.Envelope{Telephony: &model.TelephonyUpdate{ObservedAt: now, Source: "simulated", Targets: targets}}, g.fleetSource(model.SourceSIP, "simulated:sip-fleet"), now))
 	if events := g.events(step, now); len(events) > 0 {
-		envelopes = append(envelopes, model.Envelope{Events: events})
+		envelopes = append(envelopes, model.ObserveEnvelope(model.Envelope{Events: events}, g.source(0, model.SourceSNMP), now))
 	}
 	return envelopes
 }
@@ -265,6 +275,7 @@ func (g *Generator) sip(step uint64, index int, now time.Time) model.TelephonyHe
 		}
 	}
 	h := model.TelephonyHealth{TargetID: fmt.Sprintf("simulated:sip-%03d", index+1), Address: fmt.Sprintf("192.0.2.%d:5060", index+1), Transport: "udp", Reachable: reachable, ObservedAt: now, ConsecutiveFailures: failures, State: state, ErrorCategory: category, Source: "simulated"}
+	h.Observation = model.NewObservation(g.fleetSource(model.SourceSIP, h.TargetID), h.Source, now, now, nil)
 	if reachable {
 		h.ResponseCode = &code
 		h.LatencyMillis = &latency
@@ -313,6 +324,7 @@ func (g *Generator) events(step uint64, now time.Time) []model.Event {
 		}
 		add("telephony."+current.State, severity, "Simulated SIP target simulated:sip-001 state changed to "+current.State)
 		events[len(events)-1].DeviceID = ""
+		events[len(events)-1].Observation = model.CloneObservation(current.Observation)
 	}
 	return events
 }

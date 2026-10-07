@@ -1,6 +1,9 @@
-# Протокол Agent ↔ Controller
+# Протокол Collector ↔ Controller
 
 Действующий контракт находится в [agent.proto](../api/proto/infrapulse/v1/agent.proto).
+Collector сохраняет исторические wire names `AgentHello`, `AgentEnvelope`,
+`AgentService`, `agent_id` и `session_id`. Phase 1 изменяет внутренние domain
+models, не переименовывает RPC/messages и не изменяет номера protobuf fields.
 Сгенерированные Go-файлы находятся в `api/gen/infrapulse/v1`: их создали
 официальные protoc 33.5, protoc-gen-go v1.36.12 и protoc-gen-go-grpc v1.6.0.
 Для обычной сборки protoc не требуется. Команды повторной генерации и закреплённые
@@ -131,18 +134,55 @@ SNMP `sysUpTime` относится к management subsystem, не обязате
 очищаются в pipeline до помещения сообщения в outbox.
 
 Времена событий представлены `google.protobuf.Timestamp` и преобразуются в UTC.
-`observed_at` — момент измерения/наблюдения, `collected_at` — получение sample,
+`observed_at` — оценка Collector, к какому моменту относится состояние,
+`collected_at` — завершение/фиксация сбора на Collector,
 `sent_at` — текущая попытка отправки. Задержка в outbox не изменяет исходные
 времена. `BuildInfo.build_time` является строковой build metadata из ldflags,
 а не timestamp наблюдения инфраструктуры.
 
+## Внутренняя observation model и wire compatibility
+
+`model.ObservationMetadata` содержит SourceRef и ObservationTime; payloads
+сохраняют существующие `source` и timestamp fields. Дополнительная metadata
+хранится во внутренней модели и JSON outbox/diagnostics, но Phase 1 не добавляет
+её в protobuf. Encoding использует прежние wire fields. Decoding старого peer
+не может восстановить неизвестный Target ID, clock offset или provenance
+manual/external и не выдаёт guessed значения за измерения.
+
+| Domain information | Действующий wire contract |
+|---|---|
+| Collector identity/session | `AgentEnvelope.agent_id/session_id`, `AgentHello` |
+| Observed device | Payload `device_id` и `Device.id`; это не общее поле configured Target |
+| SIP target | `TelephonyHealth.target_id` |
+| File log source | `LogRecord.source_id` |
+| Legacy source и simulated marker | Существующие `source` strings; `simulated` сохраняется |
+| Observation/collection time | Оба поля у telemetry/topology; один observed timestamp у inventory/telephony, timestamps событий/log records |
+| Source-reported log time | Optional `LogRecord.original_timestamp` |
+| Raw topology identity | Chassis/port bytes/subtypes, protocol и evidence в `Neighbor` |
+| Full SourceRef | Нет общего поля source type + target + protocol + instance + provenance |
+| Normalized IdentityEvidence | Нет repeated typed/scoped evidence; доступны отдельные inventory fields и topology evidence |
+| Clock model | Нет optional measured offset, uncertainty или clock quality |
+
+`source_timestamp` означает время, сообщённое source, и не заменяет автоматически
+`observed_at`. Unknown offset/uncertainty — absence, не 0. `received_at`
+принадлежит Backend и отсутствует в модели Collector. `sent_at` относится к
+попытке отправки, не к observation или Backend receipt.
+
+Для следующей фазы нужны additive protobuf messages/fields: полная observation
+metadata на существующих payloads, SourceRef с отдельным Target ID, typed/scoped
+IdentityEvidence и optional SourceTimestamp/ClockOffset/Uncertainty/ClockQuality.
+Существующие field numbers должны сохраняться, Duration/Timestamp presence —
+различать unknown и measured zero. Clock offset estimation потребует отдельно
+согласованного Collector ↔ Backend exchange; в Phase 1 его нет. Точные temporal
+semantics и знак offset — в [Collector Core](collector-core.md).
+
 ## TopologyUpdate
 
-`AgentEnvelope.topology=14` содержит один snapshot одного configured устройства:
+`AgentEnvelope.topology=14` содержит один snapshot наблюдаемого устройства:
 
 | Поле | Номер | Смысл |
 |---|---:|---|
-| device_id | 1 | Stable configured device ID |
+| device_id | 1 | Observed Device ID; у существующих SNMP/RouterOS совпадает с configured ID |
 | observed_at / collected_at | 2 / 3 | UTC observation и collection time |
 | source | 4 | Фактический collector source |
 | completeness | 5 | Enum COMPLETE/PARTIAL/FAILED |

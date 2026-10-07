@@ -1,4 +1,5 @@
-// Package agent orchestrates collectors and the outbound controller session.
+// Package agent hosts the InfraPulse Collector / Edge Gateway runtime.
+// Historical Agent names remain part of the compatible CLI and wire contract.
 package agent
 
 import (
@@ -35,6 +36,7 @@ import (
 )
 
 type Agent struct {
+	localTarget  model.Target
 	commandStore *commands.Store
 	certificates *pki.Manager
 	activeCancel context.CancelFunc
@@ -62,7 +64,12 @@ type Agent struct {
 	sip          []*telephony.Collector
 }
 
+// Collector is the existing runtime, with its persistent Agent identity and
+// session semantics. It does not create another lifecycle beside Agent.
+type Collector = Agent
+
 type Diagnostics struct {
+	Targets           []model.Target          `json:"targets,omitempty"`
 	SNMP              []SNMPSecurityStatus    `json:"snmp,omitempty"`
 	CommandState      *commands.StoreHealth   `json:"command_state,omitempty"`
 	Certificate       *pki.Status             `json:"certificate,omitempty"`
@@ -117,6 +124,7 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 		logger = slog.Default()
 	}
 	a := &Agent{cfg: cfg, id: id, started: time.Now(), platform: p, transport: t, queue: q, storageError: storageError, rates: telemetry.NewRateTracker(), logger: logger.With("component", "agent", "agent_id", id.AgentID)}
+	a.localTarget = model.Target{ID: "collector-local:" + id.AgentID, Type: model.SourceLocal, Protocol: "local", Enabled: cfg.Local.Enabled, Polling: model.TargetPolling{FastInterval: cfg.Telemetry.FastInterval, InventoryInterval: cfg.Telemetry.InventoryInterval, Timeout: cfg.Telemetry.CollectTimeout}, Location: cfg.Location}
 	initialized := false
 	defer func() {
 		if !initialized {
@@ -132,11 +140,14 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 		if e != nil {
 			return nil, fmt.Errorf("local identity: %w", e)
 		}
+		if d.Driver != "" {
+			a.localTarget.Protocol = strings.TrimPrefix(d.Driver, "local-")
+		}
 		a.setDevice(d)
 	}
 	a.scheduler = scheduler.New(cfg.Scheduler.Concurrency, a.collectorError)
 	a.commands = commands.NewDeduplicator(256)
-	a.remote, err = remote.New(cfg, RemoteFactory(cfg, credentials.NewEnvironment(cfg.Credentials)), a.push)
+	a.remote, err = remote.NewAdapters(cfg, RemoteAdapterFactory(cfg, credentials.NewEnvironment(cfg.Credentials)), a.push, remote.WithCollectorID(id.AgentID))
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +175,8 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 }
 
 func (a *Agent) setDevice(d model.Device) {
-	d = model.CloneDevice(d)
+	now := time.Now().UTC()
+	d = model.ObserveDevice(d, a.localSource(), now, now)
 	d.ID = "local:" + a.id.AgentID
 	d.Location = a.cfg.Location
 	if d.Name == "" {
@@ -192,7 +204,7 @@ func (a *Agent) jobs() error {
 			}
 			s.DeviceID = "local:" + a.id.AgentID
 			a.rates.Apply(&s)
-			return a.push(model.Envelope{Telemetry: &s})
+			return a.emitTarget(a.localTarget, model.Envelope{Telemetry: &s})
 		}}); err != nil {
 			return err
 		}
@@ -202,7 +214,7 @@ func (a *Agent) jobs() error {
 				return err
 			}
 			a.setDevice(d)
-			return a.push(model.Envelope{Inventory: &model.InventoryUpdate{ObservedAt: time.Now().UTC(), Devices: []model.Device{a.deviceSnapshot()}}})
+			return a.emitTarget(a.localTarget, model.Envelope{Inventory: &model.InventoryUpdate{ObservedAt: time.Now().UTC(), Devices: []model.Device{a.deviceSnapshot()}}})
 		}}); err != nil {
 			return err
 		}
@@ -280,7 +292,7 @@ func (a *Agent) event(kind, severity, message string) {
 		return
 	}
 	e := model.Event{ID: id.String(), Type: kind, DeviceID: a.deviceSnapshot().ID, Timestamp: time.Now().UTC(), Severity: severity, Message: message, Source: "agent"}
-	if err = a.push(model.Envelope{Events: []model.Event{e}}); err != nil {
+	if err = a.emitTarget(a.localTarget, model.Envelope{Events: []model.Event{e}}); err != nil {
 		a.logger.Debug("event dropped", "event_type", kind, "error", err)
 	}
 }
@@ -549,6 +561,7 @@ func (a *Agent) Snapshot() Diagnostics {
 	d := Diagnostics{AgentID: a.id.AgentID, SessionID: a.id.SessionID, Build: version.Info(), Platform: runtime.GOOS + "/" + runtime.GOARCH, ControllerAddress: a.cfg.Controller.Address, TLSMode: a.cfg.Security.Mode, Connected: a.connected, ObservedAt: time.Now().UTC(), RecentErrors: append([]string(nil), a.recentErrors...)}
 	a.mu.Unlock()
 	d.Queue = a.queue.State()
+	d.Targets = a.configuredTargets()
 	d.SNMP = a.snmpSecurityStatus()
 	if a.storageError != "" {
 		d.Queue.StorageError = a.storageError

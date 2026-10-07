@@ -13,6 +13,8 @@ func clonePointer[T any](p *T) *T {
 // CloneDevice owns all mutable inventory values. New nested P2 snapshots must
 // not share their storage with collectors or diagnostics callers.
 func CloneDevice(d Device) Device {
+	d.Observation = CloneObservation(d.Observation)
+	d.IdentityEvidence = cloneIdentityEvidence(d.IdentityEvidence)
 	d.Capabilities = slices.Clone(d.Capabilities)
 	d.Components = slices.Clone(d.Components)
 	d.VendorEvidence = slices.Clone(d.VendorEvidence)
@@ -21,6 +23,7 @@ func CloneDevice(d Device) Device {
 	d.Services = slices.Clone(d.Services)
 	for i := range d.Services {
 		s := &d.Services[i]
+		s.Observation = CloneObservation(s.Observation)
 		s.Enabled = clonePointer(s.Enabled)
 		s.Instances = slices.Clone(s.Instances)
 		for j := range s.Instances {
@@ -31,12 +34,14 @@ func CloneDevice(d Device) Device {
 	d.Networks = slices.Clone(d.Networks)
 	for i := range d.Networks {
 		n := &d.Networks[i]
+		n.Observation = CloneObservation(n.Observation)
 		n.Up = clonePointer(n.Up)
 		n.Pending = clonePointer(n.Pending)
 		n.Addresses = slices.Clone(n.Addresses)
 	}
 	if d.Firewall != nil {
 		f := *d.Firewall
+		f.Observation = CloneObservation(f.Observation)
 		f.Enabled = clonePointer(f.Enabled)
 		f.Zones = slices.Clone(f.Zones)
 		for i := range f.Zones {

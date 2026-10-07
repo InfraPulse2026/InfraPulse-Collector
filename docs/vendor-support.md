@@ -1,9 +1,15 @@
 # Поддержка платформ и производителей
 
 Матрица отражает текущую реализацию и фактически выполненные проверки.
-Cross-platform описывает ОС запуска Agent; multi-vendor — удалённые устройства,
+Cross-platform описывает ОС запуска Collector; multi-vendor — удалённые устройства,
 опрашиваемые через protocol drivers. Наличие profile, config hint или action
 в protobuf само по себе не объявляет capability.
+
+Collector / Edge Gateway сохраняет существующие protocols и capability checks.
+SourceRef и identity evidence обозначают происхождение данных; vendor profile
+не является source или подтверждением hardware identity. Collector Core
+подготавливает adapter registration для будущих sources, не добавляя их
+capabilities автоматически. [Domain model](collector-core.md).
 
 ## Уровни подтверждения
 
@@ -150,6 +156,18 @@ Windows LocalPlatform остаётся post-MVP/backlog. NETCONF/gNMI deferred: 
 P3 нет подтверждённой дополнительной функции и vendor fixture сверх SNMP/REST.
 Production Backend/CA service, Web UI, LLM/AI analysis, historical database
 и reports в этот репозиторий не входят.
+
+## Будущие sources
+
+| Source | Состояние |
+|---|---|
+| Remote Syslog/Audit receiver | Не реализован. Существующий syslog/auditd pipeline читает локальные files; сетевого receiver/listener нет |
+| Redfish | Не реализован. Target/Source/Observation/IdentityEvidence model подготовлена; HTTP schemas, resource traversal и реальные mapping fixtures ещё нужны |
+| IPMI | Не реализован. Target/Source/Observation model подготовлена; protocol client, authentication/security semantics и реальные fixtures ещё нужны |
+| Collector ↔ Backend time exchange | Не реализован. Optional offset/uncertainty и clock quality существуют во внутренней модели; измерения и additive wire fields относятся к следующей фазе |
+
+Zabbix, Prometheus, Ansible, Grafana, TSDB и global Asset/entity resolution
+относятся к Backend/Control Plane и не являются adapters Collector.
 
 Hardware tests запускаются отдельно от обычной suite. После live проверки
 матрица должна называть конкретные model/firmware, доступные operations и

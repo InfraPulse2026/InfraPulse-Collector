@@ -80,6 +80,9 @@ func NewRunner(generator *Generator, id identity.Identity, t transport.Transport
 func (r *Runner) QueueState() model.QueueState { return r.queue.State() }
 
 func metadata(e model.Envelope, id identity.Identity) model.Envelope {
+	// The generator has explicit target bindings and logical observation times.
+	// Runtime binds the persistent Collector identity without restamping them.
+	e = model.ObserveEnvelope(e, model.SourceRef{Type: model.SourceLocal, CollectorID: id.AgentID, TargetID: "simulated:runtime", Protocol: "simulator", Provenance: model.ProvenanceSimulated}, time.Time{})
 	e.MessageID = uuid.NewString()
 	e.AgentID = id.AgentID
 	e.SessionID = id.SessionID
@@ -88,6 +91,7 @@ func metadata(e model.Envelope, id identity.Identity) model.Envelope {
 }
 func hello(generator *Generator, id identity.Identity, name string, started time.Time) model.Envelope {
 	device := model.Device{ID: "simulated:agent:" + id.AgentID, Name: name, Source: "simulated", Type: "switch", Driver: "simulated", Online: true, LastSeen: generator.options.Start, OS: "simulated"}
+	device = model.ObserveDevice(device, model.SourceRef{Type: model.SourceLocal, CollectorID: id.AgentID, TargetID: "simulated:runtime", Protocol: "simulator", Provenance: model.ProvenanceSimulated}, generator.options.Start, generator.options.Start)
 	build := version.Info()
 	build.Version = "simulated:" + build.Version
 	return metadata(model.Envelope{Hello: &model.AgentHello{AgentID: id.AgentID, SessionID: id.SessionID, Name: name, Build: build, StartedAt: started, Device: device, ProtocolVersion: 1}}, id)

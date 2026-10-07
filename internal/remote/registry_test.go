@@ -142,7 +142,7 @@ func TestBoundedWorkersAndDeviceExclusion(t *testing.T) {
 	e.gate <- struct{}{}
 	c, stop := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer stop()
-	_, err = r.WithDevice(c, "a", func(driver.Driver) model.CommandResult { return model.CommandResult{} })
+	_, err = r.WithDevice(c, "a", func(driver.Adapter) model.CommandResult { return model.CommandResult{} })
 	<-e.gate
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)

@@ -2,6 +2,7 @@ package telephony
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sync"
 	"time"
@@ -11,18 +12,29 @@ import (
 )
 
 type Collector struct {
+	source   model.SourceRef
 	endpoint Endpoint
 	pollGate chan struct{}
 	mu       sync.RWMutex
 	state    model.TelephonyHealth
 }
 
-func New(endpoint Endpoint) (*Collector, error) {
+func New(endpoint Endpoint, source ...model.SourceRef) (*Collector, error) {
 	endpoint = endpoint.WithDefaults()
 	if err := endpoint.Validate(); err != nil {
 		return nil, err
 	}
-	return &Collector{endpoint: endpoint, pollGate: make(chan struct{}, 1), state: model.TelephonyHealth{TargetID: endpoint.ID, Transport: endpoint.Transport, State: "unknown", Source: "sip.options"}}, nil
+	ref := model.SourceRef{Type: model.SourceSIP, TargetID: endpoint.Target().ID, Protocol: "sip", InstanceID: endpoint.ID, Provenance: model.ProvenanceReal}
+	if len(source) > 1 {
+		return nil, errors.New("SIP collector accepts one source binding")
+	}
+	if len(source) == 1 {
+		ref = source[0]
+	}
+	if err := ref.Validate(); err != nil {
+		return nil, err
+	}
+	return &Collector{source: ref, endpoint: endpoint, pollGate: make(chan struct{}, 1), state: model.TelephonyHealth{TargetID: endpoint.ID, Transport: endpoint.Transport, State: "unknown", Source: "sip.options"}}, nil
 }
 
 func (c *Collector) State() model.TelephonyHealth {
@@ -32,6 +44,7 @@ func (c *Collector) State() model.TelephonyHealth {
 }
 
 func clone(h model.TelephonyHealth) model.TelephonyHealth {
+	h.Observation = model.CloneObservation(h.Observation)
 	if h.ResponseCode != nil {
 		v := *h.ResponseCode
 		h.ResponseCode = &v
@@ -59,6 +72,7 @@ func (c *Collector) Collect(ctx context.Context) (model.TelephonyHealth, []model
 	if err := ctx.Err(); err != nil {
 		return c.State(), nil, err
 	}
+	h.Observation = model.NewObservation(c.source, h.Source, h.ObservedAt, time.Now().UTC(), nil)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	previous := c.state
@@ -83,7 +97,7 @@ func (c *Collector) Collect(ctx context.Context) (model.TelephonyHealth, []model
 		if h.State == "down" {
 			severity = "error"
 		}
-		events = append(events, model.Event{ID: uuid.NewString(), Type: "telephony." + h.State, Timestamp: h.ObservedAt, Severity: severity, Message: "SIP OPTIONS target " + c.endpoint.ID + " changed state to " + h.State, Source: "sip.options"})
+		events = append(events, model.Event{Observation: model.CloneObservation(h.Observation), ID: uuid.NewString(), Type: "telephony." + h.State, Timestamp: h.ObservedAt, Severity: severity, Message: "SIP OPTIONS target " + c.endpoint.ID + " changed state to " + h.State, Source: "sip.options"})
 	}
 	c.state = clone(h)
 	return h, events, nil

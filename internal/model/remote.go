@@ -53,34 +53,37 @@ type InventoryComponent struct {
 	SoftwareVersion  string `json:"software_version,omitempty"`
 }
 type TopologyUpdate struct {
-	DeviceID         string     `json:"device_id"`
-	ObservedAt       time.Time  `json:"observed_at"`
-	CollectedAt      time.Time  `json:"collected_at"`
-	Source           string     `json:"source"`
-	Completeness     string     `json:"completeness"` // complete, partial, failed
-	TTLSeconds       uint32     `json:"ttl_seconds"`  // collector assumption, not advertised LLDP TTL
-	ExpiryAssumption string     `json:"expiry_assumption,omitempty"`
-	Observations     []Neighbor `json:"observations"`
+	Observation      *ObservationMetadata `json:"observation,omitempty"`
+	DeviceID         string               `json:"device_id"`
+	ObservedAt       time.Time            `json:"observed_at"`
+	CollectedAt      time.Time            `json:"collected_at"`
+	Source           string               `json:"source"`
+	Completeness     string               `json:"completeness"` // complete, partial, failed
+	TTLSeconds       uint32               `json:"ttl_seconds"`  // collector assumption, not advertised LLDP TTL
+	ExpiryAssumption string               `json:"expiry_assumption,omitempty"`
+	Observations     []Neighbor           `json:"observations"`
 }
 type Neighbor struct {
-	LocalDeviceID         string     `json:"local_device_id"`
-	LocalInterfaceID      string     `json:"local_interface_id,omitempty"`
-	LocalInterfaceName    string     `json:"local_interface_name,omitempty"`
-	LocalPortNumber       uint32     `json:"local_port_number,omitempty"`
-	LocalPortID           []byte     `json:"local_port_id,omitempty"`
-	LocalPortSubtype      uint32     `json:"local_port_subtype"`
-	RemoteChassisID       []byte     `json:"remote_chassis_id,omitempty"`
-	RemoteChassisSubtype  uint32     `json:"remote_chassis_subtype"`
-	RemotePortID          []byte     `json:"remote_port_id,omitempty"`
-	RemotePortSubtype     uint32     `json:"remote_port_subtype"`
-	RemoteSystemName      string     `json:"remote_system_name,omitempty"`
-	RemotePortDescription string     `json:"remote_port_description,omitempty"`
-	Protocol              string     `json:"protocol"` // lldp, cdp, mndp, unknown
-	Source                string     `json:"source"`
-	ObservedAt            time.Time  `json:"observed_at"`
-	ExpiresAt             time.Time  `json:"expires_at"`
-	Evidence              []Evidence `json:"evidence"`
-	Confidence            string     `json:"confidence"` // high, medium, low, unresolved
+	Observation           *ObservationMetadata `json:"observation,omitempty"`
+	IdentityEvidence      []IdentityEvidence   `json:"identity_evidence,omitempty"`
+	LocalDeviceID         string               `json:"local_device_id"`
+	LocalInterfaceID      string               `json:"local_interface_id,omitempty"`
+	LocalInterfaceName    string               `json:"local_interface_name,omitempty"`
+	LocalPortNumber       uint32               `json:"local_port_number,omitempty"`
+	LocalPortID           []byte               `json:"local_port_id,omitempty"`
+	LocalPortSubtype      uint32               `json:"local_port_subtype"`
+	RemoteChassisID       []byte               `json:"remote_chassis_id,omitempty"`
+	RemoteChassisSubtype  uint32               `json:"remote_chassis_subtype"`
+	RemotePortID          []byte               `json:"remote_port_id,omitempty"`
+	RemotePortSubtype     uint32               `json:"remote_port_subtype"`
+	RemoteSystemName      string               `json:"remote_system_name,omitempty"`
+	RemotePortDescription string               `json:"remote_port_description,omitempty"`
+	Protocol              string               `json:"protocol"` // lldp, cdp, mndp, unknown
+	Source                string               `json:"source"`
+	ObservedAt            time.Time            `json:"observed_at"`
+	ExpiresAt             time.Time            `json:"expires_at"`
+	Evidence              []Evidence           `json:"evidence"`
+	Confidence            string               `json:"confidence"` // high, medium, low, unresolved
 }
 type InterfaceVerification struct {
 	InterfaceID     string    `json:"interface_id"`

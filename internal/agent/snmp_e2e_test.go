@@ -173,6 +173,9 @@ func TestAgentSNMPUDPTopologyRatesOfflineRecovery(t *testing.T) {
 	if err != nil || dev.ID != "fixture-switch" || dev.Hostname != "fixture-snmp-host" {
 		t.Fatalf("bounded probe: %+v %v", dev, err)
 	}
+	if dev.Observation == nil || dev.Observation.Source.TargetID != "remote:fixture-switch" || dev.Observation.Source.CollectorID != "" || dev.Observation.Source.Type != model.SourceSNMP || dev.Observation.Time.ClockOffset != nil {
+		t.Fatalf("standalone probe source binding: %+v", dev.Observation)
+	}
 }
 
 func snmpE2EValues(started time.Time) []gosnmp.SnmpPDU {

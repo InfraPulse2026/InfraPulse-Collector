@@ -15,13 +15,33 @@ var (
 	ErrUncertain    = errors.New("mutation outcome uncertain")
 )
 
-type Driver interface {
-	Probe(context.Context) (model.Device, error)
-	Collect(context.Context) (model.TelemetrySample, error)
-	Inventory(context.Context) (model.Device, error)
-	Topology(context.Context) (model.TopologyUpdate, error)
+// Adapter owns a source's lifecycle and only advertises implemented capabilities.
+// Optional readers below let a new protocol expose the observations it supports.
+type Adapter interface {
 	Capabilities() []model.Capability
 	Close() error
+}
+type ProbeReader interface {
+	Probe(context.Context) (model.Device, error)
+}
+type TelemetryReader interface {
+	Collect(context.Context) (model.TelemetrySample, error)
+}
+type InventoryReader interface {
+	Inventory(context.Context) (model.Device, error)
+}
+type TopologyReader interface {
+	Topology(context.Context) (model.TopologyUpdate, error)
+}
+
+// Driver preserves the existing SNMP/RouterOS contract. Collector orchestration
+// accepts Adapter and invokes only the small readers an adapter implements.
+type Driver interface {
+	Adapter
+	ProbeReader
+	TelemetryReader
+	InventoryReader
+	TopologyReader
 }
 type Options struct {
 	ID, Name, Address, VendorHint string

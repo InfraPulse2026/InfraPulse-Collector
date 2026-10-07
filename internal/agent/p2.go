@@ -74,7 +74,7 @@ func (a *Agent) p2Jobs() error {
 			sources = append(sources, logs.Source{ID: s.ID, Path: s.Path, Format: s.Format})
 		}
 		var err error
-		a.logs, err = logs.New(logs.Options{StateDir: a.cfg.Agent.StateDir, DeviceID: a.deviceSnapshot().ID, Sources: sources, MaxLineBytes: a.cfg.Logs.MaxLineBytes, MaxBatchRecords: a.cfg.Logs.MaxBatchRecords, MaxBatchBytes: a.cfg.Logs.MaxBatchBytes, MaxReadBytes: a.cfg.Logs.MaxReadBytes, Sanitize: a.sanitizeText, Emit: a.push})
+		a.logs, err = logs.New(logs.Options{StateDir: a.cfg.Agent.StateDir, CollectorID: a.id.AgentID, DeviceID: a.deviceSnapshot().ID, Sources: sources, MaxLineBytes: a.cfg.Logs.MaxLineBytes, MaxBatchRecords: a.cfg.Logs.MaxBatchRecords, MaxBatchBytes: a.cfg.Logs.MaxBatchBytes, MaxReadBytes: a.cfg.Logs.MaxReadBytes, Sanitize: a.sanitizeText, Emit: a.push})
 		if err != nil {
 			return err
 		}
@@ -86,7 +86,9 @@ func (a *Agent) p2Jobs() error {
 	}
 	for _, ep := range a.cfg.Telephony.Endpoints {
 		ep = ep.WithDefaults()
-		c, err := telephony.New(ep)
+		target := ep.Target()
+		ref := model.SourceRef{Type: target.Type, CollectorID: a.id.AgentID, TargetID: target.ID, Protocol: target.Protocol, InstanceID: ep.ID, Provenance: model.ProvenanceReal}
+		c, err := telephony.New(ep, ref)
 		if err != nil {
 			return err
 		}
@@ -97,9 +99,9 @@ func (a *Agent) p2Jobs() error {
 				return err
 			}
 			u := model.TelephonyUpdate{ObservedAt: h.ObservedAt, Source: "sip.options", Targets: []model.TelephonyHealth{h}}
-			err = a.push(model.Envelope{Telephony: &u})
+			err = a.emitTarget(target, model.Envelope{Telephony: &u})
 			if len(events) > 0 {
-				err = errors.Join(err, a.push(model.Envelope{Events: events}))
+				err = errors.Join(err, a.emitTarget(target, model.Envelope{Events: events}))
 			}
 			return err
 		}}); err != nil {
@@ -134,6 +136,6 @@ func (a *Agent) serviceTransitions(old, next model.Device) {
 		if err != nil {
 			continue
 		}
-		_ = a.push(model.Envelope{Events: []model.Event{{ID: id.String(), DeviceID: next.ID, Type: kind, Timestamp: s.ObservedAt, Severity: "info", Source: s.Source, Message: "service " + s.Name + " is " + s.State}}})
+		_ = a.emitTarget(a.localTarget, model.Envelope{Events: []model.Event{{ID: id.String(), DeviceID: next.ID, Type: kind, Timestamp: s.ObservedAt, Severity: "info", Source: s.Source, Message: "service " + s.Name + " is " + s.State}}})
 	}
 }

@@ -1,14 +1,23 @@
-# InfraPulse Agent
+# InfraPulse Collector / Edge Gateway
 
-InfraPulse Agent — Go-компонент многовендорной NetOps Platform InfraPulse для
-сбора данных инфраструктуры и передачи их в Controller/Backend. Agent собирает
-локальный Linux/OpenWrt-хост и удалённые устройства через SNMP v2c/v3 и RouterOS
-HTTPS REST, передаёт telemetry, inventory, topology observations, logs, SIP
-health и события.
+InfraPulse Collector — Go-компонент NetOps Control Plane InfraPulse для работы
+в management/local network. Он опрашивает сетевые устройства через SNMP v2c/v3
+и RouterOS HTTPS REST, собирает LLDP/CDP/MNDP observations и SIP health,
+передаёт telemetry, inventory, topology, logs и события в Controller/Backend.
+Установка Collector на каждый server не требуется: один gateway может
+обслуживать набор configured targets без установки нашего ПО на них.
+
+Существующие Zabbix и Prometheus могут оставаться источниками мониторинга
+для Backend; Ansible относится к Backend/Automation layer, Grafana — к
+дополнительному visualization layer. Их API clients, TSDB, asset merging,
+корреляция и отчёты не входят в Collector. Локальные Linux/OpenWrt metrics
+предназначены для standalone/fallback mode и наблюдения самого edge-хоста.
 
 Production Backend, Web UI,
 AI и историческое хранилище находятся вне этого репозитория. Для разработки
 и демонстрации обмена данными поставляются Mock Controller и отдельный Simulator.
+Исторические module path `InfraPulseAgent`, binary `infrapulse-agent`, YAML
+секция `agent` и protocol names `Agent*` сохранены для совместимости.
 
 ## Возможности
 
@@ -52,14 +61,15 @@ AI и историческое хранилище находятся вне эт
 
 ### Local Mode
 
-Agent собирает данные системы, на которой запущен, и сам устанавливает
-соединение с Controller. Входящий management port на хосте Agent не нужен.
+Collector собирает данные Linux/OpenWrt-хоста, на котором запущен, и сам
+устанавливает соединение с Controller. Этот standalone/fallback mode можно
+совместить с remote collection. Входящий management port на хосте не нужен.
 
 ```text
 Local host
     │
     ▼
-InfraPulse Agent
+InfraPulse Collector
     │
     │ outbound gRPC / mTLS
     ▼
@@ -68,12 +78,15 @@ InfraPulse Controller / Backend
 
 ### Collector Mode
 
-Collector Mode опрашивает устройства из `devices` без установки Agent на них.
+Collector Mode опрашивает targets из `devices` без установки Collector на них.
 `local.enabled: false` отключает сбор хоста; remote polling и heartbeat продолжают
 работать. Local Mode и Collector Mode можно использовать одновременно.
 
-Границы компонентов и внутренние механизмы описаны в
-[архитектуре](docs/architecture.md).
+Configured Target идентифицирует подключение/опрос и не является окончательным
+Backend Asset. Источник, provenance, identity evidence и время наблюдения
+нормализуются до delivery layer. Границы компонентов описаны в
+[архитектуре](docs/architecture.md), модель Collector Core — в
+[collector-core](docs/collector-core.md).
 
 ## Требования
 
@@ -655,6 +668,8 @@ sh scripts/generate-proto.sh
 ## Документация
 
 - [Архитектура](docs/architecture.md) — компоненты, модели и внутренние pipelines.
+- [Collector Core](docs/collector-core.md) — Target/Source, identity evidence,
+  temporal semantics и границы совместимости Phase 1.
 - [Протокол](docs/protocol.md) — обмен Agent ↔ Controller и правила доставки.
 - [Durable delivery](docs/delivery.md), [journal/snapshots/rollback](docs/commands.md),
   [enrollment/PKI](docs/enrollment.md), [SNMPv3](docs/snmpv3.md).
@@ -675,6 +690,12 @@ exactly-once внешней mutation; uncertain outcome требует operator 
 Production Backend/dedup/CA authorization/revocation/CA rollover не реализованы.
 Mock Enrollment token state хранится в RAM. Private keys защищены filesystem
 permissions, без encryption at rest/TPM/HSM.
+Remote Syslog/Audit receiver, Redfish и IPMI относятся к roadmap; Phase 1
+подготавливает domain model и adapter registration, сами протоколы не реализованы.
+Collector ↔ Backend clock offset estimation также отложен; unknown offset
+не считается нулём. Production deployment использует NTP/chrony или аналог,
+Collector не меняет часы устройств и не запускает собственный NTP service.
+
 Windows LocalPlatform — post-MVP/backlog. Service/firewall writes, SIP Digest,
 NETCONF/gNMI и vendor-specific health OID не реализованы. OpenWrt, Astra/ALT/RED OS
 runtime и реальное сетевое оборудование/PBX не проверены. [Матрица](docs/vendor-support.md).

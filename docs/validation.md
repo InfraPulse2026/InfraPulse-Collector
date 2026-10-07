@@ -486,3 +486,158 @@ runtime support. Binaries/test outputs остаются ignored. Cross-build н�
 - Mock enrollment one-time token state in-memory; expired cert требует operator
   recovery. Filesystem sync guarantees и доступность persistent Agent identity
   остаются deployment prerequisites.
+
+## Collector Core Phase 0–1 — baseline и regression, 2026-10-07
+
+Phase 0 baseline выполнен до изменения source files. Phase 1 эволюционно
+адаптирует существующий P3 runtime к Collector / Edge Gateway; scope и
+dependency/data-flow freeze описаны в [Collector Core](collector-core.md).
+Исторические P0–P3 records выше относятся к своим этапам.
+
+Baseline и полный regression после refactor — **PASS**. Включены unit/fixture,
+process crash, Linux runtime и cross-build проверки; hardware/Backend gaps
+указаны отдельно ниже.
+Git commit/push/rebase/merge не выполнялись.
+
+### Среда baseline
+
+Windows amd64, `go version go1.27.1 windows/amd64`, SDK
+`C:\Users\kiril\sdk\go1.27.1\bin\go.exe`. Локальные ignored caches:
+`.cache/gopath`, `.cache/modules`, `.cache/build`. Production builds CGO0;
+race detector использовал portable LLVM-MinGW из `.tools`, `CGO_ENABLED=1`.
+GNU make отсутствовал; Makefile прочитан, его команды проверены непосредственно
+и через существующий PowerShell build script.
+
+| Проверка | До изменения sources | После Phase 1 |
+|---|---|---|
+| `gofmt -l` всех Go sources `api/cmd/internal` | PASS, список пуст | PASS |
+| `go build ./...` | PASS | PASS |
+| `go vet ./...` | PASS | PASS |
+| `go test ./...` | PASS | PASS |
+| `go test -count=1 ./...` | PASS, без test cache | PASS |
+| `go test -race ./...` | PASS | PASS |
+| `go test -race -count=1 ./...` | PASS, без test cache | PASS |
+| `go mod verify` | PASS, all modules verified | PASS |
+| `go test -count=1 -tags=integration ./internal/queue ./internal/commands` | PASS, process crash/retention/resource tests | PASS |
+| `scripts/build.ps1` | PASS | PASS |
+| `scripts/build.ps1 -Cross` | PASS | PASS |
+| Pinned protobuf generation во временный output и SHA-256 compare | PASS, оба generated files byte-identical | PASS |
+| `git diff --check` | Исходный `git status --short` пуст | PASS |
+
+Pinned generation: protoc 33.5, protoc-gen-go v1.36.12,
+protoc-gen-go-grpc v1.6.0. Использован тот же protoc invocation с временным
+`--go_out/--go-grpc_out`, tracked sources не переписывались.
+Baseline logs: `.cache/collector-phase1-baseline/status.log` и отдельные logs.
+Подготовлен ignored повторяемый script
+`.cache/collector-phase1-regression/run.ps1`; его синтаксис проверен.
+Полный script выполнен дважды после refactor; последний прогон после source
+freeze завершился с exit=0 для всех checks. Итоговые logs находятся в
+`.cache/collector-phase1-regression/status.log` и отдельных files. Значения
+resource comparison и Linux intervals ниже взяты из этого последнего прогона.
+
+### Cross-build и Linux baseline
+
+| Executable | Baseline CGO0 Linux targets | После Phase 1 |
+|---|---|---|
+| Agent/Collector | amd64, arm64, arm (`GOARM=7`), mips/mipsle (`GOMIPS=hardfloat`) — PASS | PASS |
+| Mock Controller | amd64, arm64 — PASS | PASS |
+| Simulator | amd64, arm64 — PASS | PASS |
+| Mock Enrollment | amd64, arm64 — PASS | PASS |
+
+Windows development builds проверены как host toolchain, а не Windows
+LocalPlatform support. Linux baseline выполнен в WSL `docker-desktop`:
+test binaries с CGO0 собраны на Windows и запущены в соответствующем package
+directory. Command template:
+
+```text
+go test -c -tags=integration -o .cache/collector-phase1-baseline/linux-<package>.test ./internal/<package>
+wsl.exe -d docker-desktop --cd <package-directory> -- <test-binary> -test.v=true -test.count=1 -test.timeout=120s
+```
+
+Все 12 baseline suites прошли: `platform/linux` с integration, `logs`,
+`queue` с integration, `commands` с integration, `protocol/snmp`,
+`driver/routeros`, `pki`, `platform/openwrt`, `agent` с integration,
+`simulator`, `telephony`, `transport/grpc`. После Phase 1 их повтор
+**PASS**. В baseline и regression проверены реальные Linux `/proc`/`/sys`, file I/O,
+rotation/cursor restart, process crash boundaries, loopback gRPC/UDP/HTTPS/TLS.
+OpenWrt schemas, сетевые devices, SIP/PKI responses — fixtures.
+
+### Реализованная foundation и новые regression tests
+
+Следующая таблица описывает добавленный code/test scope. Новые tests и полная
+существующая safety suite прошли в общем regression.
+
+| Подсистема | Реально добавленный scope и tests |
+|---|---|
+| Runtime/config | Один `Agent` runtime с `Collector` alias; Target projections Local/remote/SIP/file без новой YAML schema; diagnostics targets; tests сохраняют configured IDs/default 3s и скрывают credential reference из JSON |
+| Target/Source | Bounded Target validation, separate Target/Device identity, SourceRef type/carrier/provenance; source types для будущих protocols не создают capability |
+| Adapter registry | Compile-time `driver.Registry[T]`, minimal lifecycle Adapter и optional readers; tests constructors/duplicates/unsupported reader и legacy full Driver bridge |
+| Temporal model | Optional source timestamp/clock offset/uncertainty, independent observed/collected times, unknown clock quality; tests nil≠measured zero, independent clock order, source time не создаёт offset и negative uncertainty rejected |
+| Identity evidence | Available facts only, component/interface scope, raw topology chassis bytes/subtypes; tests missing evidence, weak hostname/IP, simulated provenance и clone ownership |
+| Remote identity isolation | Explicit observed Device ID сохранён; optional reader не создаёт fake topology; target entry owns counter baselines; tests same Device ID across targets, identity changes/history reset, topology entity scope и ambiguous command rejection |
+| Local/logs/SIP adaptation | Source-bound observations идут в прежний delivery; tests Local Target/legacy identity, SIP clocks/source, file source original timestamp optional, metadata included in log batch byte budget, RFC3339Nano completion growth не превышает admission limit |
+| Simulator/wire | Existing synthetic envelopes сохраняют `source=simulated`; tests source domain/provenance; protobuf bytes/legacy payload compatibility и internal-only metadata boundary |
+| Real Linux default interval | Добавлен `TestCollectorRealLinuxDefaultThreeSecondTelemetry`: настоящий Linux collector → gRPC Mock → durable ACK; Hello/Heartbeat/Inventory и три telemetry samples с интервалами 2.5–3.5s. Linux integration PASS |
+
+Protocol implementations, durable queue/ACK, PKI/enrollment, journal,
+snapshot/rollback и typed command policy/protection сохранены. Полная regression
+повторяет их существующие suites; отдельное наличие новых unit tests не
+заменяет это подтверждение.
+
+Дополнительно выполнены `go test ./internal/agent -run
+TestAgentSNMPUDPTopologyRatesOfflineRecovery -count=1` — PASS, включая
+standalone `probe-device` source/Target binding; `go test ./internal/model
+-run '^$' -bench '^BenchmarkObserveTelemetry$' -benchmem -count=1` — PASS,
+407.8 ns/op, 1056 B/op, 8 allocs/op для telemetry с двумя MAC interfaces.
+Это Windows microbenchmark metadata adaptation, не throughput equipment.
+
+### Resource comparison
+
+Одинаковый ignored harness `.cache/collector-resource-probe/main.go` использует
+32 fake SNMP targets, 4 workers, fast cadence 25ms, fake I/O 2ms, 2s run,
+один simulated interface/sample и memory queue 32 messages/256KiB без consumer.
+Medium/inventory/topology выполняются только на startup. Fixed workload
+подтверждает bounds; wall-time run count может отличаться между запусками.
+
+| Метрика | До refactor | После Phase 1 |
+|---|---:|---|
+| Scheduler jobs | 32 | 32 |
+| Collect concurrency peak/end | 4 / 0 | 4 / 0 |
+| Goroutines до/peak/после | 1 / 6 / 1 | 1 / 7 / 1 |
+| Queue peak messages/bytes | 32 / 12541 | 32 / 31048 |
+| Queue final messages/bytes | 32 / 10044 | 32 / 17592 |
+| Dropped telemetry/other | 400 / 244 | 399 / 244 |
+| Forced-GC Alloc до/registered/после | 314496 / 401208 / 522592 B | 314896 / 424488 / 583808 B |
+| Workload TotalAlloc | 2148808 B | 2778688 B |
+| Runs/emitted | 640 / 676 | 647 / 675 |
+
+Baseline durable resource integration: 480 reconnect resets, 320 admissions/ACK,
+max physical file 65536 bytes, goroutines 2→2. Это small fixture workload,
+не OpenWrt RAM/flash budget, RSS guarantee, hardware power-loss или flash wear
+validation. После добавления observation metadata payload bytes/allocations
+выросли в этой workload; jobs/workers/queue остались bounded, goroutine count
+после cancellation вернулся к baseline. Transient peak составил 7 вместо 6;
+goroutine на каждую Target abstraction не создаётся. Это наблюдение одного
+короткого fixture run, не гарантия RSS или performance на equipment.
+
+### E2E и границы готовности
+
+Соседний InfraPulseBackend repository в доступной workspace отсутствует.
+Collector → Backend → PostgreSQL → REST **не выполнялся**. Loopback Mock tests
+не являются подтверждением Backend storage/dedup/REST acceptance. Real Linux
+default-3s test после refactor прошёл: интервалы между настоящими Linux samples
+3.000051248s и 3.001933418s; Hello/Heartbeat/Inventory и durable ACK подтверждены.
+
+Full SourceRef, scoped IdentityEvidence и optional clock model остаются
+internal/JSON. Existing protobuf передаёт прежние timestamps/source strings,
+inventory facts, raw topology evidence и optional original log timestamp.
+Additive wire gaps записаны в [protocol](protocol.md).
+
+Clock offset estimation готов к следующей фазе на уровне domain model,
+но exchange/RTT measurement/Backend monitoring и wire negotiation отсутствуют.
+Collector не является NTP daemon и не меняет system/device clocks.
+Redfish/IPMI vocabulary/registration foundation есть, protocol clients/security
+options/schemas/fixtures ещё нужны; multi-resource inventory потребует additive
+bounded batch reader. Remote Syslog/Audit receiver не реализован: existing
+pipeline читает files. Backend-managed target reconciliation также отсутствует.
+Zabbix/Prometheus/Ansible/Grafana/TSDB/Asset merge остаются Backend scope.

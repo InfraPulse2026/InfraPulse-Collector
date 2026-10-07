@@ -44,6 +44,7 @@ type Source struct {
 }
 
 type Options struct {
+	CollectorID     string
 	StateDir        string
 	DeviceID        string
 	Sources         []Source
@@ -86,6 +87,7 @@ type Pipeline struct {
 	closed  bool
 	open    func(string) (*os.File, error)
 	save    func(string, cursor) error
+	now     func() time.Time
 }
 
 func New(o Options) (*Pipeline, error) {
@@ -99,7 +101,7 @@ func New(o Options) (*Pipeline, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, ErrStatePersistence
 	}
-	p := &Pipeline{options: o, dir: dir, sources: make(map[string]*sourceState, len(o.Sources)), open: openLog, save: saveCursor}
+	p := &Pipeline{options: o, dir: dir, sources: make(map[string]*sourceState, len(o.Sources)), open: openLog, save: saveCursor, now: time.Now}
 	for _, s := range o.Sources {
 		if s.ID == "" || len(s.ID) > 128 || p.sources[s.ID] != nil || s.Path == "" || len(s.Path) > 4096 || strings.ContainsAny(s.ID, "\r\n\x00") || strings.ContainsRune(s.Path, '\x00') || s.Format != "syslog" && s.Format != "auditd" && s.Format != "raw" {
 			_ = p.Close()
@@ -171,7 +173,7 @@ func (p *Pipeline) Poll(ctx context.Context, sourceID string) error {
 			}
 		}
 	}
-	observed := time.Now().UTC()
+	observed := p.now().UTC()
 	// File discovery must survive a rejected first batch too. Otherwise a
 	// subsequent rotation/restart could forget the unread original file.
 	// Discovery persists identities at their existing admitted offsets only.
@@ -194,7 +196,15 @@ func (p *Pipeline) Poll(ctx context.Context, sourceID string) error {
 	if s.source.Format == "auditd" {
 		batch.Source = "auditd"
 	}
-	readBudget, batchBytes, truncated, truncations := p.options.MaxReadBytes, 128, uint64(0), uint64(0)
+	ref := p.sourceRef(s)
+	batch.Observation = model.NewObservation(ref, batch.Source, observed, observed, nil)
+	// Account for domain metadata in the existing batch budget, before admission
+	// and cursor advancement. Record metadata is included in each encoded size.
+	emptyBatch, err := json.Marshal(batch)
+	if err != nil {
+		return p.failure(s, ErrRead)
+	}
+	readBudget, batchBytes, truncated, truncations := p.options.MaxReadBytes, len(emptyBatch)+64, uint64(0), uint64(0)
 	for i := 0; i < len(c.Files) && readBudget > 0 && len(batch.Records) < p.options.MaxBatchRecords; {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -266,11 +276,15 @@ func (p *Pipeline) Poll(ctx context.Context, sourceID string) error {
 			r.ID = recordID(s.source.ID, fc.Identity, fc.Generation, fc.Offset)
 			r.DeviceID, r.Source, r.SourceID, r.FileIdentity, r.Offset = p.options.DeviceID, batch.Source, s.source.ID, fc.Identity, fc.Offset
 			r.Truncated = tooLong || expanded
+			r.Observation = model.NewObservation(ref, r.Source, r.ObservedAt, observed, r.OriginalTimestamp)
 			encoded, err := json.Marshal(r)
 			if err != nil {
 				return p.failure(s, ErrRead)
 			}
-			if batchBytes+len(encoded)+1 > p.options.MaxBatchBytes {
+			// CollectedAt is finalized after reading. RFC3339Nano can grow by
+			// ten bytes when completion has fractional seconds and observation
+			// does not; reserve that growth for every record, plus the comma.
+			if batchBytes+len(encoded)+11 > p.options.MaxBatchBytes {
 				if len(batch.Records) > 0 {
 					*fc = old
 					c.PrivateKey = privateBefore
@@ -285,11 +299,11 @@ func (p *Pipeline) Poll(ctx context.Context, sourceID string) error {
 				r.Host, r.Process, r.ProcessID, r.Audit = "", "", "", nil
 				r.Truncated = true
 				encoded, err = json.Marshal(r)
-				if err != nil || batchBytes+len(encoded)+1 > p.options.MaxBatchBytes {
+				if err != nil || batchBytes+len(encoded)+11 > p.options.MaxBatchBytes {
 					return p.failure(s, ErrRead)
 				}
 			}
-			batchBytes += len(encoded) + 1
+			batchBytes += len(encoded) + 11
 			batch.Records = append(batch.Records, r)
 			fc.Offset += int64(consumed)
 			fc.Discard = tooLong && !complete
@@ -316,6 +330,11 @@ func (p *Pipeline) Poll(ctx context.Context, sourceID string) error {
 		}
 		if s.source.Format == "auditd" {
 			batch.Records = correlateAuditBatch(batch.Records)
+		}
+		completed := p.now().UTC()
+		batch.Observation.Time.CollectedAt = completed
+		for i := range batch.Records {
+			batch.Records[i].Observation.Time.CollectedAt = completed
 		}
 		if err := p.options.Emit(model.Envelope{Logs: &batch}); err != nil {
 			p.closeUnused(s, s.cursor)
@@ -428,7 +447,8 @@ func (p *Pipeline) failure(s *sourceState, err error) error {
 
 func (p *Pipeline) event(s *sourceState, kind, severity, message, identity string, at time.Time) {
 	id := recordID(s.source.ID, kind+identity, uint64(at.UnixNano()), 0)
-	_ = p.options.Emit(model.Envelope{Events: []model.Event{{ID: id, Type: kind, DeviceID: p.options.DeviceID, Timestamp: at, Severity: severity, Message: message, Source: "linux-file"}}})
+	e := model.Envelope{Events: []model.Event{{ID: id, Type: kind, DeviceID: p.options.DeviceID, Timestamp: at, Severity: severity, Message: message, Source: "linux-file"}}}
+	_ = p.options.Emit(model.ObserveEnvelope(e, p.sourceRef(s), time.Now().UTC()))
 }
 
 func (p *Pipeline) Snapshot() []State {

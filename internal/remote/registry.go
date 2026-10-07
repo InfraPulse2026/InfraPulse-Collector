@@ -19,7 +19,13 @@ import (
 )
 
 type Factory func(config.Device) (driver.Driver, error)
+type AdapterFactory func(config.Device) (driver.Adapter, error)
+type Option func(*Registry)
+
+func WithCollectorID(id string) Option { return func(r *Registry) { r.collectorID = id } }
+
 type State struct {
+	Target                          model.Target `json:"target"`
 	Device                          model.Device `json:"device"`
 	ConnectivityState               string       `json:"connectivity_state"`
 	ConsecutiveConnectivityFailures int          `json:"consecutive_connectivity_failures"`
@@ -27,9 +33,12 @@ type State struct {
 }
 type entry struct {
 	cfg                                               config.Device
-	driver                                            driver.Driver
+	target                                            model.Target
+	driver                                            driver.Adapter
 	gate                                              chan struct{}
 	state                                             State
+	rates                                             *telemetry.RateTracker
+	lastTelemetryDeviceID                             string
 	interfaces                                        map[string]string
 	links                                             map[string]model.Neighbor
 	maxLinks                                          int
@@ -38,42 +47,54 @@ type entry struct {
 	nextFast, nextMedium, nextInventory, nextTopology time.Time
 }
 type Registry struct {
-	mu        sync.Mutex
-	entries   map[string]*entry
-	order     []string
-	scheduler *scheduler.Scheduler
-	rates     *telemetry.RateTracker
-	emit      func(model.Envelope) error
+	mu          sync.Mutex
+	entries     map[string]*entry
+	order       []string
+	scheduler   *scheduler.Scheduler
+	emit        func(model.Envelope) error
+	collectorID string
 }
 
-func New(cfg config.Config, factory Factory, emit func(model.Envelope) error) (*Registry, error) {
-	r := &Registry{entries: make(map[string]*entry), rates: telemetry.NewRateTracker(), emit: emit}
+// New is the compatibility bridge for existing full SNMP/RouterOS drivers.
+func New(cfg config.Config, factory Factory, emit func(model.Envelope) error, options ...Option) (*Registry, error) {
+	if factory == nil {
+		return nil, errors.New("remote adapter factory is required")
+	}
+	return NewAdapters(cfg, func(dc config.Device) (driver.Adapter, error) { return factory(dc) }, emit, options...)
+}
+
+// NewAdapters uses the same bounded registry and scheduler for adapters with
+// any supported subset of readers. Missing readers do not fabricate snapshots.
+func NewAdapters(cfg config.Config, factory AdapterFactory, emit func(model.Envelope) error, options ...Option) (*Registry, error) {
+	if factory == nil || emit == nil {
+		return nil, errors.New("remote adapter factory and observation sink are required")
+	}
+	r := &Registry{entries: make(map[string]*entry), emit: emit}
+	for _, option := range options {
+		if option != nil {
+			option(r)
+		}
+	}
 	r.scheduler = scheduler.New(cfg.Remote.Concurrency, nil)
 	for _, dc := range cfg.Devices {
+		if _, exists := r.entries[dc.ID]; exists {
+			_ = r.Close()
+			return nil, errors.New("duplicate remote target ID")
+		}
 		d, err := factory(dc)
 		if err != nil {
 			_ = r.Close()
 			return nil, err
 		}
-		poll := dc.Polling
+		if d == nil {
+			_ = r.Close()
+			return nil, errors.New("remote adapter factory returned no adapter")
+		}
 		defaults := config.Polling{FastInterval: cfg.Telemetry.FastInterval, MediumInterval: cfg.Telemetry.MediumInterval, InventoryInterval: cfg.Telemetry.InventoryInterval, TopologyInterval: cfg.Telemetry.TopologyInterval, Timeout: cfg.Telemetry.CollectTimeout}
-		if poll.FastInterval == 0 {
-			poll.FastInterval = defaults.FastInterval
-		}
-		if poll.MediumInterval == 0 {
-			poll.MediumInterval = defaults.MediumInterval
-		}
-		if poll.InventoryInterval == 0 {
-			poll.InventoryInterval = defaults.InventoryInterval
-		}
-		if poll.TopologyInterval == 0 {
-			poll.TopologyInterval = defaults.TopologyInterval
-		}
-		if poll.Timeout == 0 {
-			poll.Timeout = defaults.Timeout
-		}
+		target := dc.Target(defaults)
+		poll := config.Polling{FastInterval: target.Polling.FastInterval, MediumInterval: target.Polling.MediumInterval, InventoryInterval: target.Polling.InventoryInterval, TopologyInterval: target.Polling.TopologyInterval, Timeout: target.Polling.Timeout}
 		dc.Polling = poll
-		e := &entry{cfg: dc, driver: d, gate: make(chan struct{}, 1), interfaces: make(map[string]string), links: make(map[string]model.Neighbor), maxLinks: cfg.Remote.MaxRows, state: State{Device: model.Device{ID: dc.ID, Name: dc.Name, ManagementAddress: dc.Address, Driver: dc.Driver, Type: "unknown", Location: dc.Location, VendorHint: dc.VendorHint}}}
+		e := &entry{cfg: dc, target: target, driver: d, gate: make(chan struct{}, 1), rates: telemetry.NewRateTracker(), interfaces: make(map[string]string), links: make(map[string]model.Neighbor), maxLinks: cfg.Remote.MaxRows, state: State{Target: target, Device: model.Device{ID: dc.ID, Name: dc.Name, ManagementAddress: dc.Address, Driver: dc.Driver, Type: "unknown", Location: dc.Location, VendorHint: dc.VendorHint}}}
 		r.entries[dc.ID] = e
 		e.linkOrder = list.New()
 		e.linkPositions = make(map[string]*list.Element)
@@ -118,12 +139,45 @@ func (r *Registry) Devices() []model.Device {
 	return devices
 }
 
+func (r *Registry) Targets() []model.Target {
+	targets := make([]model.Target, 0, len(r.order))
+	for _, id := range r.order {
+		targets = append(targets, r.entries[id].target)
+	}
+	return targets
+}
+
+func (r *Registry) source(e *entry) model.SourceRef {
+	return model.SourceRef{Type: e.target.Type, CollectorID: r.collectorID, TargetID: e.target.ID, Protocol: e.target.Protocol}
+}
+
+func (r *Registry) observation(e *entry, envelope model.Envelope) error {
+	return r.emit(model.ObserveEnvelope(envelope, r.source(e), time.Now().UTC()))
+}
+
+// Commands keep the legacy exact route. A configured Target ID is not an alias
+// for an unrelated observed Device ID, and ambiguous identities cannot mutate.
+func (r *Registry) commandEntry(id string) (*entry, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, exists := r.entries[id]
+	if !exists || e.state.Device.ID != id {
+		return nil, errors.New("remote command target identity does not match")
+	}
+	for _, other := range r.entries {
+		if other != e && other.state.Device.ID == id {
+			return nil, errors.New("remote command target identity is ambiguous")
+		}
+	}
+	return e, nil
+}
+
 // WithDevice serializes writes with all polls of this device. The driver's
 // protocol operations still have their own cancellation and response bounds.
-func (r *Registry) WithDevice(ctx context.Context, id string, fn func(driver.Driver) model.CommandResult) (model.CommandResult, error) {
-	e, ok := r.entries[id]
-	if !ok {
-		return model.CommandResult{}, errors.New("unknown remote target")
+func (r *Registry) WithDevice(ctx context.Context, id string, fn func(driver.Adapter) model.CommandResult) (model.CommandResult, error) {
+	e, err := r.commandEntry(id)
+	if err != nil {
+		return model.CommandResult{}, err
 	}
 	select {
 	case e.gate <- struct{}{}:
@@ -132,6 +186,9 @@ func (r *Registry) WithDevice(ctx context.Context, id string, fn func(driver.Dri
 		return model.CommandResult{}, ctx.Err()
 	}
 	if err := ctx.Err(); err != nil {
+		return model.CommandResult{}, err
+	}
+	if _, err := r.commandEntry(id); err != nil {
 		return model.CommandResult{}, err
 	}
 	return fn(e.driver), nil
@@ -152,20 +209,22 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 		defer cancel()
 		return fn(c)
 	}
-	if !now.Before(e.nextFast) {
+	if reader, supported := e.driver.(driver.TelemetryReader); supported && !now.Before(e.nextFast) {
 		e.nextFast = now.Add(e.cfg.Polling.FastInterval)
 		err := run(func(c context.Context) error {
-			s, err := e.driver.Collect(c)
+			s, err := reader.Collect(c)
 			connectivityObserved = true
 			connectivityErr = err
 			connectivitySuccessful = err == nil
 			if err != nil {
 				return err
 			}
-			s.DeviceID = e.cfg.ID
-			r.rates.Apply(&s)
+			if s.DeviceID == "" {
+				s.DeviceID = e.cfg.ID
+			}
+			r.telemetry(e, &s)
 			r.interfaceEvents(e, s)
-			return r.emit(model.Envelope{Telemetry: &s})
+			return r.observation(e, model.Envelope{Telemetry: &s})
 		})
 		if err != nil {
 			errs = append(errs, err)
@@ -174,10 +233,10 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if !now.Before(e.nextMedium) {
+	if reader, supported := e.driver.(driver.ProbeReader); supported && !now.Before(e.nextMedium) {
 		e.nextMedium = now.Add(e.cfg.Polling.MediumInterval)
 		err := run(func(c context.Context) error {
-			d, err := e.driver.Probe(c)
+			d, err := reader.Probe(c)
 			connectivityObserved = true
 			if err == nil {
 				connectivitySuccessful = true
@@ -204,15 +263,26 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 			r.connectivity(e, connectivityErr, now)
 		}
 	}
-	if !now.Before(e.nextInventory) {
+	if reader, supported := e.driver.(driver.InventoryReader); supported && !now.Before(e.nextInventory) {
 		e.nextInventory = now.Add(e.cfg.Polling.InventoryInterval)
+		_, probeReader := e.driver.(driver.ProbeReader)
+		_, telemetryReader := e.driver.(driver.TelemetryReader)
+		inventoryConnectivity := !probeReader && !telemetryReader
 		err := run(func(c context.Context) error {
-			d, err := e.driver.Inventory(c)
+			d, err := reader.Inventory(c)
 			if err != nil {
+				if inventoryConnectivity {
+					r.connectivity(e, err, now)
+				}
 				return err
 			}
-			r.device(e, d, now, true)
-			return r.emit(model.Envelope{Inventory: &model.InventoryUpdate{ObservedAt: now.UTC(), Devices: []model.Device{r.deviceSnapshot(e)}}})
+			if changed := r.device(e, d, now, true); changed || inventoryConnectivity {
+				// This successful inventory established a new primary entity;
+				// or is the adapter's only device-reading capability.
+				// Neither inherits the previous entity's connectivity history.
+				r.connectivity(e, nil, now)
+			}
+			return r.observation(e, model.Envelope{Inventory: &model.InventoryUpdate{ObservedAt: now.UTC(), Devices: []model.Device{r.deviceSnapshot(e)}}})
 		})
 		if err != nil {
 			errs = append(errs, err)
@@ -221,11 +291,18 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if !now.Before(e.nextTopology) {
+	if reader, supported := e.driver.(driver.TopologyReader); supported && !now.Before(e.nextTopology) {
 		e.nextTopology = now.Add(e.cfg.Polling.TopologyInterval)
 		err := run(func(c context.Context) error {
-			t, err := e.driver.Topology(c)
-			t.DeviceID = e.cfg.ID
+			t, err := reader.Topology(c)
+			if t.DeviceID == "" {
+				t.DeviceID = e.cfg.ID
+			}
+			for i := range t.Observations {
+				if t.Observations[i].LocalDeviceID == "" {
+					t.Observations[i].LocalDeviceID = t.DeviceID
+				}
+			}
 			if t.ObservedAt.IsZero() {
 				t.ObservedAt = now.UTC()
 			}
@@ -239,7 +316,7 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 				t.Completeness = "failed"
 			}
 			r.topologyEvents(e, t)
-			return errors.Join(err, r.emit(model.Envelope{Topology: &t}))
+			return errors.Join(err, r.observation(e, model.Envelope{Topology: &t}))
 		})
 		if err != nil && !errors.Is(err, driver.ErrUnavailable) {
 			errs = append(errs, err)
@@ -276,8 +353,10 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 	}
 	return nil
 }
-func (r *Registry) device(e *entry, d model.Device, now time.Time, inventory bool) {
-	d.ID = e.cfg.ID
+func (r *Registry) device(e *entry, d model.Device, now time.Time, inventory bool) bool {
+	if d.ID == "" {
+		d.ID = e.cfg.ID
+	}
 	d.Location = e.cfg.Location
 	d.ManagementAddress = e.cfg.Address
 	d.VendorHint = e.cfg.VendorHint
@@ -285,7 +364,8 @@ func (r *Registry) device(e *entry, d model.Device, now time.Time, inventory boo
 		d.Name = e.cfg.Name
 	}
 	r.mu.Lock()
-	if !inventory {
+	changed := d.ID != e.state.Device.ID
+	if !inventory && !changed {
 		old := e.state.Device
 		// Medium status reads do not invalidate slow hardware inventory.
 		if old.Model != "" {
@@ -299,10 +379,28 @@ func (r *Registry) device(e *entry, d model.Device, now time.Time, inventory boo
 			d.SoftwareVersion = old.SoftwareVersion
 		}
 	}
-	d.Online = e.state.Device.Online
-	d.LastSeen = e.state.Device.LastSeen
+	if changed {
+		d.Online, d.LastSeen = false, time.Time{}
+		e.state.ConnectivityState = "unknown"
+		e.state.ConsecutiveConnectivityFailures = 0
+		if e.lastTelemetryDeviceID != d.ID {
+			e.rates = telemetry.NewRateTracker()
+			e.lastTelemetryDeviceID = ""
+			e.interfaces = make(map[string]string)
+		}
+		// The single primary entity cache is replaced without claiming link
+		// expiry on the previously observed entity.
+		e.links = make(map[string]model.Neighbor)
+		e.linkOrder.Init()
+		e.linkPositions = make(map[string]*list.Element)
+	} else {
+		d.Online = e.state.Device.Online
+		d.LastSeen = e.state.Device.LastSeen
+	}
+	d = model.ObserveEnvelope(model.Envelope{Inventory: &model.InventoryUpdate{ObservedAt: now.UTC(), Devices: []model.Device{d}}}, r.source(e), time.Now().UTC()).Inventory.Devices[0]
 	e.state.Device = d
 	r.mu.Unlock()
+	return changed
 }
 func (r *Registry) deviceSnapshot(e *entry) model.Device {
 	r.mu.Lock()
@@ -334,22 +432,38 @@ func (r *Registry) connectivity(e *entry, err error, at time.Time) {
 	r.mu.Unlock()
 	if transition != "" {
 		r.event(e, transition, "info", transition, at)
-		d := r.deviceSnapshot(e)
-		_ = r.emit(model.Envelope{Inventory: &model.InventoryUpdate{ObservedAt: at.UTC(), Devices: []model.Device{d}}})
+		_, probe := e.driver.(driver.ProbeReader)
+		_, inventory := e.driver.(driver.InventoryReader)
+		if probe || inventory {
+			d := r.deviceSnapshot(e)
+			_ = r.observation(e, model.Envelope{Inventory: &model.InventoryUpdate{ObservedAt: at.UTC(), Devices: []model.Device{d}}})
+		}
 	}
 }
+
+// A target currently emits one primary telemetry sample per call. Keep one
+// baseline per target, rather than a global unbounded cache by observed ID.
+func (r *Registry) telemetry(e *entry, s *model.TelemetrySample) {
+	if e.lastTelemetryDeviceID != s.DeviceID {
+		e.rates = telemetry.NewRateTracker()
+		e.lastTelemetryDeviceID = s.DeviceID
+		e.interfaces = make(map[string]string)
+	}
+	e.rates.Apply(s)
+}
+
 func (r *Registry) interfaceEvents(e *entry, s model.TelemetrySample) {
 	current := make(map[string]string, len(s.Interfaces))
 	for _, i := range s.Interfaces {
 		current[i.ID] = i.OperState
 		if old, ok := e.interfaces[i.ID]; ok && old != i.OperState && (i.OperState == "up" || i.OperState == "down") {
-			r.event(e, "interface."+i.OperState, "info", fmt.Sprintf("interface %s %s", i.ID, i.OperState), s.ObservedAt)
+			r.eventForDevice(e, s.DeviceID, "interface."+i.OperState, "info", fmt.Sprintf("interface %s %s", i.ID, i.OperState), s.ObservedAt)
 		}
 	}
 	e.interfaces = current
 }
 func linkKey(n model.Neighbor) string {
-	data, _ := json.Marshal([]any{n.LocalPortNumber, n.LocalPortID, n.LocalInterfaceID, n.RemoteChassisSubtype, n.RemoteChassisID, n.RemotePortSubtype, n.RemotePortID, n.Protocol, n.Source})
+	data, _ := json.Marshal([]any{n.LocalDeviceID, n.LocalPortNumber, n.LocalPortID, n.LocalInterfaceID, n.RemoteChassisSubtype, n.RemoteChassisID, n.RemotePortSubtype, n.RemotePortID, n.Protocol, n.Source})
 	return string(data)
 }
 func (r *Registry) topologyEvents(e *entry, t model.TopologyUpdate) {
@@ -370,7 +484,7 @@ func (r *Registry) topologyEvents(e *entry, t model.TopologyUpdate) {
 				e.linkOrder.Remove(oldest)
 			}
 			e.linkPositions[key] = e.linkOrder.PushBack(key)
-			r.event(e, "topology.link.observed", "info", "neighbor observation added", t.ObservedAt)
+			r.eventForDevice(e, n.LocalDeviceID, "topology.link.observed", "info", "neighbor observation added", t.ObservedAt)
 		} else {
 			e.linkOrder.MoveToBack(e.linkPositions[key])
 		}
@@ -383,11 +497,18 @@ func (r *Registry) topologyEvents(e *entry, t model.TopologyUpdate) {
 				delete(e.links, key)
 				e.linkOrder.Remove(e.linkPositions[key])
 				delete(e.linkPositions, key)
-				r.event(e, "topology.link.expired", "info", "neighbor observation expired after complete snapshot", t.ObservedAt)
+				r.eventForDevice(e, n.LocalDeviceID, "topology.link.expired", "info", "neighbor observation expired after complete snapshot", t.ObservedAt)
 			}
 		}
 	}
 }
 func (r *Registry) event(e *entry, kind, severity, message string, at time.Time) {
-	_ = r.emit(model.Envelope{Events: []model.Event{{ID: uuid.NewString(), DeviceID: e.cfg.ID, Type: kind, Severity: severity, Message: message, Source: "remote", Timestamp: at.UTC()}}})
+	r.eventForDevice(e, r.deviceSnapshot(e).ID, kind, severity, message, at)
+}
+
+func (r *Registry) eventForDevice(e *entry, deviceID, kind, severity, message string, at time.Time) {
+	if deviceID == "" {
+		deviceID = r.deviceSnapshot(e).ID
+	}
+	_ = r.observation(e, model.Envelope{Events: []model.Event{{ID: uuid.NewString(), DeviceID: deviceID, Type: kind, Severity: severity, Message: message, Source: "remote", Timestamp: at.UTC()}}})
 }

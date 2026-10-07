@@ -1,6 +1,6 @@
 # Физическая topology observations
 
-Agent собирает LLDP-MIB через Generic SNMP и RouterOS neighbor discovery,
+Collector собирает LLDP-MIB через Generic SNMP и RouterOS neighbor discovery,
 нормализует observations и передаёт `TopologyUpdate` через outbound gRPC.
 Mock Controller показывает их в JSON. Global reconciliation графа, история
 и Web UI остаются Backend responsibilities.
@@ -17,7 +17,7 @@ bounded collection + timestamps + completeness
 raw identifiers/subtypes + evidence local port mapping
                   |
                   v
-TopologyUpdate -> sanitizer -> RAM outbox -> gRPC
+TopologyUpdate + observation metadata -> sanitizer -> memory/durable outbox -> gRPC
                   |
                   v
 Mock JSON / future Backend reconciliation
@@ -117,6 +117,27 @@ Memory outbox остаётся best effort; durable mode сохраняет reta
 до negotiated application ACK, replay сохраняет message ID. Retention/eviction
 могут потерять topology update/event; persistent outbox не делает registry
 dedup history постоянной. Подробности — [delivery](delivery.md).
+
+## Collector observation boundary
+
+Discovery сохраняет существующий SNMP/RouterOS mapping. Remote target job
+передаёт normalized `TopologyUpdate` в `ObserveEnvelope`, затем в существующий
+outbox и gRPC mapping. Adapters не отправляют gRPC напрямую.
+
+SourceRef содержит configured target и carrier (`snmp`/`routeros`). SNMP LLDP
+snapshot имеет source type `lldp`; mixed RouterOS snapshot — `routeros`,
+а вложенный Neighbor уточняет actual discovery source `lldp`/`cdp`/`mndp`,
+когда он известен. Vendor не подменяет source. Provenance `simulated` сохраняется
+отдельно от discovery protocol и в legacy source marker.
+
+Normalized IdentityEvidence сохраняет raw remote chassis bytes и subtype,
+remote system name как low-confidence hostname. Неизвестный subtype остаётся
+unknown; RouterOS neighbor MAC не становится hardware UUID или подтверждённым
+LLDP chassis ID. Local Target ID и observed local Device ID раздельны;
+remote chassis evidence не выполняет Asset merge. ClockOffset/Uncertainty
+по умолчанию отсутствуют; observed/collected times сохраняют прежние значения.
+Полная новая metadata пока internal-only; существующие topology wire fields
+остаются совместимыми. [Collector Core](collector-core.md), [wire gaps](protocol.md).
 
 ## Проверка и ограничения
 

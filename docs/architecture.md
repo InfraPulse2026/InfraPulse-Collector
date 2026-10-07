@@ -1,22 +1,31 @@
-# Архитектура InfraPulse Agent
+# Архитектура InfraPulse Collector
 
-Module path — `InfraPulseAgent`, Go — 1.27. Agent совмещает локальный Linux
-collector, Native OpenWrt, remote collection, file logs/audit и SIP health.
+Module path — `InfraPulseAgent`, Go — 1.27. InfraPulse Collector / Edge Gateway
+использует один существующий `internal/agent.Agent` runtime: локальный
+Linux/OpenWrt, remote collection, file logs/audit и SIP health. Исторические
+CLI/protobuf/identity names сохранены; второго runtime нет.
 Backend, Web UI, LLM, server database и историческое хранилище находятся вне
-репозитория; embedded durable state принадлежит Agent.
+репозитория; embedded durable state принадлежит Collector.
 Mock Controller, Mock Enrollment и Simulator — development-компоненты.
+
+Collector обслуживает management/local network и не требует установки на
+каждый server. Zabbix/Prometheus integration, Ansible automation и Grafana
+visualization относятся к Control Plane. Collector отвечает за edge/network/
+hardware protocols; локальные метрики остаются standalone/fallback mode.
+Domain boundaries и архитектурный freeze Phase 1 описаны в
+[Collector Core](collector-core.md).
 
 ## Границы компонентов
 
 | Компонент | Реальная ответственность |
 |---|---|
-| Agent Core | Identity/session, lifecycle, создание drivers, запуск scheduler, outbound stream, diagnostics и admission команд |
+| Collector Core (`internal/agent`) | Identity/session, targets, lifecycle adapters, запуск scheduler, normalized observations, outbound stream, diagnostics и admission команд |
 | Local Platform | Linux identity, CPU/memory/interfaces из `/proc` и `/sys`; не управляет удалёнными устройствами |
-| Remote Registry | Configured stable IDs, lifecycle drivers, bounded polling, per-device exclusion, last successful observation, connectivity failures и state events |
-| Remote Driver | Нормализация данных одного устройства и динамические capabilities; не читает YAML или protobuf |
+| Remote Registry | Configured targets, lifecycle adapters, bounded polling, per-target exclusion, last successful observation, connectivity failures и state events |
+| Remote Driver | Нормализация данных источника и динамические capabilities; не читает YAML или protobuf и не выполняет глобальный Asset merge |
 | Protocol Adapter | SNMP v2c/v3 USM/UDP или RouterOS HTTPS REST, authentication, deadlines, cancellation, response limits и безопасные категории ошибок |
 | CredentialProvider | Получение credentials по именованной ссылке из environment; заменяемый interface |
-| Telemetry Pipeline | Общие Interface/Device models, presence, counters, безопасные deltas/rates и outbox |
+| Observation Pipeline | Общие normalized payloads, SourceRef/provenance, identity evidence, temporal metadata, presence, counters, безопасные deltas/rates и outbox |
 | Command Pipeline | Typed validation → admission/journal → target/capability/policy/protection → persistent snapshot/executing → mutation → verification → persistent result/ACK |
 | Durable Outbox | Bounded bbolt admission, protected results, stable message IDs, leases/replay и deletion after ACK |
 | PKI Manager | Local private key/CSR, verified HTTPS enrollment, identity binding, atomic bundle rotation и safe status |
@@ -40,12 +49,12 @@ internal/agent/              composition root, diagnostics, command admission
 internal/config/             strict YAML, defaults и limits
 internal/credentials/        Provider и environment references
 internal/remote/             registry, polling и переходы состояния
-internal/driver/             Driver, Options и optional InterfaceManager
+internal/driver/             Adapter, optional readers, compile-time Registry и InterfaceManager
 internal/driver/snmp/        SYSTEM/ENTITY/IF/IF-X/LLDP normalization
 internal/driver/routeros/    REST normalization, dependency resolution и verification
 internal/protocol/snmp/      read-only GoSNMP adapter
 internal/protocol/routeros/  fixed HTTPS REST operations
-internal/model/              normalized values и remote evidence
+internal/model/              Target, SourceRef, observations, time и identity evidence
 internal/telemetry/          local/remote rates
 internal/commands/           validation/policy, persistent journal и snapshots/rollback
 internal/queue/              memory/durable priority outbox, reservation и ACK/replay
@@ -58,22 +67,39 @@ internal/telephony/          bounded OPTIONS и endpoint health state
 internal/simulator/          development-only generator и transport lifecycle
 ```
 
-Существующие P0 `Platform`, `Transport/Session`, `scheduler.Job`, queue и
-normalized models переиспользуются. Remote `Driver` предоставляет `Probe`,
-`Inventory`, `Collect`, `Topology`, `Capabilities`, `Close`. Только RouterOS
+Существующие `Platform`, `Transport/Session`, `scheduler.Job`, queue и
+normalized models переиспользуются. `driver.Adapter` содержит lifecycle
+`Capabilities`/`Close`; `ProbeReader`, `InventoryReader`, `TelemetryReader`
+и `TopologyReader` подключаются отдельно. Существующий `Driver` объединяет
+их для SNMP/RouterOS. `driver.Registry[T]` выбирает compile-time constructors
+в composition root; отсутствующий reader не создаёт fake observation.
+`remote.New` остаётся compatibility bridge к `remote.NewAdapters`: оба
+используют один registry/scheduler. Только RouterOS
 добавляет `InterfaceManager`: `ResolveInterface` и `SetInterface`.
 `credentials.Provider.Get(context.Context, ref)` возвращает credential,
 который не входит в normalized/wire models. Узкий fakeable SNMP client
 используется mapping fixtures; protocol adapters остаются отдельными packages.
+Standalone `probe-device` использует тот же registered driver и normalized
+source-bound Device/identity evidence, без запуска runtime/transport.
+Collector ID в этом read отсутствует, поскольку persistent identity не загружается.
 
 ## Configuration и registry
 
 `devices` содержит stable ID, name, driver (`snmp`/`routeros`), address,
 credential reference, optional vendor hint/location, polling overrides и
-protocol options. ID не выводится из management IP и не меняется при rename.
+protocol options. Target ID не выводится из management IP и не меняется при rename.
 `local:` namespace зарезервирован для локального устройства. Legacy
 `vendor_profile` используется только как hint; vendor profiles этим полем
 не включаются.
+
+`config.Device.Target` переводит существующую YAML entry в `model.Target`,
+сохраняя intervals/defaults и credential reference. Local host, SIP endpoint
+и file log source также имеют Target. Target определяет configured connection,
+а `Device.ID` — наблюдаемое устройство; SourceRef хранит эти уровни раздельно.
+Для существующих SNMP/RouterOS wire Device IDs сохраняется configured ID;
+внутренний Target ID имеет отдельный namespace `remote:<configured-id>`.
+Explicit observed Device ID не подменяется Target ID. Глобальный Backend Asset
+и multi-source merge находятся вне Collector. [Подробности](collector-core.md).
 
 Config ограничивает devices/credential references 1024 записями. Default remote
 concurrency — 4, rows — 4096, response bytes — 1 MiB. Секреты поступают через
@@ -234,8 +260,12 @@ RouterOS operations: [REST API](https://manual.mikrotik.com/docs/developer-guide
 [interfaces](https://manual.mikrotik.com/docs/cli-reference/interface/),
 [neighbors](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery).
 
-P3 повышает надёжность: SNMPv3, bounded durable delivery/ACK/replay,
+Реализованный P3 содержит SNMPv3, bounded durable delivery/ACK/replay,
 persistent journal/results, enrollment/rotation и typed interface rollback.
+Collector Core Phase 1 сохраняет этот фундамент и добавляет Target/Source,
+identity evidence и временную модель. Remote Syslog/Audit receiver, Redfish,
+IPMI и Collector ↔ Backend clock offset estimation остаются следующими этапами;
+capabilities для них не объявлены. [Architecture freeze](collector-core.md).
 Windows LocalPlatform относится к post-MVP/backlog. NETCONF/gNMI deferred:
 без подтверждённого typed use case новый protocol не добавляется.
 Фактически выполненные проверки находятся в [validation](validation.md).

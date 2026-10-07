@@ -10,20 +10,20 @@ import (
 
 // Execute is called under the registry device exclusion with result admission
 // already reserved by Agent. Every initiator follows the same checks.
-func Execute(ctx context.Context, c model.Command, target model.Device, d driver.Driver, policy Policy, now time.Time) model.CommandResult {
+func Execute(ctx context.Context, c model.Command, target model.Device, d driver.Adapter, policy Policy, now time.Time) model.CommandResult {
 	return execute(ctx, c, target, d, policy, now, nil)
 }
 
 // ExecuteDurable uses the same validation/protection/verification path, with a
 // synced journal and typed snapshot immediately before an external write.
-func ExecuteDurable(ctx context.Context, c model.Command, target model.Device, d driver.Driver, policy Policy, now time.Time, store *Store) model.CommandResult {
+func ExecuteDurable(ctx context.Context, c model.Command, target model.Device, d driver.Adapter, policy Policy, now time.Time, store *Store) model.CommandResult {
 	if store == nil || !store.Health().Available {
 		return model.CommandResult{CommandID: c.ID, StartedAt: now.UTC(), FinishedAt: now.UTC(), Status: "rejected", ErrorCode: "storage_unavailable", ErrorMessage: "durable command state unavailable; mutation was not started"}
 	}
 	return execute(ctx, c, target, d, policy, now, store)
 }
 
-func execute(ctx context.Context, c model.Command, target model.Device, d driver.Driver, policy Policy, now time.Time, store *Store) model.CommandResult {
+func execute(ctx context.Context, c model.Command, target model.Device, d driver.Adapter, policy Policy, now time.Time, store *Store) model.CommandResult {
 	r := model.CommandResult{CommandID: c.ID, StartedAt: now.UTC(), Status: "rejected"}
 	finish := func(status, code, message string) model.CommandResult {
 		r.Status = status

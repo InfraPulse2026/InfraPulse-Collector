@@ -116,7 +116,7 @@ func (a *Agent) executePersistentCommand(ctx context.Context, c model.Command) e
 					deadline = limit
 				}
 				commandCtx, cancel := context.WithDeadline(ctx, deadline)
-				result, err = a.remote.WithDevice(commandCtx, c.TargetDeviceID, func(d driver.Driver) model.CommandResult {
+				result, err = a.remote.WithDevice(commandCtx, c.TargetDeviceID, func(d driver.Adapter) model.CommandResult {
 					return commands.ExecuteDurable(commandCtx, c, *target, d, policy, time.Now(), a.commandStore)
 				})
 				cancel()

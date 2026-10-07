@@ -4,12 +4,13 @@ import "time"
 
 // P2 read-only inventory never conveys a command, argv, or raw configuration.
 type Service struct {
-	Name       string            `json:"name"`
-	State      string            `json:"state"`
-	Enabled    *bool             `json:"enabled,omitempty"`
-	ObservedAt time.Time         `json:"observed_at"`
-	Source     string            `json:"source"`
-	Instances  []ServiceInstance `json:"instances,omitempty"`
+	Observation *ObservationMetadata `json:"observation,omitempty"`
+	Name        string               `json:"name"`
+	State       string               `json:"state"`
+	Enabled     *bool                `json:"enabled,omitempty"`
+	ObservedAt  time.Time            `json:"observed_at"`
+	Source      string               `json:"source"`
+	Instances   []ServiceInstance    `json:"instances,omitempty"`
 }
 type ServiceInstance struct {
 	Name    string  `json:"name"`
@@ -17,16 +18,18 @@ type ServiceInstance struct {
 	PID     *uint32 `json:"pid,omitempty"`
 }
 type NetworkState struct {
-	Name       string    `json:"name"`
-	Device     string    `json:"device,omitempty"`
-	Protocol   string    `json:"protocol,omitempty"`
-	Up         *bool     `json:"up,omitempty"`
-	Pending    *bool     `json:"pending,omitempty"`
-	Addresses  []string  `json:"addresses,omitempty"`
-	Source     string    `json:"source"`
-	ObservedAt time.Time `json:"observed_at"`
+	Observation *ObservationMetadata `json:"observation,omitempty"`
+	Name        string               `json:"name"`
+	Device      string               `json:"device,omitempty"`
+	Protocol    string               `json:"protocol,omitempty"`
+	Up          *bool                `json:"up,omitempty"`
+	Pending     *bool                `json:"pending,omitempty"`
+	Addresses   []string             `json:"addresses,omitempty"`
+	Source      string               `json:"source"`
+	ObservedAt  time.Time            `json:"observed_at"`
 }
 type FirewallSnapshot struct {
+	Observation  *ObservationMetadata `json:"observation,omitempty"`
 	ObservedAt   time.Time            `json:"observed_at"`
 	Source       string               `json:"source"`
 	Completeness string               `json:"completeness"`
@@ -84,44 +87,48 @@ type AuditRecord struct {
 	Host       string  `json:"host,omitempty"`
 }
 type LogRecord struct {
-	ID                string       `json:"id"`
-	DeviceID          string       `json:"device_id"`
-	Source            string       `json:"source"`
-	SourceID          string       `json:"source_id"`
-	ObservedAt        time.Time    `json:"observed_at"`
-	OriginalTimestamp *time.Time   `json:"original_timestamp,omitempty"`
-	Severity          *uint32      `json:"severity,omitempty"`
-	Facility          *uint32      `json:"facility,omitempty"`
-	Host              string       `json:"host,omitempty"`
-	Process           string       `json:"process,omitempty"`
-	ProcessID         string       `json:"process_id,omitempty"`
-	Message           string       `json:"message"`
-	Raw               string       `json:"raw,omitempty"`
-	Truncated         bool         `json:"truncated"`
-	FileIdentity      string       `json:"file_identity,omitempty"`
-	Offset            int64        `json:"offset"`
-	Audit             *AuditRecord `json:"audit,omitempty"`
+	Observation       *ObservationMetadata `json:"observation,omitempty"`
+	ID                string               `json:"id"`
+	DeviceID          string               `json:"device_id"`
+	Source            string               `json:"source"`
+	SourceID          string               `json:"source_id"`
+	ObservedAt        time.Time            `json:"observed_at"`
+	OriginalTimestamp *time.Time           `json:"original_timestamp,omitempty"`
+	Severity          *uint32              `json:"severity,omitempty"`
+	Facility          *uint32              `json:"facility,omitempty"`
+	Host              string               `json:"host,omitempty"`
+	Process           string               `json:"process,omitempty"`
+	ProcessID         string               `json:"process_id,omitempty"`
+	Message           string               `json:"message"`
+	Raw               string               `json:"raw,omitempty"`
+	Truncated         bool                 `json:"truncated"`
+	FileIdentity      string               `json:"file_identity,omitempty"`
+	Offset            int64                `json:"offset"`
+	Audit             *AuditRecord         `json:"audit,omitempty"`
 }
 type LogBatch struct {
-	ObservedAt time.Time   `json:"observed_at"`
-	Source     string      `json:"source"`
-	Records    []LogRecord `json:"records"`
+	Observation *ObservationMetadata `json:"observation,omitempty"`
+	ObservedAt  time.Time            `json:"observed_at"`
+	Source      string               `json:"source"`
+	Records     []LogRecord          `json:"records"`
 }
 type TelephonyHealth struct {
-	TargetID            string    `json:"target_id"`
-	Address             string    `json:"address"`
-	Transport           string    `json:"transport"`
-	Reachable           bool      `json:"reachable"`
-	ResponseCode        *uint32   `json:"response_code,omitempty"`
-	LatencyMillis       *float64  `json:"latency_ms,omitempty"`
-	ObservedAt          time.Time `json:"observed_at"`
-	ConsecutiveFailures uint32    `json:"consecutive_failures"`
-	State               string    `json:"state"`
-	ErrorCategory       string    `json:"error_category,omitempty"`
-	Source              string    `json:"source"`
+	Observation         *ObservationMetadata `json:"observation,omitempty"`
+	TargetID            string               `json:"target_id"`
+	Address             string               `json:"address"`
+	Transport           string               `json:"transport"`
+	Reachable           bool                 `json:"reachable"`
+	ResponseCode        *uint32              `json:"response_code,omitempty"`
+	LatencyMillis       *float64             `json:"latency_ms,omitempty"`
+	ObservedAt          time.Time            `json:"observed_at"`
+	ConsecutiveFailures uint32               `json:"consecutive_failures"`
+	State               string               `json:"state"`
+	ErrorCategory       string               `json:"error_category,omitempty"`
+	Source              string               `json:"source"`
 }
 type TelephonyUpdate struct {
-	ObservedAt time.Time         `json:"observed_at"`
-	Source     string            `json:"source"`
-	Targets    []TelephonyHealth `json:"targets"`
+	Observation *ObservationMetadata `json:"observation,omitempty"`
+	ObservedAt  time.Time            `json:"observed_at"`
+	Source      string               `json:"source"`
+	Targets     []TelephonyHealth    `json:"targets"`
 }
