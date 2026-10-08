@@ -34,5 +34,8 @@ func (a *Agent) configuredTargets() []model.Target {
 	for _, s := range a.cfg.Logs.Sources {
 		result = append(result, (logs.Source{ID: s.ID, Path: s.Path, Format: s.Format}).Target(a.cfg.Logs.Interval, a.cfg.Logs.Timeout))
 	}
+	for _, s := range a.cfg.SyslogReceiver.Sources {
+		result = append(result, s.Target(a.cfg.SyslogReceiver.Enabled))
+	}
 	return result
 }

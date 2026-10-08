@@ -9,7 +9,8 @@ entity resolution, correlation, LLM и отчёты относятся к Backen
 
 Этот freeze сохраняет рабочий P3: transport, identity/session, durable outbox,
 ACK/replay, PKI, protocols, commands/journal/snapshots/rollback и Simulator.
-Remote Syslog/Audit receiver, Redfish, IPMI и time exchange не реализованы.
+Phase 3 добавляет opt-in Remote Syslog/Audit receiver через existing delivery.
+Redfish, IPMI и time exchange не реализованы.
 
 ## Baseline и фактический прежний flow
 
@@ -259,25 +260,26 @@ Arbitrary shell/Ansible execution отсутствует.
 Hello/Heartbeat/Telemetry/Inventory/Topology/Logs/Telephony/CommandResult,
 protobuf field numbers, Agent/session identity, stable message IDs и ACK negotiation
 сохранены. Legacy source/timestamps и existing inventory/topology evidence передаются
-как раньше. Full SourceRef/normalized IdentityEvidence/clock metadata пока internal;
-old wire не может передать эти сведения целиком. Additive protobuf requirements
-описаны в [protocol](protocol.md). Wire metadata нельзя молча упаковать в vendor,
+как раньше. Phase 3 добавляет optional SourceRef/ObservationTime на logs/records
+и SyslogMetadata; normalized IdentityEvidence и metadata остальных payloads
+остаются internal. Additive protobuf scope описан в [protocol](protocol.md).
+Wire metadata нельзя молча упаковать в vendor,
 hostname или generic string.
 
-Domain foundation готов для следующего Remote Syslog/Audit Receiver этапа.
-Ему потребуются отдельный bounded input lifecycle/admission, источник и target
-attribution, protocol/parser fixtures и проверки pressure/restart. Existing file
-reader остаётся file pipeline. Collector ↔ Backend offset estimation отложен;
-exchange, additive wire metadata и Backend implementation отсутствуют.
+Remote Syslog/Audit Receiver Phase 3 использует bounded input lifecycle/admission,
+configured source/Target attribution и existing LogBatch/outbox. Existing file
+reader остаётся file pipeline. [Настройка receiver](syslog-receiver.md).
+Collector ↔ Backend offset estimation отложен; exchange и Backend implementation
+отсутствуют. Additive logs metadata не включает metadata остальных observations.
 Backend received_at остаётся server-owned. Phase 3 автоматически не запускается.
 
 Redfish/IPMI можно подключить через зарегистрированный Adapter и небольшие readers,
 но protocol implementations, credentials/security options, реальные schemas/mappings
 и fixtures отсутствуют. Current InventoryReader возвращает один Device; для
 Redfish ComputerSystem/Chassis/Manager нужен additive bounded batch reader,
-не переименование Target в Asset. Remote Syslog/Audit receiver потребует отдельный
-bounded input lifecycle/admission и attribution к источнику; current file reader
-не является network receiver. Backend-managed target reconciliation/configuration
+не переименование Target в Asset. Remote Syslog/Audit receiver реализован отдельным
+bounded input component в том же runtime; file reader не стал network receiver.
+Backend-managed target reconciliation/configuration
 также не реализован. Эти gaps не включают backend-owned monitoring integrations.
 
 Baseline resource probe: 32 fake targets, 4 workers, fast 25ms, fake I/O 2ms,

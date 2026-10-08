@@ -38,6 +38,15 @@ func (a *Agent) sanitizeText(s string) string { return sanitize.TextWithSecrets(
 
 func (a *Agent) p2CapabilitiesLocked() []model.Capability {
 	var caps []model.Capability
+	if a.cfg.SyslogReceiver.Enabled {
+		caps = append(caps, model.Capability{Name: "logs.receive", Supported: true})
+		for _, source := range a.cfg.SyslogReceiver.Sources {
+			if len(source.AuditApps) > 0 {
+				caps = append(caps, model.Capability{Name: "audit.receive", Supported: true})
+				break
+			}
+		}
+	}
 	if len(a.cfg.Logs.Sources) > 0 {
 		caps = append(caps, model.Capability{Name: "logs.read", Supported: runtime.GOOS == "linux", Reason: platformReason()})
 		for _, s := range a.cfg.Logs.Sources {

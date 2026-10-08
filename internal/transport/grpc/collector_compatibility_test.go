@@ -9,9 +9,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Phase 1 domain metadata is deliberately internal. Existing peers receive
-// byte-identical payloads; missing Target/clock evidence is never fabricated
-// on decode. Future additive wire fields require a separate protocol change.
+// Phase 3 adds observation fields only to logs. Other payloads stay identical;
+// clearing the additive log fields reproduces the historical v1 wire payload.
 func TestCollectorMetadataPreservesV1WireBytes(t *testing.T) {
 	sample := testSample()
 	inputs := map[string]model.Envelope{
@@ -38,6 +37,16 @@ func TestCollectorMetadataPreservesV1WireBytes(t *testing.T) {
 			after, err := Encode(annotated)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if name == "logs" {
+				decoded, err := DecodeEnvelope(after)
+				if err != nil || decoded.Logs.Observation == nil || decoded.Logs.Records[0].Observation == nil {
+					t.Fatal("additive log source/time metadata lost", err)
+				}
+				after.GetLogs().Observation = nil
+				for _, r := range after.GetLogs().Records {
+					r.Observation = nil
+				}
 			}
 			marshal := proto.MarshalOptions{Deterministic: true}
 			beforeBytes, err := marshal.Marshal(before)

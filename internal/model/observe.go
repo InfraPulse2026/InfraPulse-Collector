@@ -98,13 +98,12 @@ func ObserveEnvelope(e Envelope, ref SourceRef, collected time.Time) Envelope {
 		e.Topology = &t
 	}
 	if e.Logs != nil {
-		b := *e.Logs
+		b := CloneLogBatch(*e.Logs)
 		batchRef := ref
 		if b.Source == "auditd" {
 			batchRef.Type = SourceAuditd
 		}
 		b.Observation = observationFor(b.Observation, batchRef, b.Source, b.ObservedAt, collected, nil)
-		b.Records = slices.Clone(b.Records)
 		for i := range b.Records {
 			r := &b.Records[i]
 			recordRef := batchRef

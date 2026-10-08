@@ -53,6 +53,9 @@ AI и историческое хранилище находятся вне эт
   enterprise prefixes и Generic SNMP fallback.
 - Ограниченный file log pipeline для rsyslog/common logs и auditd, sanitizer,
   persistent cursors и обработка rotation/truncate/recreate.
+- Opt-in remote Syslog TCP/TLS Receiver: RFC5424, базовый RFC3164,
+  octet-counting/LF compatibility, managed source mapping и auditd-over-syslog
+  через существующий LogBatch/durable outbox. Receiver по умолчанию отключён.
 - SIP OPTIONS UDP/TCP/TLS: availability, latency, failure threshold и state
   events; TLS проверяет CA/SAN/SNI, Digest authentication пока отсутствует.
 - Development Simulator с deterministic scenarios/trends и `source=simulated`.
@@ -221,6 +224,7 @@ devices: []
 | `credentials` | Именованные ссылки на environment variables с credentials |
 | `remote` | Concurrency, лимиты responses/rows и срок актуальности topology |
 | `logs` | Configured file sources, read/line/batch limits и polling |
+| `syslog_receiver` | Opt-in TLS/TCP listeners, sender mappings, trust policy и bounded admission в durable outbox |
 | `telephony` | Stable SIP endpoints и bounded probe concurrency |
 
 Готовые примеры:
@@ -531,7 +535,8 @@ flap/offline/recovery, topology, log/audit и SIP scenarios. Подробные 
 
 ## Безопасность
 
-- Agent сам инициирует исходящее соединение; inbound management listener отсутствует.
+- Collector сам инициирует gRPC-соединение; remote Syslog listener открывается
+  только при `syslog_receiver.enabled: true` и не является management API.
 - Production transport использует mTLS с проверкой сертификатов.
 - Plaintext разрешён только в явном development-режиме на loopback.
 - Arbitrary remote shell отсутствует; управляющие команды типизированы.
@@ -677,6 +682,11 @@ sh scripts/generate-proto.sh
   temporal semantics и границы совместимости Phase 1.
 - [Корпоративный NTP](docs/time-sync.md) — конфигурация chrony/timesyncd,
   права, idempotency, status и ручной OpenWrt setup.
+- [Remote Syslog/Audit Receiver](docs/syslog-receiver.md) — подключение Linux
+  серверов через rsyslog/audisp-syslog без InfraPulse Agent на каждом сервере,
+  TLS, source identity, limits и delivery boundaries.
+- [Deployment](docs/deployment.md) — persistent state, listener/firewall и
+  ограничения Linux/OpenWrt/container установки.
 - [Протокол](docs/protocol.md) — обмен Agent ↔ Controller и правила доставки.
 - [Durable delivery](docs/delivery.md), [journal/snapshots/rollback](docs/commands.md),
   [enrollment/PKI](docs/enrollment.md), [SNMPv3](docs/snmpv3.md).
@@ -697,8 +707,9 @@ exactly-once внешней mutation; uncertain outcome требует operator 
 Production Backend/dedup/CA authorization/revocation/CA rollover не реализованы.
 Mock Enrollment token state хранится в RAM. Private keys защищены filesystem
 permissions, без encryption at rest/TPM/HSM.
-Remote Syslog/Audit receiver, Redfish и IPMI относятся к roadmap; Phase 1
-подготавливает domain model и adapter registration, сами протоколы не реализованы.
+Remote Syslog/Audit Receiver принимает TLS/TCP через existing durable delivery;
+UDP/RELP и Backend log storage/search отсутствуют. Redfish и IPMI относятся
+к roadmap; их protocol adapters не реализованы.
 Collector ↔ Backend clock offset estimation также отложен; unknown offset
 не считается нулём. Phase 2 передаёт corporate servers стандартной службе ОС
 через отдельный deployment helper. Collector использует системное время,
@@ -748,7 +759,9 @@ OpenWrt учитывайте flash wear, RAM и SNMPv3 key-localization CPU; д�
 mode с явно менее надёжной telemetry delivery.
 
 Collector-only hosting (`local.enabled: false`) собирает SNMP/RouterOS/SIP и
-remote topology. В контейнере нужен persistent state volume и CA trust. Host
+remote topology; opt-in receiver также принимает remote logs/audit. Его
+настройка и rsyslog sender пример — [syslog-receiver](docs/syslog-receiver.md).
+В контейнере нужен persistent state volume и CA trust. Host
 monitoring/logs потребовали бы явных mounts и прав; обычный container namespace
 не является full host evidence. Production container image/runtime deployment
 не проверены; Docker не является обязательным способом установки.

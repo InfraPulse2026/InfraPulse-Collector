@@ -18,27 +18,29 @@ import (
 	"InfraPulseAgent/internal/model"
 	"InfraPulseAgent/internal/platform/timesync"
 	protocolsnmp "InfraPulseAgent/internal/protocol/snmp"
+	"InfraPulseAgent/internal/syslogreceiver"
 	"InfraPulseAgent/internal/telephony"
 	"go.yaml.in/yaml/v3"
 )
 
 type Config struct {
-	TimeSync    timesync.Settings                `yaml:"time_sync"`
-	Logs        Logs                             `yaml:"logs"`
-	Telephony   TelephonyHealth                  `yaml:"telephony"`
-	Agent       Agent                            `yaml:"agent"`
-	Controller  Controller                       `yaml:"controller"`
-	Security    Security                         `yaml:"security"`
-	Local       Local                            `yaml:"local"`
-	Telemetry   Telemetry                        `yaml:"telemetry"`
-	Queue       Queue                            `yaml:"queue"`
-	Scheduler   Scheduler                        `yaml:"scheduler"`
-	Logging     Logging                          `yaml:"logging"`
-	Location    model.PhysicalLocation           `yaml:"location"`
-	Devices     []Device                         `yaml:"devices"`
-	Commands    Commands                         `yaml:"commands"`
-	Remote      Remote                           `yaml:"remote"`
-	Credentials map[string]credentials.Reference `yaml:"credentials" json:"-"`
+	SyslogReceiver syslogreceiver.Settings          `yaml:"syslog_receiver"`
+	TimeSync       timesync.Settings                `yaml:"time_sync"`
+	Logs           Logs                             `yaml:"logs"`
+	Telephony      TelephonyHealth                  `yaml:"telephony"`
+	Agent          Agent                            `yaml:"agent"`
+	Controller     Controller                       `yaml:"controller"`
+	Security       Security                         `yaml:"security"`
+	Local          Local                            `yaml:"local"`
+	Telemetry      Telemetry                        `yaml:"telemetry"`
+	Queue          Queue                            `yaml:"queue"`
+	Scheduler      Scheduler                        `yaml:"scheduler"`
+	Logging        Logging                          `yaml:"logging"`
+	Location       model.PhysicalLocation           `yaml:"location"`
+	Devices        []Device                         `yaml:"devices"`
+	Commands       Commands                         `yaml:"commands"`
+	Remote         Remote                           `yaml:"remote"`
+	Credentials    map[string]credentials.Reference `yaml:"credentials" json:"-"`
 }
 type Agent struct {
 	Name     string `yaml:"name"`
@@ -154,9 +156,10 @@ type Commands struct {
 
 func Defaults() Config {
 	return Config{
-		Agent:      Agent{Name: "infrapulse-agent", StateDir: "../state"},
-		Controller: Controller{Address: "localhost:9443", ConnectTimeout: 5 * time.Second, SendTimeout: 10 * time.Second, ReconnectInitial: time.Second, ReconnectMax: 30 * time.Second},
-		Security:   Security{Mode: "production"}, Local: Local{Enabled: true},
+		SyslogReceiver: syslogreceiver.Defaults(),
+		Agent:          Agent{Name: "infrapulse-agent", StateDir: "../state"},
+		Controller:     Controller{Address: "localhost:9443", ConnectTimeout: 5 * time.Second, SendTimeout: 10 * time.Second, ReconnectInitial: time.Second, ReconnectMax: 30 * time.Second},
+		Security:       Security{Mode: "production"}, Local: Local{Enabled: true},
 		Telemetry: Telemetry{FastInterval: 3 * time.Second, MediumInterval: 30 * time.Second, InventoryInterval: 5 * time.Minute, TopologyInterval: 5 * time.Minute, HeartbeatInterval: 10 * time.Second, CollectTimeout: 2 * time.Second},
 		Queue:     Queue{MaxMessages: 256, MaxBytes: 8 << 20, MaxMessageBytes: 1 << 20}, Scheduler: Scheduler{Concurrency: 4}, Logging: Logging{Level: "info"},
 		Remote:    Remote{Concurrency: 4, MaxRows: 4096, MaxResponseBytes: 1 << 20, TopologyTTL: 15 * time.Minute},
@@ -196,7 +199,7 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve configuration directory: %w", err)
 	}
-	for _, p := range []*string{&c.Agent.StateDir, &c.Security.CAFile, &c.Security.CertFile, &c.Security.KeyFile} {
+	for _, p := range []*string{&c.Agent.StateDir, &c.Security.CAFile, &c.Security.CertFile, &c.Security.KeyFile, &c.SyslogReceiver.TLS.CertFile, &c.SyslogReceiver.TLS.KeyFile, &c.SyslogReceiver.TLS.ClientCAFile} {
 		if *p != "" && !filepath.IsAbs(*p) {
 			*p = filepath.Join(base, *p)
 		}
@@ -252,6 +255,25 @@ func IsLoopback(host string) bool {
 
 func (c Config) Validate() error {
 	var problems []error
+	if err := c.SyslogReceiver.Validate(); err != nil {
+		problems = append(problems, err)
+	}
+	if c.SyslogReceiver.Enabled {
+		if c.SyslogReceiver.TLS.Enabled {
+			if _, err := syslogreceiver.LoadTLS(c.SyslogReceiver.TLS); err != nil {
+				problems = append(problems, err)
+			}
+		}
+		q := c.Queue.WithDefaults()
+		if q.Mode != "durable" || q.ACKFallback != "reject" {
+			problems = append(problems, errors.New("syslog_receiver requires durable outbox and application ACK (ack_fallback: reject)"))
+		}
+		// Includes duplicated raw/parsed text, worst-case JSON escaping and
+		// non-UTF-8 base64 payload, plus bounded identity/time metadata.
+		if 14*c.SyslogReceiver.Limits.MaxMessageBytes+8192 > c.Logs.MaxBatchBytes || c.Logs.MaxBatchBytes+1024 > c.Queue.MaxMessageBytes {
+			problems = append(problems, errors.New("syslog_receiver message budget exceeds logs/outbox byte limits"))
+		}
+	}
 	if _, err := timesync.Normalize(c.TimeSync); err != nil {
 		problems = append(problems, err)
 	}

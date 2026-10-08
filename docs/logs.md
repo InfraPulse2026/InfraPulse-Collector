@@ -4,7 +4,7 @@ Agent читает явно настроенные обычные файлы. Н
 не предполагается: отсутствующий источник имеет состояние `unavailable`,
 остальные collectors продолжают работу. При восстановлении файла чтение
 возобновляется. Agent не запускает rsyslog/auditd и не меняет audit rules.
-Journald API, сетевой syslog listener, OpenWrt `logread` и распаковка архивов
+Journald API, OpenWrt `logread` и распаковка архивов
 не входят в этот file-based pipeline.
 
 Пример конфигурации:
@@ -202,3 +202,20 @@ Parser основан на [RFC5424](https://www.rfc-editor.org/rfc/rfc5424.html
 [RFC3164](https://www.rfc-editor.org/rfc/rfc3164.html),
 [rsyslog templates](https://docs.rsyslog.com/doc/reference/templates/templates-type-string.html)
 и [upstream audit-userspace ausearch semantics](https://github.com/linux-audit/audit-userspace/blob/master/docs/ausearch.8).
+
+## Remote source в том же delivery path
+
+Phase 3 добавляет отдельный opt-in [TCP/TLS Syslog Receiver](syslog-receiver.md)
+без изменения file cursor/rotation lifecycle. Receiver и file reader используют
+те же syslog/audit parsing, sanitizer, LogRecord/AuditRecord/LogBatch и
+`Agent.push` → durable outbox → gRPC/application ACK. Network record имеет UUID
+на admission/replay и не имеет file cursor; повтор sender может получить новый ID.
+Receiver требует durable mode; local file mode сохраняет прежние options.
+
+File sources различаются `SourceRef.Protocol=file`, network sources —
+`syslog-tls`/`syslog-tcp`. Phase 3 передаёт optional observation на LogRecord и
+LogBatch и SyslogMetadata через additive wire fields; full metadata других
+payloads остаётся internal. Parsed audit по approved remote plugin context
+сохраняет EventID отдельно и не меняет syslog source timestamp. BSD year/timezone
+не infer; raw timestamp доступен в SyslogMetadata. Oversized local marker
+не сохраняет устаревшую syslog metadata исходной отброшенной line.

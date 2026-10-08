@@ -1,7 +1,8 @@
 # Безопасность InfraPulse Agent
 
 Agent сам открывает исходящий gRPC bidirectional stream; входящего management
-listener нет. Remote integrations — SNMP v2c/v3 read-only, RouterOS HTTPS REST
+API нет. Opt-in Syslog Receiver открывает отдельный logging listener, disabled
+по умолчанию. Remote integrations — SNMP v2c/v3 read-only, RouterOS HTTPS REST
 и fixed SIP OPTIONS UDP/TCP/TLS.
 Mock Controller — development endpoint, не production authorization Backend.
 
@@ -309,6 +310,44 @@ samples/devices/neighbors/logs/health/events имеют `source=simulated`; бу
 Backend должен сохранять marker. Simulator подключается через обычный verified
 transport; development plaintext остаётся только loopback. Он не реализует
 command mutation executor и не является production Agent/hardware validation.
+
+## Remote Syslog / Audit Receiver
+
+`syslog_receiver.enabled` default false: никаких ingress sockets/workers.
+Enabled TLS listener использует отдельные server cert/key/client CA, TLS ≥1.2
+и стандартный Go certificate validation без insecure callbacks/ciphers или
+plaintext fallback. Backend Agent identity certificates не переиспользуются
+автоматически для logging boundary. Client-auth default require_and_verify;
+explicit server-only TLS требует approved peer CIDRs. Certificate rotation
+listener требует operator restart; Backend enrollment Manager им не управляет.
+
+Verified DNS/URI SAN сопоставляется с configured source mapping. Syslog
+HOSTNAME/APP-NAME/node — недоверенные claims, не authenticated identity.
+IP restriction ограничивает sender access, но не идентифицирует originator
+за relay/NAT. Unknown source default reject; explicit unmanaged не создаёт
+unbounded permanent Target/Asset entries и не включает audit classification.
+Plain TCP default disabled/loopback; public compatibility требует explicit
+allow_non_loopback и approved peer CIDRs, authentication у него отсутствует.
+
+Connections ограничиваются до handshake; mapped source/IP имеют дополнительные
+limits. Prefix length/size проверяются до allocation, read/idle/admission имеют
+deadlines. Malformed client не прекращает accept других clients. Admission
+использует только existing durable outbox; full останавливает чтение до bounded
+retry timeout, storage error закрывает connection сразу. Memory degraded fallback не может
+считаться durable remote-log admission. Receiver shutdown отменяет active I/O.
+
+Syslog raw, structured-data и audit text проходят existing sanitizer перед
+outbox; logs не исполняются и не изменяют commands/config/NTP/credentials.
+Diagnostic error categories/counters не содержат payload/private key/certificate
+dumps. Audit normalization требует managed mapping, approved plugin APP-NAME и
+canonical audit header; одно type= не даёт audit trust. Audit usernames/paths
+остаются потенциально sensitive даже после bounded best-effort redaction.
+
+Sender→Collector TLS/TCP не имеет per-record application ACK. Read/transport ACK
+не означает synced outbox admission, loss/duplicates при disconnect возможны.
+Collector→Backend остаётся bounded retained at-least-once ACK/replay, без
+exactly-once. Настройка rsyslog disk-assisted queue, firewall и ограничения —
+[syslog-receiver](syslog-receiver.md), [deployment](deployment.md).
 
 ## Primary documentation
 

@@ -29,6 +29,7 @@ import (
 	"InfraPulseAgent/internal/remote"
 	"InfraPulseAgent/internal/sanitize"
 	"InfraPulseAgent/internal/scheduler"
+	"InfraPulseAgent/internal/syslogreceiver"
 	"InfraPulseAgent/internal/telemetry"
 	"InfraPulseAgent/internal/telephony"
 	"InfraPulseAgent/internal/transport"
@@ -37,6 +38,7 @@ import (
 )
 
 type Agent struct {
+	syslog       *syslogreceiver.Receiver
 	timeSync     *timesync.Status
 	localTarget  model.Target
 	commandStore *commands.Store
@@ -71,6 +73,7 @@ type Agent struct {
 type Collector = Agent
 
 type Diagnostics struct {
+	SyslogReceiver    *syslogreceiver.Stats   `json:"syslog_receiver,omitempty"`
 	TimeSync          *timesync.Status        `json:"time_sync,omitempty"`
 	Targets           []model.Target          `json:"targets,omitempty"`
 	SNMP              []SNMPSecurityStatus    `json:"snmp,omitempty"`
@@ -165,6 +168,13 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 		}
 		return nil, err
 	}
+	if err = a.initSyslog(); err != nil {
+		_ = a.remote.Close()
+		if a.logs != nil {
+			_ = a.logs.Close()
+		}
+		return nil, err
+	}
 	if e := a.initCommandStore(); e != nil {
 		a.recordError("commands.storage: " + e.Error())
 		a.logger.Warn("durable command storage unavailable; mutations blocked")
@@ -244,6 +254,9 @@ func (a *Agent) health() string {
 		}
 	}
 	if a.storageError != "" || a.queue.State().StorageError != "" || a.commandStore != nil && !a.commandStore.Health().Available {
+		return "degraded"
+	}
+	if a.syslog != nil && a.syslog.Snapshot().LastError == "syslog_durable_admission_failed" {
 		return "degraded"
 	}
 	for _, c := range a.sip {
@@ -340,13 +353,20 @@ func (a *Agent) Run(ctx context.Context) (resultErr error) {
 		defer func() { resultErr = errors.Join(resultErr, a.logs.Close()) }()
 	}
 	a.event("agent.started", "info", "agent started")
-	done := make(chan error, 6)
+	components := 6
+	if a.syslog != nil {
+		components++
+	}
+	done := make(chan error, components)
 	go func() { done <- a.scheduler.Run(runCtx) }()
 	go func() { done <- a.remote.Run(runCtx) }()
 	go func() { done <- a.supervise(runCtx) }()
 	go func() { done <- a.logScheduler.Run(runCtx) }()
 	go func() { done <- a.sipScheduler.Run(runCtx) }()
 	go func() { done <- a.certificateLoop(runCtx) }()
+	if a.syslog != nil {
+		go func() { done <- a.syslog.Run(runCtx) }()
+	}
 	var err error
 	finished := 0
 	select {
@@ -357,7 +377,7 @@ func (a *Agent) Run(ctx context.Context) (resultErr error) {
 	cancel()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
-	for finished < 6 {
+	for finished < components {
 		select {
 		case e := <-done:
 			err = errors.Join(err, e)
@@ -599,6 +619,10 @@ func (a *Agent) Snapshot() Diagnostics {
 	d.Devices = append(d.Devices, a.remote.Devices()...)
 	if a.logs != nil {
 		d.LogSources = a.logs.Snapshot()
+	}
+	if a.syslog != nil {
+		s := a.syslog.Snapshot()
+		d.SyslogReceiver = &s
 	}
 	for _, c := range a.sip {
 		d.Telephony = append(d.Telephony, c.State())
