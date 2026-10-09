@@ -138,6 +138,10 @@ message Device {
   repeated Service services = 36;
   FirewallSnapshot firewall = 37;
   repeated NetworkState networks = 38;
+
+  HardwareInventory hardware = 39;
+  ObservationMetadata observation = 40;
+  repeated IdentityEvidence identity_evidence = 41;
 }
 
 message Evidence {
@@ -158,6 +162,59 @@ message InventoryComponent {
   string hardware_revision = 9;
   string firmware_version = 10;
   string software_version = 11;
+  HardwareInventory hardware = 12;
+  ObservationMetadata observation = 13;
+}
+
+// Generic hardware facts, independent of the management protocol and asset
+// resolution. Operational state and rollup health are distinct from health.
+message HardwareStatus {
+  string health = 1;
+  string health_rollup = 2;
+  string state = 3;
+}
+message ResourceRelationship {
+  string type = 1;
+  string target_resource_id = 2;
+}
+message HardwareInventory {
+  string resource_type = 1;
+  string hardware_uuid = 2;
+  string sku = 3;
+  string part_number = 4;
+  string bios_version = 5;
+  string power_state = 6;
+  string chassis_type = 7;
+  string manager_type = 8;
+  string asset_tag = 9;
+  string physical_security = 10;
+  string device_location = 11;
+  string memory_type = 12;
+  string error_correction = 13;
+  string protocol = 14;
+  string media_type = 15;
+  optional uint64 capacity_bytes = 16;
+  optional uint32 cores = 17;
+  optional uint32 threads = 18;
+  repeated string network_addresses = 19;
+  HardwareStatus status = 20;
+  repeated ResourceRelationship relations = 21;
+}
+message ComponentHealth {
+  string id = 1;
+  string resource_id = 2;
+  string name = 3;
+  HardwareStatus status = 4;
+  ObservationMetadata observation = 5;
+}
+message IdentityEvidence {
+  string type = 1;
+  string value = 2;
+  bytes raw_value = 3;
+  optional uint32 subtype = 4;
+  SourceRef source = 5;
+  string confidence = 6;
+  string subject_id = 7;
 }
 
 message CPUStats {
@@ -264,6 +321,10 @@ message Metric {
   string name = 1;
   double value = 2;
   string unit = 3;
+  string resource_id = 4;
+  string component_id = 5;
+  HardwareStatus status = 6;
+  ObservationMetadata observation = 7;
 }
 
 message TelemetrySample {
@@ -279,6 +340,9 @@ message TelemetrySample {
   repeated Metric metrics = 10;
   optional bool uptime_available = 11;
   string uptime_source = 12;
+  repeated ComponentHealth hardware_health = 13;
+  ObservationMetadata observation = 14;
+  repeated IdentityEvidence identity_evidence = 15;
 }
 
 // P0 emits a single sample in each batch. The wire contract can batch multiple
@@ -323,6 +387,9 @@ message CertificateStatus {
 message InventoryUpdate {
   google.protobuf.Timestamp observed_at = 1;
   repeated Device devices = 2;
+  // Empty/UNSPECIFIED preserves legacy semantics. No deletion is implied.
+  SnapshotCompleteness completeness = 3;
+  ObservationMetadata observation = 4;
 }
 
 enum SnapshotCompleteness {
@@ -584,6 +651,7 @@ message SourceRef {
   string protocol = 4;
   string instance_id = 5;
   string provenance = 6;
+  string resource_id = 7;
 }
 // received_at belongs to the Backend. Missing offset/uncertainty are unknown;
 // present zero values are measured zero. No clock correction is applied here.

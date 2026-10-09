@@ -17,6 +17,10 @@ func ObserveDevice(d Device, ref SourceRef, observed, collected time.Time) Devic
 	} else {
 		d.IdentityEvidence = bindIdentityEvidence(d.IdentityEvidence, ref.CollectorID, d.Source)
 	}
+	for i := range d.Components {
+		c := &d.Components[i]
+		c.Observation = observationFor(c.Observation, ref, d.Source, observed, collected, nil)
+	}
 	for i := range d.Services {
 		s := &d.Services[i]
 		s.Observation = observationFor(s.Observation, ref, s.Source, s.ObservedAt, collected, nil)
@@ -58,6 +62,23 @@ func ObserveEnvelope(e Envelope, ref SourceRef, collected time.Time) Envelope {
 			finished = collected
 		}
 		s.Observation = observationFor(s.Observation, ref, s.Source, s.ObservedAt, finished, nil)
+		s.Metrics = slices.Clone(s.Metrics)
+		for i := range s.Metrics {
+			m := &s.Metrics[i]
+			m.Status = clonePointer(m.Status)
+			if m.Observation != nil || m.ResourceID != "" {
+				metricRef := s.Observation.Source
+				metricRef.ResourceID = m.ResourceID
+				m.Observation = observationFor(m.Observation, metricRef, s.Source, s.ObservedAt, finished, nil)
+			}
+		}
+		s.HardwareHealth = slices.Clone(s.HardwareHealth)
+		for i := range s.HardwareHealth {
+			h := &s.HardwareHealth[i]
+			healthRef := s.Observation.Source
+			healthRef.ResourceID = h.ResourceID
+			h.Observation = observationFor(h.Observation, healthRef, s.Source, s.ObservedAt, finished, nil)
+		}
 		if len(s.IdentityEvidence) == 0 {
 			s.IdentityEvidence = interfaceIdentityEvidence(s.Interfaces, s.Observation.Source)
 		} else {

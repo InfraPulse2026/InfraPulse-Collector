@@ -21,6 +21,7 @@ type PhysicalLocation struct {
 }
 
 type Device struct {
+	Hardware          *HardwareInventory   `json:"hardware,omitempty"`
 	Observation       *ObservationMetadata `json:"observation,omitempty"`
 	IdentityEvidence  []IdentityEvidence   `json:"identity_evidence,omitempty"`
 	Source            string               `json:"source,omitempty"`
@@ -143,12 +144,17 @@ type Interface struct {
 }
 
 type Metric struct {
-	Name  string  `json:"name"`
-	Value float64 `json:"value"`
-	Unit  string  `json:"unit"`
+	ResourceID  string               `json:"resource_id,omitempty"`
+	ComponentID string               `json:"component_id,omitempty"`
+	Status      *HardwareStatus      `json:"status,omitempty"`
+	Observation *ObservationMetadata `json:"observation,omitempty"`
+	Name        string               `json:"name"`
+	Value       float64              `json:"value"`
+	Unit        string               `json:"unit"`
 }
 
 type TelemetrySample struct {
+	HardwareHealth   []ComponentHealth    `json:"hardware_health,omitempty"`
 	Observation      *ObservationMetadata `json:"observation,omitempty"`
 	IdentityEvidence []IdentityEvidence   `json:"identity_evidence,omitempty"`
 	DeviceID         string               `json:"device_id"`
@@ -199,9 +205,10 @@ type CertificateStatus struct {
 }
 
 type InventoryUpdate struct {
-	Observation *ObservationMetadata `json:"observation,omitempty"`
-	ObservedAt  time.Time            `json:"observed_at"`
-	Devices     []Device             `json:"devices"`
+	Completeness string               `json:"completeness,omitempty"` // additive; empty retains legacy semantics
+	Observation  *ObservationMetadata `json:"observation,omitempty"`
+	ObservedAt   time.Time            `json:"observed_at"`
+	Devices      []Device             `json:"devices"`
 }
 
 type Event struct {

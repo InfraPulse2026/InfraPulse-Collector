@@ -1,12 +1,30 @@
 package config
 
-import "InfraPulseAgent/internal/model"
+import (
+	"InfraPulseAgent/internal/model"
+	"time"
+)
 
 // Target adapts the existing devices YAML schema without changing configured
 // IDs or introducing a second configuration model. Existing entries are enabled.
 // A Target ID identifies the connection; it is not an observed Device ID.
 func (d Device) Target(defaults Polling) model.Target {
 	poll := d.Polling
+	if d.Driver == "redfish" {
+		// Hardware BMCs use their own slow polling budget. In particular, the
+		// existing 3s/2s telemetry defaults are unsuitable for full discovery.
+		poll.FastInterval, poll.TopologyInterval = 0, 0
+		if poll.MediumInterval == 0 {
+			poll.MediumInterval = 30 * time.Second
+		}
+		if poll.InventoryInterval == 0 {
+			poll.InventoryInterval = 5 * time.Minute
+		}
+		if poll.Timeout == 0 {
+			poll.Timeout = 30 * time.Second
+		}
+		defaults = Polling{}
+	}
 	if poll.FastInterval == 0 {
 		poll.FastInterval = defaults.FastInterval
 	}

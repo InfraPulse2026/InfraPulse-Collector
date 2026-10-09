@@ -54,6 +54,7 @@ internal/remote/             registry, polling и переходы состоя�
 internal/driver/             Adapter, optional readers, compile-time Registry и InterfaceManager
 internal/driver/snmp/        SYSTEM/ENTITY/IF/IF-X/LLDP normalization
 internal/driver/routeros/    REST normalization, dependency resolution и verification
+internal/driver/redfish/     bounded gofish HTTPS/session adapter и hardware normalization
 internal/protocol/snmp/      read-only GoSNMP adapter
 internal/protocol/routeros/  fixed HTTPS REST operations
 internal/model/              Target, SourceRef, observations, time и identity evidence
@@ -82,13 +83,22 @@ normalized models переиспользуются. `driver.Adapter` содер�
 `credentials.Provider.Get(context.Context, ref)` возвращает credential,
 который не входит в normalized/wire models. Узкий fakeable SNMP client
 используется mapping fixtures; protocol adapters остаются отдельными packages.
+Redfish добавляет optional `InventoryBatchReader` и `HardwareReader`: bounded
+multi-resource batch и несколько equipment health/metric samples. Legacy
+SNMP/RouterOS readers не меняются. Read plan из inventory ограничивает очередной
+hardware poll; HTTP/session/library types остаются внутри Redfish package.
+System, Chassis и Manager сохраняют раздельные URI-derived observed IDs и
+typed roles/evidence, без physical Asset merge или LLDP topology. Generic
+hardware protobuf additions и completeness идут через прежний sanitizer/outbox/
+ACK flow. Redfish не зависит от enabled Syslog receiver. [Contract](redfish.md).
+
 Standalone `probe-device` использует тот же registered driver и normalized
 source-bound Device/identity evidence, без запуска runtime/transport.
 Collector ID в этом read отсутствует, поскольку persistent identity не загружается.
 
 ## Configuration и registry
 
-`devices` содержит stable ID, name, driver (`snmp`/`routeros`), address,
+`devices` содержит stable ID, name, driver (`snmp`/`routeros`/`redfish`), address,
 credential reference, optional vendor hint/location, polling overrides и
 protocol options. Target ID не выводится из management IP и не меняется при rename.
 `local:` namespace зарезервирован для локального устройства. Legacy
@@ -269,9 +279,9 @@ Collector Core Phase 1 сохраняет этот фундамент и доб�
 identity evidence и временную модель. Phase 2 использует standard OS corporate
 NTP через отдельный deployment apply. Local Platform collection interface,
 observation clocks и Backend не меняются. Phase 3 добавляет opt-in Syslog/Audit
-network source и additive logs metadata на gRPC. Redfish/IPMI и Collector ↔
-Backend clock offset estimation пока отсутствуют; capabilities для них не
-объявлены. [Architecture freeze](collector-core.md).
+network source и additive logs metadata на gRPC. Phase 4 добавляет read-only
+Redfish inventory/health/telemetry в тот же runtime/outbox. IPMI и Collector ↔
+Backend clock offset estimation отсутствуют. [Architecture freeze](collector-core.md).
 Windows LocalPlatform относится к post-MVP/backlog. NETCONF/gNMI deferred:
 без подтверждённого typed use case новый protocol не добавляется.
 Фактически выполненные проверки находятся в [validation](validation.md).
@@ -399,7 +409,7 @@ Restricted/missing optional sources должны сохранять unavailable/
 container namespace и mounts определяют видимые CPU/network/log data.
 
 Native deployment использует host procfs/sysfs, local log permissions и persistent
-state directory. Container Collector может опрашивать SNMP/RouterOS/SIP без
+state directory. Container Collector может опрашивать SNMP/RouterOS/Redfish/SIP без
 обещания полноценного host monitoring; для collector-only выбирается
 `local.enabled: false`. Durable state требует persistent writable volume.
 Docker не обязателен; отдельная container runtime validation и production

@@ -1,0 +1,40 @@
+# Production read-only BMC collection. Provision Controller mTLS and BMC CA first.
+agent:
+  name: hardware-collector
+  state_dir: ../state
+controller:
+  address: controller.example.net:9443
+security:
+  mode: production
+  ca_file: /etc/infrapulse/certs/controller-ca.pem
+  cert_file: /etc/infrapulse/certs/collector.pem
+  key_file: /etc/infrapulse/certs/collector-key.pem
+  server_name: controller.example.net
+local:
+  enabled: false
+queue:
+  mode: durable
+  ack_fallback: reject
+commands:
+  enabled: false
+credentials:
+  server-bmc:
+    username_env: INFRAPULSE_REDFISH_USER
+    password_env: INFRAPULSE_REDFISH_PASSWORD
+devices:
+  - id: server-bmc-01
+    driver: redfish
+    address: https://bmc.example.net
+    credential_ref: server-bmc
+    tls:
+      ca_file: /etc/infrapulse/certs/bmc-ca.pem
+    polling:
+      medium_interval: 30s
+      inventory_interval: 5m
+      timeout: 30s
+    redfish:
+      auth: session
+      max_resources: 128
+      max_pages: 8
+      max_requests: 512
+      request_timeout: 5s

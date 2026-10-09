@@ -10,7 +10,8 @@ entity resolution, correlation, LLM и отчёты относятся к Backen
 Этот freeze сохраняет рабочий P3: transport, identity/session, durable outbox,
 ACK/replay, PKI, protocols, commands/journal/snapshots/rollback и Simulator.
 Phase 3 добавляет opt-in Remote Syslog/Audit receiver через existing delivery.
-Redfish, IPMI и time exchange не реализованы.
+Phase 4 добавляет read-only Redfish в существующий runtime. IPMI и time exchange
+не реализованы.
 
 ## Baseline и фактический прежний flow
 
@@ -145,13 +146,13 @@ credentials отсутствуют в SourceRef/observations.
 
 ## SourceRef и provenance
 
-`SourceRef` содержит Type, CollectorID, TargetID, Protocol, InstanceID и
+`SourceRef` содержит Type, CollectorID, TargetID, Protocol, InstanceID, ResourceID и
 Provenance. Type обозначает источник факта; Protocol — carrier. LLDP fact
 может иметь `type=lldp, protocol=snmp`, RouterOS neighbor — `type=cdp,
 protocol=routeros`. Vendor Cisco не является SNMP source.
 
 Vocabulary: local/snmp/routeros/lldp/cdp/mndp/sip/syslog/auditd/redfish/ipmi.
-Последние два значения подготавливают domain model и не включают capabilities.
+Redfish реализован read-only; IPMI остаётся vocabulary без implemented capability.
 Provenance: real/simulated/manual/external. Existing `source=simulated`
 сохраняется в legacy fields и устанавливает simulated provenance. Unknown
 manual/external source нельзя передать полным SourceRef через старый protobuf.
@@ -231,7 +232,7 @@ model не заменяются результатом проверки NTP-сл
 ```text
 Local Linux/OpenWrt Target → existing Platform + local scheduler
   → typed model → ObserveEnvelope(local SourceRef) → existing outbox → gRPC
-Remote Target → registered SNMP/RouterOS Adapter → optional readers
+Remote Target → registered SNMP/RouterOS/Redfish Adapter → optional readers
   → existing bounded Registry/scheduler → typed model + identity evidence
   → ObserveEnvelope(target SourceRef) → existing outbox → gRPC
 LLDP/CDP/MNDP → existing mapping → Neighbor raw IDs/subtypes
@@ -261,8 +262,10 @@ Hello/Heartbeat/Telemetry/Inventory/Topology/Logs/Telephony/CommandResult,
 protobuf field numbers, Agent/session identity, stable message IDs и ACK negotiation
 сохранены. Legacy source/timestamps и existing inventory/topology evidence передаются
 как раньше. Phase 3 добавляет optional SourceRef/ObservationTime на logs/records
-и SyslogMetadata; normalized IdentityEvidence и metadata остальных payloads
-остаются internal. Additive protobuf scope описан в [protocol](protocol.md).
+и SyslogMetadata. Phase 4 добавляет protocol-neutral hardware fields и
+SourceRef/IdentityEvidence для equipment inventory/telemetry. Legacy payloads
+сохраняют прежние bytes при отсутствии новых полей. Additive protobuf scope
+описан в [protocol](protocol.md).
 Wire metadata нельзя молча упаковать в vendor,
 hostname или generic string.
 
@@ -270,15 +273,17 @@ Remote Syslog/Audit Receiver Phase 3 использует bounded input lifecycl
 configured source/Target attribution и existing LogBatch/outbox. Existing file
 reader остаётся file pipeline. [Настройка receiver](syslog-receiver.md).
 Collector ↔ Backend offset estimation отложен; exchange и Backend implementation
-отсутствуют. Additive logs metadata не включает metadata остальных observations.
-Backend received_at остаётся server-owned. Phase 4 автоматически не запускается.
+отсутствуют. Backend received_at остаётся server-owned.
 
-Redfish/IPMI можно подключить через зарегистрированный Adapter и небольшие readers,
-но protocol implementations, credentials/security options, реальные schemas/mappings
-и fixtures отсутствуют. Current InventoryReader возвращает один Device; для
-Redfish ComputerSystem/Chassis/Manager нужен additive bounded batch reader,
-не переименование Target в Asset. Remote Syslog/Audit receiver реализован отдельным
-bounded input component в том же runtime; file reader не стал network receiver.
+Redfish подключён через compile-time Adapter registry и additive
+`InventoryBatchReader`/`HardwareReader`. Existing `InventoryReader` SNMP/RouterOS
+сохранён. Bounded batch допускает несколько ComputerSystem/Chassis/Manager
+observations на один Target; отдельные URI-derived IDs и scoped components
+не выполняют Backend Asset merge. System/Chassis/Manager role хранится в
+`Hardware.ResourceType`, wire DeviceType остаётся UNKNOWN для старого peer.
+IPMI protocol implementation отсутствует. Remote Syslog/Audit receiver остаётся
+отдельным bounded input component; Redfish не требует enabled receiver и
+не импортирует его. [Redfish contract](redfish.md).
 Backend-managed target reconciliation/configuration
 также не реализован. Эти gaps не включают backend-owned monitoring integrations.
 

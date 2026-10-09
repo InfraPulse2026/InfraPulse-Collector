@@ -78,7 +78,10 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 		}}
 	case envelope.Inventory != nil:
 		i := envelope.Inventory
-		update := &pb.InventoryUpdate{ObservedAt: timestamp(i.ObservedAt)}
+		update := &pb.InventoryUpdate{ObservedAt: timestamp(i.ObservedAt), Completeness: snapshotCompleteness[i.Completeness]}
+		if i.Completeness != "" {
+			update.Observation = observationToProto(i.Observation)
+		}
 		for _, device := range i.Devices {
 			update.Devices = append(update.Devices, deviceToProto(device))
 		}
@@ -209,6 +212,17 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 			return e, err
 		}
 		e.Inventory = &model.InventoryUpdate{ObservedAt: at}
+		if i.Completeness != pb.SnapshotCompleteness_SNAPSHOT_COMPLETENESS_UNSPECIFIED {
+			var ok bool
+			e.Inventory.Completeness, ok = reverseLookup(snapshotCompleteness, i.Completeness)
+			if !ok {
+				return e, errors.New("invalid inventory completeness")
+			}
+		}
+		e.Inventory.Observation, err = observationFromProto(i.Observation)
+		if err != nil {
+			return e, err
+		}
 		for _, item := range i.Devices {
 			device, err := deviceFromProto(item)
 			if err != nil {
@@ -450,6 +464,9 @@ func validateEnvelope(e model.Envelope) error {
 		return finite(h.UptimeSeconds)
 	case e.Telemetry != nil:
 		s := e.Telemetry
+		if err := validateHardwareSample(*s); err != nil {
+			return err
+		}
 		if s.DeviceID == "" || s.Source == "" {
 			return errors.New("telemetry device ID and source are required")
 		}
@@ -501,6 +518,17 @@ func validateEnvelope(e model.Envelope) error {
 			}
 		}
 	case e.Inventory != nil:
+		if e.Inventory.Completeness != "" {
+			if _, ok := snapshotCompleteness[e.Inventory.Completeness]; !ok {
+				return errors.New("invalid inventory completeness")
+			}
+			if err := validateObservation(e.Inventory.Observation); err != nil {
+				return err
+			}
+		}
+		if len(e.Inventory.Devices) > maxRemoteEntries {
+			return errors.New("inventory device limit exceeded")
+		}
 		if err := validateTime(e.Inventory.ObservedAt, "inventory.observed_at"); err != nil {
 			return err
 		}
@@ -543,6 +571,22 @@ func validateEnvelope(e model.Envelope) error {
 }
 
 func validateDevice(device model.Device) error {
+	if err := validateHardware(device.Hardware); err != nil {
+		return err
+	}
+	if device.Hardware != nil {
+		if err := validateObservation(device.Observation); err != nil {
+			return err
+		}
+		if len(device.IdentityEvidence) > 4096 {
+			return errors.New("identity evidence limit exceeded")
+		}
+		for _, e := range device.IdentityEvidence {
+			if err := e.Validate(); err != nil {
+				return err
+			}
+		}
+	}
 	if err := validateP2Device(device); err != nil {
 		return err
 	}
@@ -567,6 +611,14 @@ func validateDevice(device model.Device) error {
 		return err
 	}
 	for _, component := range device.Components {
+		if err := validateHardware(component.Hardware); err != nil {
+			return err
+		}
+		if component.Hardware != nil {
+			if err := validateObservation(component.Observation); err != nil {
+				return err
+			}
+		}
 		if component.ID == "" {
 			return errors.New("inventory component ID is required")
 		}
@@ -668,6 +720,7 @@ func deviceToProto(d model.Device) *pb.Device {
 			Name: c.Name, Description: c.Description, Manufacturer: c.Manufacturer, Model: c.Model, SerialNumber: c.SerialNumber,
 			HardwareRevision: c.HardwareRevision, FirmwareVersion: c.FirmwareVersion, SoftwareVersion: c.SoftwareVersion})
 	}
+	hardwareDeviceToProto(d, result)
 	return result
 }
 
@@ -723,6 +776,9 @@ func deviceFromProto(d *pb.Device) (model.Device, error) {
 			Name: c.Name, Description: c.Description, Manufacturer: c.Manufacturer, Model: c.Model, SerialNumber: c.SerialNumber,
 			HardwareRevision: c.HardwareRevision, FirmwareVersion: c.FirmwareVersion, SoftwareVersion: c.SoftwareVersion})
 	}
+	if err := hardwareDeviceFromProto(d, &result); err != nil {
+		return model.Device{}, err
+	}
 	return result, nil
 }
 
@@ -763,6 +819,7 @@ func sampleToProto(s model.TelemetrySample) *pb.TelemetrySample {
 	for _, m := range s.Metrics {
 		result.Metrics = append(result.Metrics, &pb.Metric{Name: m.Name, Value: m.Value, Unit: m.Unit})
 	}
+	hardwareSampleToProto(s, result)
 	return result
 }
 
@@ -817,6 +874,9 @@ func sampleFromProto(s *pb.TelemetrySample) (model.TelemetrySample, error) {
 			return model.TelemetrySample{}, errors.New("metric is nil")
 		}
 		result.Metrics = append(result.Metrics, model.Metric{Name: m.Name, Value: m.Value, Unit: m.Unit})
+	}
+	if err := hardwareSampleFromProto(s, &result); err != nil {
+		return model.TelemetrySample{}, err
 	}
 	return result, nil
 }

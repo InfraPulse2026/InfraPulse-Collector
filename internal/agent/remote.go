@@ -4,6 +4,7 @@ import (
 	"InfraPulseAgent/internal/config"
 	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/driver"
+	driverredfish "InfraPulseAgent/internal/driver/redfish"
 	driverrouteros "InfraPulseAgent/internal/driver/routeros"
 	driversnmp "InfraPulseAgent/internal/driver/snmp"
 	"InfraPulseAgent/internal/model"
@@ -68,13 +69,55 @@ func RemoteAdapterFactory(cfg config.Config, provider credentials.Provider) remo
 		}
 		return driverrouteros.New(opts, provider, dc.CredentialRef, protocolrouteros.Options{Address: dc.Address, TLSConfig: tc, Timeout: timeout, MaxResponseBytes: opts.MaxResponseBytes, MaxRecords: opts.MaxRows})
 	})
-	registrationErr := errors.Join(snmpRegistration, routerosRegistration)
+	redfishRegistration := registry.Register("redfish", func(dc config.Device) (driver.Adapter, error) {
+		opts, _ := options(dc)
+		target := dc.Target(config.Polling{})
+		tc, err := redfishTLS(dc.TLS.CAFile)
+		if err != nil {
+			return nil, err
+		}
+		rf := dc.Redfish.WithDefaults()
+		return driverredfish.New(opts, provider, dc.CredentialRef, driverredfish.Options{
+			TLSConfig: tc, Timeout: target.Polling.Timeout, RequestTimeout: rf.RequestTimeout,
+			Auth: rf.Auth, MaxResources: rf.MaxResources, MaxPages: rf.MaxPages, MaxRequests: rf.MaxRequests,
+			MaxResponseBytes: opts.MaxResponseBytes, Provenance: model.Provenance(rf.Provenance),
+		})
+	})
+	registrationErr := errors.Join(snmpRegistration, routerosRegistration, redfishRegistration)
 	return func(dc config.Device) (driver.Adapter, error) {
 		if registrationErr != nil {
 			return nil, registrationErr
 		}
 		return registry.Create(dc.Driver, dc)
 	}
+}
+
+func redfishTLS(caFile string) (*tls.Config, error) {
+	tc := &tls.Config{MinVersion: tls.VersionTLS12}
+	if caFile == "" {
+		return tc, nil
+	}
+	file, err := os.Open(caFile)
+	if err != nil {
+		return nil, errors.New("Redfish CA file unavailable")
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	if err != nil {
+		return nil, errors.New("Redfish CA file unavailable")
+	}
+	if len(data) > 1<<20 {
+		return nil, errors.New("Redfish CA file exceeds limit")
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(data) {
+		return nil, errors.New("Redfish CA file has no certificates")
+	}
+	tc.RootCAs = pool
+	return tc, nil
 }
 
 // RemoteFactory keeps the historical full-driver API for bounded probe callers.

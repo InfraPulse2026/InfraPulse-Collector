@@ -41,10 +41,15 @@ func CloneLogBatch(b LogBatch) LogBatch {
 // CloneDevice owns all mutable inventory values. New nested P2 snapshots must
 // not share their storage with collectors or diagnostics callers.
 func CloneDevice(d Device) Device {
+	d.Hardware = CloneHardware(d.Hardware)
 	d.Observation = CloneObservation(d.Observation)
 	d.IdentityEvidence = cloneIdentityEvidence(d.IdentityEvidence)
 	d.Capabilities = slices.Clone(d.Capabilities)
 	d.Components = slices.Clone(d.Components)
+	for i := range d.Components {
+		d.Components[i].Hardware = CloneHardware(d.Components[i].Hardware)
+		d.Components[i].Observation = CloneObservation(d.Components[i].Observation)
+	}
 	d.VendorEvidence = slices.Clone(d.VendorEvidence)
 	d.PlatformEvidence = slices.Clone(d.PlatformEvidence)
 	d.UptimeAvailable = clonePointer(d.UptimeAvailable)

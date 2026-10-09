@@ -339,6 +339,42 @@ syslog не имеет нашего per-record application ACK. Duplicate sender
 заявляются. Read в socket не означает durable admission.
 [Receiver contract](syslog-receiver.md).
 
+## Equipment hardware observations — Phase 4
+
+Redfish использует existing InventoryUpdate/TelemetrySample/Device/Metric,
+без sensor-specific Redfish protobuf messages или нового delivery service.
+Добавления protocol-neutral:
+
+| Existing message | Additive fields/numbers |
+|---|---|
+| Device | `hardware=39`, `observation=40`, `identity_evidence=41` |
+| InventoryComponent | `hardware=12`, `observation=13` |
+| InventoryUpdate | `completeness=3`, `observation=4` |
+| Metric | `resource_id=4`, `component_id=5`, `status=6`, `observation=7` |
+| TelemetrySample | `hardware_health=13`, `observation=14`, `identity_evidence=15` |
+| SourceRef | `resource_id=7` |
+
+HardwareInventory содержит typed UUID/SKU/part/BIOS/power/chassis/manager,
+optional capacity/cores/threads, independent HardwareStatus и
+ResourceRelationship. ComponentHealth передаёт health без fabricated metric.
+IdentityEvidence и ObservationMetadata сохраняют source/resource scope и
+optional timestamps. Health, HealthRollup, State и PowerState различаются.
+
+Один Target может передавать несколько Devices с устойчивыми URI-derived IDs:
+System/Chassis/Manager не объединяются внутри Collector. Их wire DeviceType
+использует существующий UNKNOWN; role задаёт HardwareInventory.resource_type.
+Новые DeviceType enums не нужны старому strict decoder. Optional metadata
+добавляется для hardware payloads; legacy SNMP/RouterOS/Local payload bytes
+сохранены при отсутствии additions. Existing field numbers/RPC/version1,
+stable message IDs, retained at-least-once durable replay и ACK не меняются.
+
+Old peer может принять прежние fields и игнорировать additions. Это не
+подтверждает сохранение full hardware/source/identity/relations, multi-resource
+semantics или dedup в production Backend. Backend требует отдельной additive
+ingest/storage поддержки; PostgreSQL/REST/Asset resolution в этой фазе не
+изменялись и не проверялись. Partial inventory не означает deletion.
+[Redfish mapping и validation](redfish.md).
+
 ## TelephonyUpdate
 
 `AgentEnvelope.telephony=17` содержит observed time, source и bounded targets

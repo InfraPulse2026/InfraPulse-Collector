@@ -122,6 +122,7 @@ type Device struct {
 	Location        model.PhysicalLocation `yaml:"location"`
 	Polling         Polling                `yaml:"polling"`
 	SNMP            SNMP                   `yaml:"snmp"`
+	Redfish         Redfish                `yaml:"redfish"`
 	TLS             RemoteTLS              `yaml:"tls"`
 	EnableMutations bool                   `yaml:"enable_mutations"`
 }
@@ -383,7 +384,7 @@ func (c Config) Validate() error {
 		prefix := fmt.Sprintf("devices[%d]", i)
 		add(d.ID != "" && len(d.ID) <= 128 && !seen[d.ID], prefix+".id")
 		seen[d.ID] = true
-		add(d.Driver == "snmp" || d.Driver == "routeros", prefix+".driver")
+		add(d.Driver == "snmp" || d.Driver == "routeros" || d.Driver == "redfish", prefix+".driver")
 		add(d.Address != "", prefix+".address")
 		add(d.CredentialRef != "", prefix+".credential_ref")
 		cr, exists := c.Credentials[d.CredentialRef]
@@ -422,6 +423,9 @@ func (c Config) Validate() error {
 			add(cr.UsernameEnv != "" && cr.PasswordEnv != "", prefix+".credential_ref kind")
 			u, e := url.Parse(d.Address)
 			add(e == nil && u != nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && (u.Path == "" || u.Path == "/"), prefix+".address (HTTPS origin without embedded credentials)")
+		}
+		if err := validateRedfish(d, cr, c.Remote.MaxRows, c.Security.Mode); err != nil {
+			problems = append(problems, fmt.Errorf("%s: %w", prefix, err))
 		}
 	}
 	problems = append(problems, c.validateCommandStore())

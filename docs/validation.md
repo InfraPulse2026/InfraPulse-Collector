@@ -987,3 +987,198 @@ Receiver disabled по умолчанию; OpenWrt durable receiver требуе
 persistent storage и measurement RAM/flash/concurrency на конкретном device.
 Phase 4 Redfish автоматически не начиналась; будущему adapter нужны official
 schemas/traversal/credentials/TLS/fixtures и bounded multi-resource inventory.
+
+## Phase 4 — Redfish hardware monitoring, 2026-10-09
+
+Работа выполнена в исходном checkout `main` над `443b8d7`, содержащим merged
+Phase 3; пользователь подтвердил завершение Phase 3 и работу в `main`.
+Ветка/worktree не создавались, commit/push/merge/rebase не выполнялись.
+Redfish не импортирует Syslog receiver и не требует его включения. Generic
+source/time wire helpers отделены от log mapping. Отдельный build с применением
+Phase 4 к старому Phase 2 snapshot не выполнялся и здесь не заявляется.
+
+### Baseline и история обнаруженных ошибок
+
+На исходном `main` фактически выполнены `go version`, `go env`,
+`go build ./...`, `go vet ./...`, `go test -count=1 ./...`,
+`go test -race -count=1 ./...`, `go mod verify`: PASS. SDK —
+`go1.27.1 windows/amd64`. Сырой `gofmt -l` вернул 27 файлов: FAIL исходного
+checkout сохранён отдельно. Дополнительная проверка LF-normalized frozen
+snapshot `443b8d7` командой `gofmt -l` по 208 Go sources api/cmd/internal
+не вернула файлов: PASS. Это различие line endings, не обнаруженная ошибка
+runtime. Baseline status/output — `.cache/phase4-main-baseline/`, отдельный
+лог — `gofmt-lf-snapshot-status.log`.
+
+Baseline extras: Windows queue/commands integration, native/cross build
+scripts, pinned protobuf regeneration с SHA256 comparison, все example
+configs, 16 compiled Linux WSL suites и `time-sync-status`: PASS.
+Baseline Phase 2 `3b9b0ba` также исследован в отдельном ignored snapshot
+`.cache/phase4-phase2-baseline`; основной baseline результатов/размеров
+Phase 4 — merged `main`, а не этот snapshot.
+
+Промежуточные FAIL не скрыты:
+
+- Security test обнаружил acceptance percent-encoded secret в resource query;
+  adapter исправлен, final unit/race suites PASS. Initial logs —
+  `.cache/phase4-final/initial/{test,race}.log`.
+- Первый full race и отдельный serial retry обнаружили Redfish E2E fixture
+  failure: дополнительный test consumer `queue.Pop` конкурировал с offline
+  transport/`ResetInflight`, и ожидание telemetry достигало 3s deadline.
+  Targeted race `-count=3` воспроизвёл FAIL 3/3. Тест исправлен: durable records
+  читаются после остановки первого Agent и открытия второго, до его Run;
+  production runtime при этом не менялся. Targeted race после исправления
+  и final full race PASS.
+- Windows full race/integration attempts также обнаружили temporary-directory
+  cleanup failures: `ERROR_DIR_NOT_EMPTY` и sharing errors в существующих
+  queue/logs tests; agent cleanup отдельно встретил deletion-pending
+  `DIAGNOSTICS.JSON.tmp`. Agent test helper получил bounded Windows retry
+  с проверкой настоящего locked file. Queue/logs runtime не менялся.
+  Targeted queue/logs retries PASS. Final full race PASS; полный integration
+  с последовательным запуском packages (`-p 1`) PASS без исключения tests.
+  Предыдущие default package-parallel integration attempts остаются FAIL;
+  устойчивый default-parallel Windows integration этим не заявляется.
+
+Полные failed attempts сохранены в `race-first.log`, `race-serial-retry.log`,
+`race-agent-redfish-targeted.log`, `integration-windows-freeze2-first.log`,
+`integration-full-retry.log` внутри `.cache/phase4-final/`.
+
+### Итоговые команды и уровни проверки
+
+Production builds выполнялись с `CGO_ENABLED=0`. Windows race использовал
+`CGO_ENABLED=1`, `GOOS=windows`, `GOARCH=amd64` и portable
+`.tools/llvm-mingw-20260922-ucrt-x86_64/bin/x86_64-w64-mingw32-gcc.exe`.
+После финального test freeze mandatory checks выполнялись без параллельных
+build commands. SDK и локальные caches соответствуют инструкциям AGENTS.md.
+
+| Фактически выполненная проверка | Итог |
+|---|---|
+| `gofmt -l` по всем Go sources api/cmd/internal | PASS, пустой вывод |
+| `go build ./...` | PASS |
+| `go vet ./...` | PASS |
+| `go test -count=1 ./...` | PASS, 11.640s |
+| `go test -race -count=1 ./...` | PASS, 36.152s |
+| `go mod verify` | PASS |
+| `go test -p 1 -count=1 -tags=integration ./...` | PASS, все packages/tests |
+| `scripts/build.ps1 -GoPath <verified SDK>` | PASS, native CLI/tool binaries |
+| `scripts/build.ps1 -Cross -GoPath <verified SDK>` | PASS |
+| Pinned protoc 33.5 / protoc-gen-go v1.36.12 / protoc-gen-go-grpc v1.6.0 regeneration | PASS, оба generated files SHA256-identical |
+| `bin/infrapulse-agent.exe validate-config --config <каждый configs/*.yaml>` | PASS, 10 examples, включая Redfish/NTP/Syslog |
+
+Exact script commands, environment и outputs находятся в
+`.cache/phase4-final/{mandatory,extras,freeze2-extras,dmtf-e2e}.ps1` и соседних
+logs. Итоговые статусы — `status.log`, `extras-status.log`,
+`freeze2-extras-status.log`, `integration-retry-status.log`, `dmtf-status.log`.
+В `freeze2-extras-status.log` сохранён описанный initial integration FAIL;
+полный последующий PASS отражён в `integration-retry-status.log` и
+`integration-serial-packages.log`.
+
+Cross-build matrix: Collector Linux amd64/arm64/arm/mips/mipsle, `GOARM=7`,
+`GOMIPS=hardfloat`; Mock Controller, Simulator и Mock Enrollment Linux
+amd64/arm64. Это compile validation, не runtime на OpenWrt firmware.
+
+WSL `docker-desktop`, Linux amd64: фактически выполнены
+`go test -c -tags=integration -o <binary> ./internal/<package>`, затем
+`wsl.exe -d docker-desktop --cd <package-dir> -- <binary> -test.v=true
+-test.count=1 -test.timeout=120s`. Все 17 suites PASS: platform/linux, logs,
+queue, commands, protocol/snmp, driver/snmp, driver/routeros, driver/redfish,
+pki, platform/openwrt, agent, simulator, telephony, transport/grpc, config,
+platform, syslogreceiver. После test-only исправлений Agent suite пересобран
+и повторён: PASS, Redfish offline/restart/ACK E2E sessions 4/4 cleaned.
+Linux `time-sync-status --config configs/config.time-sync.example.yaml`: PASS.
+Реальный Linux proc/sys/file I/O проверен; OpenWrt/SNMP/RouterOS/SIP остаются
+fixtures. Синхронизация живой corporate NTP service не заявляется.
+
+Unit/security/failure coverage включает registration/config/credentials,
+multi-resource discovery/identity/relationships, optional missing fields,
+health/state/power distinction, Celsius/RPM/percent/W mapping,
+CPU/DIMM/drive/PSU/Fan health, provenance/source/time, partial observations,
+TLS CA/expiry/hostname, 401/403/404/429/500/503, bounded reauthentication,
+session cleanup, malformed/oversized JSON, secret redaction, malicious links,
+redirects/cycles/page/resource/response budgets, cancellation и cooldown.
+Обычные tests обращаются только к локальным fixtures, не к production BMC.
+
+### Официальные DMTF tools → Collector → Mock Controller
+
+Использованы pinned Redfish Mockup Server
+`23d21f9a3610f6b6fbb71ffc941296b159a524d2` и Interface Emulator
+`5f51d8ac48e46665a2a85242434f125aa7b25172`, HTTPS loopback и test CA с
+проверкой TLS. Python dependencies зафиксированы в ignored
+`.cache/phase4-dmtf/python-requirements-pinned.txt`.
+
+На каждом independently running DMTF process фактически выполнена команда
+`go test -count=1 -tags=integration -run '^TestDMTFRedfishServiceCollectorDurableACK$'
+-v ./internal/agent` с explicit fixture endpoint/CA/Basic Auth/minimum counts.
+
+| Fixture | Inventory | Полученные hardware samples | Итог |
+|---|---|---|---|
+| Official modern `public-rackmount1`, HTTPS 19443 | 1 System + 1 Chassis + 1 Manager, complete | System 43 metrics/60 health; Chassis 6 metrics/12 health | PASS |
+| Official static Interface Emulator, HTTPS 19444 | 1 System + 1 Chassis + 1 Manager, partial | 41 metrics/54 health | PASS, валидные данные сохранены |
+| Derived DMTF fixture, HTTPS 19445 | 2 Systems + 2 Chassis + 1 Manager, complete | По 43 metrics на System, 6 на Chassis | PASS |
+
+Подтверждены provided manufacturer/model/serial/UUID/BIOS/power/health,
+стабильность resource identity на повторных polls, simulated provenance,
+existing durable outbox → gRPC → Mock Controller application ACK. Modern
+System — Contoso 3500; legacy — Contoso 3500RX. Второй System/Chassis в
+derived fixture — явно synthetic копии, не hardware measurements.
+Static tools не проверяют реальный BMC session lifecycle; session/expired
+auth/logout tests выполнены отдельными local HTTPS fixtures.
+
+Итоговые outputs — `.cache/phase4-final/dmtf-{modern,legacy,multi}-e2e.log`.
+После проверки наши DMTF helpers остановлены: 0 fixture listeners и 0
+matching Python helper processes. SHA256 code snapshot после suites:
+0 changed sources (`source-hash-verification.json`).
+
+### Измерения ресурсов и ограничения
+
+Matched unstripped `scripts/build.ps1` CGO0 Collector binaries:
+
+| Linux arch | Baseline bytes | Phase 4 bytes | Рост |
+|---|---:|---:|---:|
+| amd64 | 22 936 550 | 35 447 995 | 54.55% |
+| arm64 | 21 410 686 | 33 362 805 | 55.82% |
+| arm, GOARM=7 | 21 539 544 | 33 265 787 | 54.44% |
+| mips, hardfloat | 23 675 000 | 35 785 247 | 51.15% |
+| mipsle, hardfloat | 23 674 046 | 35 786 581 | 51.16% |
+
+Отдельные matched stripped Linux amd64 builds фактически выполнены с
+`CGO_ENABLED=0`, `GOOS=linux`, `GOARCH=amd64`,
+`go build -trimpath -buildvcs=false -ldflags='-s -w' -o <binary>
+./cmd/infrapulse-agent`: 15 732 896 → 23 855 264 bytes,
+рост 8 122 368 bytes / 51.63%. Gofish/typed schemas дают существенный binary
+cost и после stripping. Это требует отдельного flash/RAM sizing на
+constrained Linux/OpenWrt; cross-build PASS этого ограничения не снимает.
+Mock Controller Linux amd64 вырос 0.56%. Полные размеры/flags —
+`binary-size-comparison.json`, `stripped-binary-comparison.json`.
+
+`go test -count=1 -run '^TestResourceUsageBoundedRepeatedPolling$' -v
+./internal/driver/redfish`: PASS. После initial discovery 50 последовательных
+health polls заняли 247.0933ms; retained heap delta после GC +108 640 bytes,
+goroutine delta 0, request concurrency peak 1, bounded plan 23 resources.
+Inventory JSON 19 742 bytes; largest sample 11 338 bytes / 9 metrics.
+Configured response/poll budget: 1 MiB per response / 8 MiB per poll;
+oversized rejection проверен отдельно. Session created/deleted counts равны.
+
+Тот же baseline-equivalent fake SNMP workload выполнен командой
+`go run ./.cache/collector-resource-probe/main.go`: 32 targets / 4 workers,
+2s, cadence 25ms, collect delay 2ms, memory queue 32 messages / 256 KiB,
+без consumer. Baseline/final goroutines 1→peak 6→1, active request peak 4,
+queue peak 32 messages; bytes 31 048→29 298, retained heap после shutdown
+615 848→640 264 bytes, TotalAlloc work 2 771 456→2 743 064 bytes.
+Finite queue overload давал documented priority eviction/drop counters.
+Это сохранение bounded behavior на одинаковом synthetic workload, не
+production throughput и не Redfish-vs-SNMP latency comparison.
+
+`go test -run '^$' -bench '^BenchmarkObserveTelemetry$' -benchmem
+./internal/model`: baseline 385.3ns/op, 1056B/op, 8 allocs/op;
+final 458.2ns/op, 1152B/op, 8 allocs/op. Это одиночные local microbenchmark
+samples, не статистический performance regression verdict.
+
+Реальные BMC/Dell/HPE hardware, production Backend/PostgreSQL/REST,
+реальный OpenWrt RAM/flash budget и production throughput не проверялись.
+MemoryMetrics error counters, OEM extensions, full UpdateService firmware
+enumeration и IPMI отсутствуют. Backend должен принять additive normalized
+hardware/source fields для полного хранения multi-resource observations;
+старый Backend может игнорировать новые fields. Существующая retained
+at-least-once delivery/ACK/replay сохранена; exactly-once не заявляется.
+Phase 5 IPMI fallback не начиналась. Configuration/mapping/security details —
+[redfish.md](redfish.md).

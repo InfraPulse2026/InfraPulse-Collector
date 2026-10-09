@@ -25,11 +25,12 @@ type Option func(*Registry)
 func WithCollectorID(id string) Option { return func(r *Registry) { r.collectorID = id } }
 
 type State struct {
-	Target                          model.Target `json:"target"`
-	Device                          model.Device `json:"device"`
-	ConnectivityState               string       `json:"connectivity_state"`
-	ConsecutiveConnectivityFailures int          `json:"consecutive_connectivity_failures"`
-	LastError                       string       `json:"last_error,omitempty"`
+	Target                          model.Target   `json:"target"`
+	Device                          model.Device   `json:"device"`
+	Devices                         []model.Device `json:"devices,omitempty"`
+	ConnectivityState               string         `json:"connectivity_state"`
+	ConsecutiveConnectivityFailures int            `json:"consecutive_connectivity_failures"`
+	LastError                       string         `json:"last_error,omitempty"`
 }
 type entry struct {
 	cfg                                               config.Device
@@ -42,6 +43,10 @@ type entry struct {
 	interfaces                                        map[string]string
 	links                                             map[string]model.Neighbor
 	maxLinks                                          int
+	batch                                             bool
+	maxDevices, maxBatchItems                         int
+	nextBatchAllowed                                  time.Time
+	batchFailures                                     uint8
 	linkOrder                                         *list.List
 	linkPositions                                     map[string]*list.Element
 	nextFast, nextMedium, nextInventory, nextTopology time.Time
@@ -95,13 +100,29 @@ func NewAdapters(cfg config.Config, factory AdapterFactory, emit func(model.Enve
 		poll := config.Polling{FastInterval: target.Polling.FastInterval, MediumInterval: target.Polling.MediumInterval, InventoryInterval: target.Polling.InventoryInterval, TopologyInterval: target.Polling.TopologyInterval, Timeout: target.Polling.Timeout}
 		dc.Polling = poll
 		e := &entry{cfg: dc, target: target, driver: d, gate: make(chan struct{}, 1), rates: telemetry.NewRateTracker(), interfaces: make(map[string]string), links: make(map[string]model.Neighbor), maxLinks: cfg.Remote.MaxRows, state: State{Target: target, Device: model.Device{ID: dc.ID, Name: dc.Name, ManagementAddress: dc.Address, Driver: dc.Driver, Type: "unknown", Location: dc.Location, VendorHint: dc.VendorHint}}}
+		_, inventoryBatch := d.(driver.InventoryBatchReader)
+		_, hardwareBatch := d.(driver.HardwareReader)
+		e.batch = inventoryBatch || hardwareBatch
+		e.maxDevices = cfg.Remote.MaxRows
+		if dc.Driver == "redfish" {
+			e.maxDevices = min(e.maxDevices, dc.Redfish.WithDefaults().MaxResources)
+		}
+		// A resource can contribute several typed metrics plus health. This
+		// separate normalized-item budget covers adapter metric (8x) and
+		// resource/health bounds while the outbox enforces payload bytes.
+		e.maxBatchItems = 16 * e.maxDevices
 		r.entries[dc.ID] = e
 		e.linkOrder = list.New()
 		e.linkPositions = make(map[string]*list.Element)
 		e.state.ConnectivityState = "unknown"
 		r.order = append(r.order, dc.ID)
 		interval := min(poll.FastInterval, poll.MediumInterval, poll.InventoryInterval, poll.TopologyInterval)
-		if err = r.scheduler.Add(scheduler.Job{Name: "remote:" + dc.ID, Interval: interval, Timeout: 4 * poll.Timeout, Collect: func(ctx context.Context) error { return r.poll(ctx, e, time.Now()) }}); err != nil {
+		jobTimeout := 4 * poll.Timeout
+		if e.batch {
+			interval = batchInterval(d, poll)
+			jobTimeout = poll.Timeout
+		}
+		if err = r.scheduler.Add(scheduler.Job{Name: "remote:" + dc.ID, Interval: interval, Timeout: jobTimeout, Collect: func(ctx context.Context) error { return r.poll(ctx, e, time.Now()) }}); err != nil {
 			_ = r.Close()
 			return nil, err
 		}
@@ -133,8 +154,12 @@ func (r *Registry) Snapshot() []State {
 func (r *Registry) Devices() []model.Device {
 	states := r.Snapshot()
 	devices := make([]model.Device, 0, len(states))
-	for _, s := range states {
-		devices = append(devices, s.Device)
+	for i, s := range states {
+		if r.entries[r.order[i]].batch {
+			devices = append(devices, s.Devices...)
+		} else {
+			devices = append(devices, s.Device)
+		}
 	}
 	return devices
 }
@@ -161,7 +186,7 @@ func (r *Registry) commandEntry(id string) (*entry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, exists := r.entries[id]
-	if !exists || e.state.Device.ID != id {
+	if !exists || e.batch || e.state.Device.ID != id {
 		return nil, errors.New("remote command target identity does not match")
 	}
 	for _, other := range r.entries {
@@ -199,6 +224,9 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 		defer func() { <-e.gate }()
 	default:
 		return nil
+	}
+	if e.batch {
+		return r.pollBatch(ctx, e, now)
 	}
 	var errs []error
 	connectivityObserved := false
@@ -322,7 +350,10 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 			errs = append(errs, err)
 		}
 	}
-	result := errors.Join(errs...)
+	return r.collectionResult(e, errors.Join(errs...), now)
+}
+
+func (r *Registry) collectionResult(e *entry, result error, now time.Time) error {
 	message := ""
 	if result != nil {
 		switch {

@@ -27,7 +27,7 @@ func validateLogs(b model.LogBatch) error {
 	if err := logStringsBound(128, b.Source); err != nil {
 		return err
 	}
-	if err := validateLogObservation(b.Observation); err != nil {
+	if err := validateObservation(b.Observation); err != nil {
 		return err
 	}
 	for _, r := range b.Records {
@@ -54,7 +54,7 @@ func validateLogs(b model.LogBatch) error {
 		if err := validateSyslogMetadata(r.Syslog); err != nil {
 			return err
 		}
-		if err := validateLogObservation(r.Observation); err != nil {
+		if err := validateObservation(r.Observation); err != nil {
 			return err
 		}
 		if a := r.Audit; a != nil {
@@ -66,9 +66,9 @@ func validateLogs(b model.LogBatch) error {
 	return nil
 }
 func logsToProto(b model.LogBatch) *pb.LogBatch {
-	p := &pb.LogBatch{ObservedAt: timestamp(b.ObservedAt), Source: b.Source, Observation: logObservationToProto(b.Observation)}
+	p := &pb.LogBatch{ObservedAt: timestamp(b.ObservedAt), Source: b.Source, Observation: observationToProto(b.Observation)}
 	for _, r := range b.Records {
-		v := &pb.LogRecord{Id: r.ID, DeviceId: r.DeviceID, Source: r.Source, SourceId: r.SourceID, ObservedAt: timestamp(r.ObservedAt), Severity: r.Severity, Facility: r.Facility, Host: r.Host, Process: r.Process, ProcessId: r.ProcessID, Message: r.Message, Raw: r.Raw, Truncated: r.Truncated, FileIdentity: r.FileIdentity, Offset: r.Offset, Syslog: syslogToProto(r.Syslog), Observation: logObservationToProto(r.Observation)}
+		v := &pb.LogRecord{Id: r.ID, DeviceId: r.DeviceID, Source: r.Source, SourceId: r.SourceID, ObservedAt: timestamp(r.ObservedAt), Severity: r.Severity, Facility: r.Facility, Host: r.Host, Process: r.Process, ProcessId: r.ProcessID, Message: r.Message, Raw: r.Raw, Truncated: r.Truncated, FileIdentity: r.FileIdentity, Offset: r.Offset, Syslog: syslogToProto(r.Syslog), Observation: observationToProto(r.Observation)}
 		if r.OriginalTimestamp != nil {
 			v.OriginalTimestamp = timestamp(*r.OriginalTimestamp)
 		}
@@ -88,7 +88,7 @@ func logsFromProto(p *pb.LogBatch) (model.LogBatch, error) {
 		return model.LogBatch{}, err
 	}
 	b := model.LogBatch{ObservedAt: at, Source: p.Source}
-	b.Observation, err = logObservationFromProto(p.Observation)
+	b.Observation, err = observationFromProto(p.Observation)
 	if err != nil {
 		return b, err
 	}
@@ -105,7 +105,7 @@ func logsFromProto(p *pb.LogBatch) (model.LogBatch, error) {
 		if err != nil {
 			return b, err
 		}
-		r.Observation, err = logObservationFromProto(v.Observation)
+		r.Observation, err = observationFromProto(v.Observation)
 		if err != nil {
 			return b, err
 		}

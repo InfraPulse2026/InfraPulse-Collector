@@ -167,7 +167,7 @@ func TestSyslogRejectsMalformedWireMetadata(t *testing.T) {
 
 func TestLogClockDurationPreservesSignedExtremes(t *testing.T) {
 	for _, value := range []time.Duration{time.Duration(math.MinInt64), -1, 0, 1, time.Duration(math.MaxInt64)} {
-		back, err := logDurationFromProto(durationpb.New(value))
+		back, err := observationDurationFromProto(durationpb.New(value))
 		if err != nil || back == nil || *back != value {
 			t.Fatal("valid duration changed", value, back, err)
 		}

@@ -40,17 +40,19 @@ type Evidence struct {
 	Confidence string `json:"confidence"`
 }
 type InventoryComponent struct {
-	ID               string `json:"id"`
-	ParentID         string `json:"parent_id,omitempty"`
-	Class            string `json:"class"`
-	Name             string `json:"name,omitempty"`
-	Description      string `json:"description,omitempty"`
-	Manufacturer     string `json:"manufacturer,omitempty"`
-	Model            string `json:"model,omitempty"`
-	SerialNumber     string `json:"serial_number,omitempty"`
-	HardwareRevision string `json:"hardware_revision,omitempty"`
-	FirmwareVersion  string `json:"firmware_version,omitempty"`
-	SoftwareVersion  string `json:"software_version,omitempty"`
+	Hardware         *HardwareInventory   `json:"hardware,omitempty"`
+	Observation      *ObservationMetadata `json:"observation,omitempty"`
+	ID               string               `json:"id"`
+	ParentID         string               `json:"parent_id,omitempty"`
+	Class            string               `json:"class"`
+	Name             string               `json:"name,omitempty"`
+	Description      string               `json:"description,omitempty"`
+	Manufacturer     string               `json:"manufacturer,omitempty"`
+	Model            string               `json:"model,omitempty"`
+	SerialNumber     string               `json:"serial_number,omitempty"`
+	HardwareRevision string               `json:"hardware_revision,omitempty"`
+	FirmwareVersion  string               `json:"firmware_version,omitempty"`
+	SoftwareVersion  string               `json:"software_version,omitempty"`
 }
 type TopologyUpdate struct {
 	Observation      *ObservationMetadata `json:"observation,omitempty"`

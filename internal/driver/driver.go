@@ -30,6 +30,19 @@ type TelemetryReader interface {
 type InventoryReader interface {
 	Inventory(context.Context) (model.Device, error)
 }
+
+// InventoryBatchReader adds bounded multi-resource inventory without changing
+// the existing SNMP/RouterOS single-device reader. Partial valid observations
+// may accompany an error and must not imply deletion of previously known facts.
+type InventoryBatchReader interface {
+	InventoryBatch(context.Context) (model.InventoryUpdate, error)
+}
+
+// HardwareReader uses the medium interval and emits existing normalized
+// telemetry envelopes separately, preserving the current ACK/replay contract.
+type HardwareReader interface {
+	Hardware(context.Context) ([]model.TelemetrySample, error)
+}
 type TopologyReader interface {
 	Topology(context.Context) (model.TopologyUpdate, error)
 }

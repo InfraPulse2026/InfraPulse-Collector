@@ -1,5 +1,30 @@
 # Безопасность InfraPulse Agent
 
+## Redfish hardware collection
+
+Redfish Phase 4 разрешает только GET/HEAD и фиксированный lifecycle собственной
+SessionService session (POST создания, DELETE logout). Power control, generic
+Actions, BIOS/firmware/SecureBoot/accounts/storage/network writes отсутствуют;
+`enable_mutations: true` для Redfish отклоняется. Monitoring account должна иметь
+minimum read/login privileges по документации своего BMC.
+
+Endpoint — HTTPS origin; TLS ≥1.2 с системным trust store и optional custom CA,
+добавленным к нему. Hostname/IP SAN verification обязательна, insecure mode и
+plaintext fallback отсутствуют. Session auth default, Basic auth требует
+explicit `redfish.auth: basic` и той же verification. CredentialProvider читает
+environment refs только при poll. Session token/password/Authorization/cookies
+и raw BMC responses не попадают в diagnostics, SourceRef или inventory.
+
+Response/request/resource/page/time budgets, последовательные requests внутри
+Target, same-origin service links и запрет redirects предотвращают forwarding
+credentials на чужие hosts и unlimited traversal. Retry 401/429/503 ограничен;
+Retry-After сохраняет cooldown, logout выполняется в bounded cleanup. Если BMC
+не отвечает на logout, session expiration зависит от BMC. Environment HTTP
+proxy для BMC отключён. Simulated provenance разрешён только в development;
+production default — real. [Configuration, exact limits и gaps](redfish.md).
+
+## Существующий transport и локальные источники
+
 Agent сам открывает исходящий gRPC bidirectional stream; входящего management
 API нет. Opt-in Syslog Receiver открывает отдельный logging listener, disabled
 по умолчанию. Remote integrations — SNMP v2c/v3 read-only, RouterOS HTTPS REST

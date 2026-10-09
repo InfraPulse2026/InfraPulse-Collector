@@ -102,6 +102,7 @@ func literalMarker(values []string) string {
 
 func (k KnownSecrets) Sanitize(e model.Envelope) model.Envelope {
 	text := func(s string) string { return TextWithSecrets(s, k.Values) }
+	e = sanitizeHardware(e, text)
 	if e.Error != nil {
 		v := *e.Error
 		v.Message = text(v.Message)

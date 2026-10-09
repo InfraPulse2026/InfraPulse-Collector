@@ -98,6 +98,9 @@ func DeviceIdentityEvidence(d Device, ref SourceRef) []IdentityEvidence {
 		}
 	}
 	add(IdentitySerial, d.SerialNumber, "high", "")
+	if d.Hardware != nil {
+		add(IdentityHardwareUUID, d.Hardware.HardwareUUID, "high", "")
+	}
 	add(IdentityChassisID, d.ChassisID, "medium", "")
 	add(IdentityHostname, d.Hostname, "low", "")
 	if ref.Type == SourceSNMP {
@@ -113,9 +116,19 @@ func DeviceIdentityEvidence(d Device, ref SourceRef) []IdentityEvidence {
 		if component.ID == "" {
 			continue
 		}
+		// Component facts retain their own resource provenance, rather than
+		// attributing a drive serial or CPU UUID to the ComputerSystem URI.
+		deviceRef := ref
+		if component.Observation != nil {
+			ref = component.Observation.Source.ForLegacy(d.Source)
+		}
 		add(IdentitySerial, component.SerialNumber, "high", component.ID)
 		add(IdentityManufacturer, component.Manufacturer, "medium", component.ID)
 		add(IdentityModel, component.Model, "medium", component.ID)
+		if component.Hardware != nil {
+			add(IdentityHardwareUUID, component.Hardware.HardwareUUID, "high", component.ID)
+		}
+		ref = deviceRef
 	}
 	return values
 }

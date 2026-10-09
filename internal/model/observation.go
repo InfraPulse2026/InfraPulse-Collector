@@ -22,9 +22,9 @@ const (
 	SourceSIP      SourceType = "sip"
 	SourceSyslog   SourceType = "syslog"
 	SourceAuditd   SourceType = "auditd"
-	// These values reserve domain vocabulary, not implemented capabilities.
-	SourceRedfish SourceType = "redfish"
-	SourceIPMI    SourceType = "ipmi"
+	SourceRedfish  SourceType = "redfish"
+	// IPMI reserves vocabulary; it is not an implemented capability.
+	SourceIPMI SourceType = "ipmi"
 )
 
 func (s SourceType) Valid() bool {
@@ -55,6 +55,7 @@ type SourceRef struct {
 	TargetID    string     `json:"target_id,omitempty"`
 	Protocol    string     `json:"protocol,omitempty"`
 	InstanceID  string     `json:"instance_id,omitempty"`
+	ResourceID  string     `json:"resource_id,omitempty"`
 	Provenance  Provenance `json:"provenance"`
 }
 
@@ -69,6 +70,12 @@ func (s SourceRef) Validate() error {
 	}
 	if !identifier(s.Protocol, 128, true) {
 		return errors.New("invalid observation carrier protocol")
+	}
+	if s.ResourceID != "" {
+		u, err := url.Parse(s.ResourceID)
+		if err != nil || !boundedText(s.ResourceID, 2048) || !strings.HasPrefix(s.ResourceID, "/") || strings.HasPrefix(s.ResourceID, "//") || u.IsAbs() || u.Host != "" || u.User != nil {
+			return errors.New("invalid observation resource identifier")
+		}
 	}
 	switch s.Provenance {
 	case "", ProvenanceReal, ProvenanceSimulated, ProvenanceManual, ProvenanceExternal:

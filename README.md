@@ -2,7 +2,8 @@
 
 InfraPulse Collector — Go-компонент NetOps Control Plane InfraPulse для работы
 в management/local network. Он опрашивает сетевые устройства через SNMP v2c/v3
-и RouterOS HTTPS REST, собирает LLDP/CDP/MNDP observations и SIP health,
+и RouterOS HTTPS REST, опрашивает hardware через Redfish HTTPS,
+собирает LLDP/CDP/MNDP observations и SIP health,
 передаёт telemetry, inventory, topology, logs и события в Controller/Backend.
 Установка Collector на каждый server не требуется: один gateway может
 обслуживать набор configured targets без установки нашего ПО на них.
@@ -30,6 +31,9 @@ AI и историческое хранилище находятся вне эт
 - Передача inventory, heartbeat и событий Agent.
 - Generic SNMP v2c/v3 read-only: SYSTEM, ENTITY-MIB при доступности, IF-MIB/IF-X-MIB
   и LLDP-MIB с сохранением исходных идентификаторов и evidence.
+- Redfish read-only: несколько ComputerSystems/Chassis/Managers на BMC,
+  hardware inventory/health и modern/legacy temperature/fan/PSU metrics;
+  verified HTTPS, session auth и bounded polling через existing durable delivery.
 - RouterOS HTTPS REST: identity/resource/routerboard, interfaces и IP-адреса,
   neighbor discovery с фактическим LLDP/CDP/MNDP source.
 - Ограниченный remote polling, offline после трёх последовательных ошибок связи
@@ -220,7 +224,7 @@ devices: []
 | `logging` | Уровень логирования: debug, info, warn, error |
 | `location` | Физическое расположение, заданное оператором |
 | `commands` | Включение typed actions и protected resources |
-| `devices` | Стабильные ID, адреса, SNMP/RouterOS driver и настройки опроса |
+| `devices` | Стабильные ID, адреса, SNMP/RouterOS/Redfish driver и настройки опроса |
 | `credentials` | Именованные ссылки на environment variables с credentials |
 | `remote` | Concurrency, лимиты responses/rows и срок актуальности topology |
 | `logs` | Configured file sources, read/line/batch limits и polling |
@@ -234,6 +238,8 @@ devices: []
   development-соединение без локального сбора, в том числе на Windows.
 - [config.remote.example.yaml](configs/config.remote.example.yaml) — remote
   SNMP/RouterOS collection с credentials из environment.
+- [config.redfish.example.yaml](configs/config.redfish.example.yaml) — production
+  read-only BMC hardware collection, custom CA и environment credential references.
 - [config.p2.example.yaml](configs/config.p2.example.yaml) — OpenWrt auto mode,
   configurable logs/audit и SIP OPTIONS.
 - [config.p3.example.yaml](configs/config.p3.example.yaml) — durable delivery,
@@ -708,8 +714,10 @@ Production Backend/dedup/CA authorization/revocation/CA rollover не реали
 Mock Enrollment token state хранится в RAM. Private keys защищены filesystem
 permissions, без encryption at rest/TPM/HSM.
 Remote Syslog/Audit Receiver принимает TLS/TCP через existing durable delivery;
-UDP/RELP и Backend log storage/search отсутствуют. Redfish и IPMI относятся
-к roadmap; их protocol adapters не реализованы.
+UDP/RELP и Backend log storage/search отсутствуют. Redfish hardware adapter
+реализован; actual BMC/vendor hardware и production Backend storage ещё не
+проверены. Настройка, fields и limits — [Redfish](docs/redfish.md).
+IPMI остаётся отдельной Phase 5 и не реализован.
 Collector ↔ Backend clock offset estimation также отложен; unknown offset
 не считается нулём. Phase 2 передаёт corporate servers стандартной службе ОС
 через отдельный deployment helper. Collector использует системное время,
@@ -758,7 +766,7 @@ replacement временно требует места для двух bounded f
 OpenWrt учитывайте flash wear, RAM и SNMPv3 key-localization CPU; допустим memory
 mode с явно менее надёжной telemetry delivery.
 
-Collector-only hosting (`local.enabled: false`) собирает SNMP/RouterOS/SIP и
+Collector-only hosting (`local.enabled: false`) собирает SNMP/RouterOS/Redfish/SIP и
 remote topology; opt-in receiver также принимает remote logs/audit. Его
 настройка и rsyslog sender пример — [syslog-receiver](docs/syslog-receiver.md).
 В контейнере нужен persistent state volume и CA trust. Host
