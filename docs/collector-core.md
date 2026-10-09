@@ -271,7 +271,7 @@ configured source/Target attribution и existing LogBatch/outbox. Existing file
 reader остаётся file pipeline. [Настройка receiver](syslog-receiver.md).
 Collector ↔ Backend offset estimation отложен; exchange и Backend implementation
 отсутствуют. Additive logs metadata не включает metadata остальных observations.
-Backend received_at остаётся server-owned. Phase 3 автоматически не запускается.
+Backend received_at остаётся server-owned. Phase 4 автоматически не запускается.
 
 Redfish/IPMI можно подключить через зарегистрированный Adapter и небольшие readers,
 но protocol implementations, credentials/security options, реальные schemas/mappings

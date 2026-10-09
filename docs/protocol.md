@@ -290,7 +290,7 @@ Private keys, tokens и certificates/CSR bytes через Agent stream не пе
 Каждый file record сохраняет deterministic ID, network record — UUID,
 стабильный в пределах durable admission/replay. Передаются device ID, source/source ID,
 observed time, optional parsed original timestamp, optional severity/facility,
-достоверные host/process/PID, sanitized message/raw, truncated flag и исходные
+распознанные host/process/PID, sanitized message/raw, truncated flag и исходные
 file identity/offset. Нулевые optional values сохраняют presence. BSD timestamp
 без года/timezone не превращается в выдуманный UTC timestamp.
 

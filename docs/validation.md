@@ -923,7 +923,7 @@ tests и existing commands/journal/rollback/PKI/durable ACK/replay/Simulator п�
 
 ### Cross-build и fixture resource measurements
 
-`scripts/build.ps1 -Cross -GoPath C:\Users\kiril\sdk\go1.27.1\bin\go.exe` — PASS,
+`scripts/build.ps1 -Cross` (проверенный Go SDK в PATH) — PASS,
 `CGO_ENABLED=0`: Collector Linux amd64/arm64/arm/mips/mipsle, GOARM7 и
 GOMIPS=hardfloat; Mock Controller/Simulator/Mock Enrollment Linux amd64/arm64.
 Cross-build сохраняет portable Go matrix и не доказывает OpenWrt runtime.
@@ -935,6 +935,39 @@ sample5, connection peak1. Emit в этом small burst sample был memory fix
 он не измеряет synced durable storage, production throughput, network latency
 или долговременный RAM budget. Сравнивать эти числа с Phase 2 как production
 performance ratio нельзя: workload/host/cache differ.
+
+Дополнительный sustained probe выполнен командой
+`go run ./.cache/phase3-regression/loadprobe/main.go` с environment
+`CGO_ENABLED=0`, `GOOS=windows`, `GOARCH=amd64`, тем же SDK и локальными
+caches — PASS. Это isolated 5s loopback fixture:
+четыре synthetic TCP sender с target 500 messages/s каждый, Receiver → existing
+durable outbox 16 messages/128KiB → fixture consumer Pop/ACK с delay 2ms.
+Дополнительной delivery queue, gRPC или настоящего Backend в probe нет.
+
+Sender записал 9986 frames (1996.91/s); Receiver выполнил 6634 synced admissions,
+без admission errors. Peak queue — 16/16 messages и 25440/131072 bytes (19.4%).
+Existing priority eviction вытеснила 6616 logs: 2 consumer ACK подтвердили ещё
+retained records, 1206 ACK относились к уже вытесненным records. 3352 sender
+frames не достигли admission до отмены и закрытия sockets. Ни TCP write,
+ни успешный admission не означают бессрочную retention при перегрузке.
+Это измерение подтверждает resource bounds и documented loss semantics,
+а не lossless delivery или пригодность этих limits для production workload.
+
+Heap baseline 400008B → sampled peak 3417944B → после shutdown/GC 639328B;
+goroutines 12 → sampled peak 14 → 1; peak connections 4, после shutdown 0;
+shutdown 3ms. Cumulative TotalAlloc за probe 2211212272B: bounded live heap
+не означает низкую стоимость allocations/GC. Высокая allocation churn,
+synced admissions, eviction и flash wear требуют отдельного sizing/load test
+на реальном storage и constrained Linux/OpenWrt hardware. Production throughput
+и сравнимый Phase 2 RAM/CPU benchmark этим probe не подтверждены.
+Source provenance simulated; consumer/provenance errors 0. Полные command/env,
+JSON и 100ms samples — `.cache/phase3-regression/loadprobe/load-probe.log`.
+
+`go run ./cmd/infrapulse-agent validate-config --config configs/config.syslog.example.yaml`
+— PASS для текущего source CLI и disabled receiver example. Проверка старым
+`bin/infrapulse-agent.exe` ранее завершилась invalid YAML из-за устаревшей
+сборки; это не результат проверки текущего example. `gofmt -l` по всем
+Go sources api/cmd/internal не вывел файлов.
 
 Markdown local links изменённых documents и `git diff --check` — PASS.
 Git сообщает только configured LF→CRLF warnings, без whitespace errors.
