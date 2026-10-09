@@ -24,14 +24,20 @@ func validateLogs(b model.LogBatch) error {
 	if err := validateTime(b.ObservedAt, "logs.observed_at"); err != nil {
 		return err
 	}
+	if err := logStringsBound(128, b.Source); err != nil {
+		return err
+	}
+	if err := validateLogObservation(b.Observation); err != nil {
+		return err
+	}
 	for _, r := range b.Records {
 		if r.ID == "" || r.DeviceID == "" || r.Source == "" || r.SourceID == "" || r.Offset < 0 {
 			return errors.New("invalid log identity or offset")
 		}
-		if err := stringsBound(1024, r.ID, r.DeviceID, r.Source, r.SourceID, r.FileIdentity, r.Host, r.Process, r.ProcessID); err != nil {
+		if err := logStringsBound(1024, r.ID, r.DeviceID, r.Source, r.SourceID, r.FileIdentity, r.Host, r.Process, r.ProcessID); err != nil {
 			return err
 		}
-		if err := stringsBound(65536, r.Message, r.Raw); err != nil {
+		if err := logStringsBound(65536, r.Message, r.Raw); err != nil {
 			return err
 		}
 		if err := validateTime(r.ObservedAt, "log.observed_at"); err != nil {
@@ -45,8 +51,14 @@ func validateLogs(b model.LogBatch) error {
 		if r.Severity != nil && *r.Severity > 7 || r.Facility != nil && *r.Facility > 23 {
 			return errors.New("invalid syslog priority")
 		}
+		if err := validateSyslogMetadata(r.Syslog); err != nil {
+			return err
+		}
+		if err := validateLogObservation(r.Observation); err != nil {
+			return err
+		}
 		if a := r.Audit; a != nil {
-			if err := stringsBound(4096, a.EventID, a.RecordType, a.Executable, a.Syscall, a.Result, a.Host); err != nil {
+			if err := logStringsBound(4096, a.EventID, a.RecordType, a.Executable, a.Syscall, a.Result, a.Host); err != nil {
 				return err
 			}
 		}
@@ -54,9 +66,9 @@ func validateLogs(b model.LogBatch) error {
 	return nil
 }
 func logsToProto(b model.LogBatch) *pb.LogBatch {
-	p := &pb.LogBatch{ObservedAt: timestamp(b.ObservedAt), Source: b.Source}
+	p := &pb.LogBatch{ObservedAt: timestamp(b.ObservedAt), Source: b.Source, Observation: logObservationToProto(b.Observation)}
 	for _, r := range b.Records {
-		v := &pb.LogRecord{Id: r.ID, DeviceId: r.DeviceID, Source: r.Source, SourceId: r.SourceID, ObservedAt: timestamp(r.ObservedAt), Severity: r.Severity, Facility: r.Facility, Host: r.Host, Process: r.Process, ProcessId: r.ProcessID, Message: r.Message, Raw: r.Raw, Truncated: r.Truncated, FileIdentity: r.FileIdentity, Offset: r.Offset}
+		v := &pb.LogRecord{Id: r.ID, DeviceId: r.DeviceID, Source: r.Source, SourceId: r.SourceID, ObservedAt: timestamp(r.ObservedAt), Severity: r.Severity, Facility: r.Facility, Host: r.Host, Process: r.Process, ProcessId: r.ProcessID, Message: r.Message, Raw: r.Raw, Truncated: r.Truncated, FileIdentity: r.FileIdentity, Offset: r.Offset, Syslog: syslogToProto(r.Syslog), Observation: logObservationToProto(r.Observation)}
 		if r.OriginalTimestamp != nil {
 			v.OriginalTimestamp = timestamp(*r.OriginalTimestamp)
 		}
@@ -76,6 +88,10 @@ func logsFromProto(p *pb.LogBatch) (model.LogBatch, error) {
 		return model.LogBatch{}, err
 	}
 	b := model.LogBatch{ObservedAt: at, Source: p.Source}
+	b.Observation, err = logObservationFromProto(p.Observation)
+	if err != nil {
+		return b, err
+	}
 	for _, v := range p.Records {
 		if v == nil {
 			return b, errors.New("nil log record")
@@ -85,6 +101,14 @@ func logsFromProto(p *pb.LogBatch) (model.LogBatch, error) {
 			return b, err
 		}
 		r := model.LogRecord{ID: v.Id, DeviceID: v.DeviceId, Source: v.Source, SourceID: v.SourceId, ObservedAt: at, Severity: v.Severity, Facility: v.Facility, Host: v.Host, Process: v.Process, ProcessID: v.ProcessId, Message: v.Message, Raw: v.Raw, Truncated: v.Truncated, FileIdentity: v.FileIdentity, Offset: v.Offset}
+		r.Syslog, err = syslogFromProto(v.Syslog)
+		if err != nil {
+			return b, err
+		}
+		r.Observation, err = logObservationFromProto(v.Observation)
+		if err != nil {
+			return b, err
+		}
 		if v.OriginalTimestamp != nil {
 			t, err := requiredTime(v.OriginalTimestamp, "log.original_timestamp")
 			if err != nil {

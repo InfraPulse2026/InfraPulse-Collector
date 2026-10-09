@@ -5,15 +5,20 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"InfraPulseAgent/internal/model"
 )
 
 var (
-	bsdHeader = regexp.MustCompile(`^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2} ([^ ]+) (.*)$`)
-	tag       = regexp.MustCompile(`^([A-Za-z0-9_./@-]+)(?:\[([0-9]+)\])?: ?(.*)$`)
-	auditHead = regexp.MustCompile(`(?:^| )type=([A-Z0-9_]+) msg=audit\(([0-9]+)(?:\.([0-9]{1,9}))?:([0-9]+)\):(?: |$)`)
-	auditKV   = regexp.MustCompile(`(?:^| )([a-z_]+)=("[^"\r\n]*"|'[^'\r\n]*'|[^ \r\n]+)`)
+	bsdHeader       = regexp.MustCompile(`^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2} ([^ ]+) (.*)$`)
+	tag             = regexp.MustCompile(`^([A-Za-z0-9_./@-]+)(?:\[([0-9]+)\])?: ?(.*)$`)
+	auditHead       = regexp.MustCompile(`(?:^| )type=([A-Z0-9_]+) msg=audit\(([0-9]+)(?:\.([0-9]{1,9}))?:([0-9]+)\):(?: |$)`)
+	auditKV         = regexp.MustCompile(`(?:^| )([a-z_]+)=("[^"\r\n]*"|'[^'\r\n]*'|[^ \r\n]+)`)
+	remoteAuditHead = regexp.MustCompile(`^(?:node=[^ \r\n]+ )?type=[A-Z0-9_]+ msg=audit\(`)
+	// RFC5424 narrows RFC3339: uppercase T/Z, seconds below 60, at most six
+	// fractional digits, and an offset whose hour/minute are valid clock fields.
+	rfc5424Time = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$`)
 )
 
 // Parse preserves the source line and adds only fields established by a known
@@ -29,13 +34,14 @@ func Parse(line, format string, observed time.Time) model.LogRecord {
 	if format == "raw" {
 		return r
 	}
+	r.Syslog = &model.SyslogMetadata{Format: "unknown", ParseStatus: "fallback"}
 	body := line
 	var priority *uint32
 	if strings.HasPrefix(body, "<") {
 		end := strings.IndexByte(body, '>')
 		if end >= 2 && end <= 4 {
 			value, err := strconv.ParseUint(body[1:end], 10, 32)
-			if err == nil && value <= 191 && (body[1] != '0' || end == 2) {
+			if err == nil && decimalDigits(body[1:end]) && value <= 191 && (body[1] != '0' || end == 2) {
 				v := uint32(value)
 				priority = &v
 				body = body[end+1:]
@@ -47,6 +53,7 @@ func Parse(line, format string, observed time.Time) model.LogRecord {
 		r.Severity, r.Facility = &severity, &facility
 	}
 	if priority != nil && strings.HasPrefix(body, "1 ") {
+		r.Syslog.Format = "rfc5424"
 		parts := strings.SplitN(body, " ", 7)
 		if len(parts) != 7 || parts[0] != "1" || !headerToken(parts[2], 255) || !headerToken(parts[3], 48) || !headerToken(parts[4], 128) || !headerToken(parts[5], 32) {
 			return r
@@ -54,20 +61,22 @@ func Parse(line, format string, observed time.Time) model.LogRecord {
 		var ts *time.Time
 		if parts[1] != "-" {
 			v, err := time.Parse(time.RFC3339Nano, parts[1])
-			if err != nil || v.Year() < 1 || !strings.Contains(parts[1], "T") {
+			if err != nil || v.Year() < 1 || !rfc5424Time.MatchString(parts[1]) {
 				return r
 			}
 			tu := v.UTC()
 			ts = &tu
 		}
-		message, ok := structuredMessage(parts[6])
+		structuredData, message, ok := structuredMessage(parts[6])
 		if !ok {
 			return r
 		}
-		r.OriginalTimestamp, r.Host, r.Process, r.ProcessID, r.Message = ts, nilValue(parts[2]), nilValue(parts[3]), nilValue(parts[4]), strings.TrimPrefix(message, "\ufeff")
+		r.OriginalTimestamp, r.Host, r.Process, r.ProcessID, r.Message = ts, nilValue(parts[2]), nilValue(parts[3]), nilValue(parts[4]), message
+		r.Syslog.Version, r.Syslog.MessageID, r.Syslog.StructuredData, r.Syslog.RawTimestamp, r.Syslog.ParseStatus = 1, nilValue(parts[5]), structuredData, parts[1], "parsed"
 		return r
 	}
 	if match := bsdHeader.FindStringSubmatch(body); match != nil {
+		r.Syslog.Format = "rfc3164"
 		// Validate clock/calendar syntax, without interpreting the absent year.
 		if _, err := time.Parse("Jan _2 15:04:05", body[:15]); err != nil {
 			return r
@@ -77,6 +86,7 @@ func Parse(line, format string, observed time.Time) model.LogRecord {
 			r.Host = match[2]
 		}
 		parseTag(&r)
+		r.Syslog.RawTimestamp, r.Syslog.ParseStatus = body[:15], "parsed"
 		return r
 	}
 	// rsyslog's RSYSLOG_FileFormat uses an RFC3339 timestamp followed by
@@ -87,9 +97,22 @@ func Parse(line, format string, observed time.Time) model.LogRecord {
 			tu := ts.UTC()
 			r.OriginalTimestamp, r.Host, r.Message = &tu, parts[1], parts[2]
 			parseTag(&r)
+			r.Syslog.RawTimestamp, r.Syslog.ParseStatus = parts[0], "parsed"
 		}
 	}
 	return r
+}
+
+func decimalDigits(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i := range len(v) {
+		if v[i] < '0' || v[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parseTag(r *model.LogRecord) {
@@ -117,38 +140,96 @@ func headerToken(v string, limit int) bool {
 	return true
 }
 
-func structuredMessage(v string) (string, bool) {
+// structuredMessage validates SD boundaries without decoding or rewriting its
+// content. Unknown backslash escapes remain literal, as required by RFC5424.
+// The message is opaque octets: BOM, spaces, and embedded newlines survive.
+func structuredMessage(v string) (structuredData, message string, ok bool) {
 	if v == "-" {
-		return "", true
+		return "-", "", true
 	}
 	if strings.HasPrefix(v, "- ") {
-		return v[2:], true
+		return "-", v[2:], true
 	}
 	if !strings.HasPrefix(v, "[") {
-		return "", false
+		return "", "", false
 	}
-	quoted, escaped := false, false
-	for i := 0; i < len(v); i++ {
-		switch {
-		case escaped:
-			escaped = false
-		case quoted && v[i] == '\\':
-			escaped = true
-		case v[i] == '"':
-			quoted = !quoted
-		case !quoted && v[i] == ']':
-			if i+1 == len(v) {
-				return "", true
+	ids := make(map[string]bool)
+	for i := 0; i < len(v) && v[i] == '['; {
+		i++
+		start := i
+		for i < len(v) && sdNameByte(v[i]) {
+			i++
+		}
+		if i-start < 1 || i-start > 32 || ids[v[start:i]] {
+			return "", "", false
+		}
+		ids[v[start:i]] = true
+		for i < len(v) && v[i] == ' ' {
+			i++
+			start = i
+			for i < len(v) && sdNameByte(v[i]) {
+				i++
 			}
-			if v[i+1] == ' ' {
-				return v[i+2:], true
+			if i-start < 1 || i-start > 32 || i+1 >= len(v) || v[i] != '=' || v[i+1] != '"' {
+				return "", "", false
 			}
-			if v[i+1] != '[' {
-				return "", false
+			i += 2
+			start = i
+			for i < len(v) && v[i] != '"' {
+				if v[i] == ']' {
+					return "", "", false
+				}
+				if v[i] == '\\' && i+1 < len(v) && (v[i+1] == '"' || v[i+1] == '\\' || v[i+1] == ']') {
+					i += 2
+				} else {
+					i++
+				}
 			}
+			if i >= len(v) || !utf8.ValidString(v[start:i]) {
+				return "", "", false
+			}
+			i++ // closing quote; another parameter or the element end follows
+		}
+		if i >= len(v) || v[i] != ']' {
+			return "", "", false
+		}
+		i++
+		if i == len(v) {
+			return v, "", true
+		}
+		if v[i] == ' ' {
+			return v[:i], v[i+1:], true
+		}
+		if v[i] != '[' {
+			return "", "", false
 		}
 	}
-	return "", false
+	return "", "", false
+}
+
+func sdNameByte(b byte) bool {
+	return b >= 33 && b <= 126 && b != '=' && b != ']' && b != '"'
+}
+
+// AttachAudit is used only after the caller establishes a configured audit
+// plugin context. The kernel grammar is required in addition to that context;
+// ordinary syslog text containing "type=" never enables audit detection. The
+// enclosing syslog timestamp and HOSTNAME remain independent sender claims.
+func AttachAudit(r *model.LogRecord) bool {
+	if r == nil {
+		return false
+	}
+	var parsed model.LogRecord
+	message := strings.TrimPrefix(r.Message, "\ufeff")
+	if !remoteAuditHead.MatchString(message) {
+		return false
+	}
+	parseAudit(&parsed, message)
+	if parsed.Audit == nil {
+		return false
+	}
+	r.Audit = parsed.Audit
+	return true
 }
 
 func parseAudit(r *model.LogRecord, line string) {
@@ -173,7 +254,11 @@ func parseAudit(r *model.LogRecord, line string) {
 	}
 	timestamp := time.Unix(seconds, ns).UTC()
 	r.OriginalTimestamp = &timestamp
-	a := &model.AuditRecord{EventID: m[2] + "." + fraction + ":" + m[4], RecordType: m[1]}
+	eventTimestamp := m[2]
+	if fraction != "" {
+		eventTimestamp += "." + fraction
+	}
+	a := &model.AuditRecord{EventID: eventTimestamp + ":" + m[4], RecordType: m[1]}
 	// Conflicting duplicate fields are omitted. Fields nested inside a quoted
 	// msg value are not treated as independent top-level audit attributes.
 	values := map[string]string{}

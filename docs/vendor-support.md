@@ -36,6 +36,7 @@ capabilities автоматически. [Domain model](collector-core.md).
 | Corporate NTP host setup | Linux chrony/timesyncd deployment apply; bounded read-only status; OpenWrt status и administrator UCI setup | Isolated provider/config/ownership/idempotency fixtures; результаты — в Phase 2 validation | Live chrony/timesyncd synchronization и OpenWrt runtime не подтверждены | NTP удалённых устройств и Backend protocol не реализуются; [границы](time-sync.md) |
 | Native OpenWrt | Linux collector плюс board/release evidence, netifd logical networks, procd services, UCI firewall configuration read | Official implementation schema fixtures; timeout/cancellation/partial availability и настоящий wire encode/decode | **OpenWrt runtime unverified**: доступная WSL среда не содержит OpenWrt release/ubus | OpenWrt router/firmware и RAM/flash consumption не проверены |
 | Linux system logs | Configurable regular files, syslog/rsyslog/raw parsing, sanitizer, bounded batches, persistent cursors, rotation/truncate/recreate | Temp files, burst/rotation/restart/errors/cancellation | WSL Linux amd64: настоящие file reads, rotation, cursor restart и gRPC delivery | Production rsyslog deployment не проверен; paths задаются оператором |
+| Remote Syslog/Audit Receiver | Opt-in TLS/mTLS RFC5425, RFC5424, базовый RFC3164, explicit TCP octet-counting/LF, source mapping, existing LogBatch/durable delivery | Parser/framing/TLS/limits/admission fixtures; exact commands в validation | Isolated rsyslog 8.2512.0 sender в WSL, TLS/TCP → Collector → development Mock; synthetic provenance | UDP/RELP отсутствуют; live auditd dispatcher и production Backend не проверены; sender→Collector без application ACK |
 | auditd file source | Sanitized raw records, exact event ID/time/type, известные uid/auid/pid/exe/syscall/success/result; bounded correlation внутри batch | Audit syntax fixtures и Agent/Mock delivery | Linux file pipeline выполнен; содержимое audit records в tests — fixtures | Реальный audit daemon/audit rules не проверены |
 | SIP OPTIONS | Fixed unauthenticated UDP/TCP/TLS probe, matching final response, availability/latency/error category/state transitions; TLS CA/name verification и SNI | Локальные SIP/TLS servers: 2xx, 401/407, 404, 5xx, timeout/malformed/cancel/recovery, wrong CA/name/expired certificate | WSL Agent/Mock с локальным UDP SIP fixture; результаты остальных P3 Linux fixtures — в validation | Внешний PBX и media не проверены; Digest/REGISTER/media не реализованы |
 | Generic SNMP v2c/v3 | Один adapter: SYSTEM, optional ENTITY inventory, IF/IF-X counters/rates и LLDP-MIB; v3 USM authPriv/authNoPriv | Standard MIB fixtures, локальный UDP SNMP server, настоящий BER/USM exchange, discovery/reconnect/invalid credentials/redaction | Linux amd64 protocol/E2E tests с test server; это не switch runtime | Реальное SNMP оборудование не проверено; SNMP SET unsupported |
@@ -89,7 +90,7 @@ P1 literal MikroTik `sysDescr` fallback сохранён с `confidence=low`. Ho
 Linux объявляет `system.read`, `inventory.read`, `cpu.read`, `memory.read`,
 `interfaces.read`, `telemetry.read`. При configured file sources добавляются
 `logs.read` и для auditd — `audit.read`; unavailable source виден в diagnostics.
-File-based logs не включают journald API, network syslog listener, OpenWrt logd/
+File-based logs не включают journald API, OpenWrt logd/
 `logread` ring buffer и compressed archives. На OpenWrt требуется реальный
 настроенный log file, если нужен этот путь сбора.
 
@@ -162,7 +163,7 @@ Production Backend/CA service, Web UI, LLM/AI analysis, historical database
 
 | Source | Состояние |
 |---|---|
-| Remote Syslog/Audit receiver | Не реализован. Существующий syslog/auditd pipeline читает локальные files; сетевого receiver/listener нет |
+| Remote Syslog/Audit receiver | Реализован opt-in в Phase 3 через existing logs/durable pipeline; sender setup и границы — [syslog-receiver](syslog-receiver.md) |
 | Redfish | Не реализован. Target/Source/Observation/IdentityEvidence model подготовлена; HTTP schemas, resource traversal и реальные mapping fixtures ещё нужны |
 | IPMI | Не реализован. Target/Source/Observation model подготовлена; protocol client, authentication/security semantics и реальные fixtures ещё нужны |
 | Collector ↔ Backend time exchange | Отложен. Optional offset/uncertainty и clock quality существуют во внутренней модели; измерения и additive wire fields не входят в corporate NTP Phase 2 |

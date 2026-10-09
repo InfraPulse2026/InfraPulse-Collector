@@ -87,6 +87,7 @@ type AuditRecord struct {
 	Host       string  `json:"host,omitempty"`
 }
 type LogRecord struct {
+	Syslog            *SyslogMetadata      `json:"syslog,omitempty"`
 	Observation       *ObservationMetadata `json:"observation,omitempty"`
 	ID                string               `json:"id"`
 	DeviceID          string               `json:"device_id"`

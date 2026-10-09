@@ -773,3 +773,217 @@ Linux runtime suites. Реальное оборудование и production Ba
 Protobuf/generated sources, temporal model, dependencies и systemd unit
 не изменены. Remote Syslog/Audit Receiver остаётся следующим самостоятельным
 этапом; Phase 3 не начиналась. Git commit/push/merge/rebase не выполнялись.
+
+## Collector Phase 3 — Remote Syslog / Audit Receiver (2026-10-08)
+
+Следующие записи относятся к завершённой Phase 3, а ограничения выше являются
+историческими результатами предыдущих этапов. Workspace — Windows/PowerShell,
+Go1.27.1 из `C:\Users\kiril\sdk\go1.27.1\bin\go.exe`; build/cache artifacts
+находятся в ignored `.cache/phase3-*`, portable compiler — ignored `.tools`.
+Backend repository и production Backend/PostgreSQL не менялись и не участвовали.
+
+### Baseline до изменений
+
+| Реальная команда | Результат |
+|---|---|
+| `go build ./...` (`CGO_ENABLED=0`) | PASS |
+| `go vet ./...` | PASS |
+| `go test -count=1 ./...` | PASS |
+| `go test -race -count=1 ./...` (Windows amd64, CGO1, portable LLVM-MinGW) | PASS |
+| `go mod verify` | PASS |
+| `go test -count=1 -tags=integration ./internal/queue ./internal/commands` | PASS |
+| `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -tags=integration -o .cache/phase3-baseline/linux-agent.test ./internal/agent` | PASS |
+| Аналогичная `go test -c -tags=integration` для `./internal/platform/linux` | PASS |
+| WSL `linux-agent.test -test.v=true -test.count=1 -test.timeout=120s -test.run=TestLiveLinuxLogsTelemetrySIPAndRotation\|TestCollectorRealLinuxDefaultThreeSecondTelemetry` через `wsl.exe --exec` | PASS |
+| WSL `linux-platform.test -test.v=true -test.count=1 -test.timeout=120s -test.run=TestRealLinuxCollector` через `wsl.exe --exec` | PASS |
+
+Первый WSL test-harness вызов через shell неверно передал test flags/regex
+(exit127/2); исправленная direct `--exec` invocation прошла. Это ошибка
+запуска проверок, не отказ collector baseline. Commands/status/stdout
+сохранены в `.cache/phase3-baseline`.
+
+### Изученная архитектура и standards
+
+До реализации изучены existing runtime/config/lifecycle, Target/SourceRef/time
+model, file logs/parser/cursors, Agent.push/sanitizer, durable outbox/admission/
+priorities, gRPC mapping/application ACK/replay, TLS/PKI и Simulator/Mock.
+Local files проходят `logs.Pipeline → Parse/sanitize/cursor metadata → LogBatch
+→ Emit=Agent.push → queue → gRPC`; cursor advances после whole-batch admission.
+Receiver использует тот же нормализованный delivery path и не создаёт queue/DB.
+
+Official sources: [RFC5424](https://www.rfc-editor.org/rfc/rfc5424),
+[RFC5425](https://www.rfc-editor.org/rfc/rfc5425),
+[RFC6587](https://www.rfc-editor.org/rfc/rfc6587),
+[RFC3164](https://www.rfc-editor.org/rfc/rfc3164),
+[rsyslog omfwd](https://docs.rsyslog.com/doc/configuration/modules/omfwd.html),
+[templates](https://docs.rsyslog.com/doc/configuration/templates.html),
+[audit-userspace plugin](https://github.com/linux-audit/audit-userspace/blob/master/audisp/plugins/syslog/audisp-syslog.c).
+Mappings, setup и поддерживаемый RFC scope — [syslog-receiver](syslog-receiver.md).
+
+### Настоящий isolated rsyslog sender и Mock E2E
+
+WSL `docker-desktop` не содержал rsyslogd/auditd. Для проверки скачаны official
+Alpine v3.23 x86_64 `.apk` и dependency closure, распакованные только в ignored
+workspace `.cache/syslog-rsyslog/root`. Package installation, системные
+service/config changes не выполнялись. Получен настоящий rsyslog8.2512.0 с
+GnuTLS module; package SHA256 manifest сохранён в том же artifact directory.
+CA/server/client certificates сгенерированы для isolated fixtures; private
+keys/credentials не добавлены в Git.
+
+| Реальная команда | Результат и scope |
+|---|---|
+| `rsyslogd -v` через unpacked runtime и LD_LIBRARY_PATH | PASS, 8.2512.0, Alpine musl x86_64 |
+| `wsl -d docker-desktop -- sh /mnt/host/c/Users/kiril/GolandProjects/InfraPulseAgent/.cache/syslog-rsyslog/validate.sh` | PASS: `rsyslogd -M <runtime>/usr/lib/rsyslog -N1 -f <isolated>/syntax.conf`; repository sender example с заменой cert/spool paths и imfile input |
+| `wsl -d docker-desktop -- sh /mnt/host/c/Users/kiril/GolandProjects/InfraPulseAgent/.cache/phase3-e2e/run.sh` | PASS: two validated Collector configs, actual TLS/TCP rsyslog forwarding, restart/replay и bounded SIGTERM shutdown |
+| `& .cache/phase3-e2e/verify.ps1` | PASS: normalized Mock JSON, source/auth/time/raw/SD/audit/counts/admission/ACK verification |
+
+Каждый transport phase передал 104 records: 103 через реальный rsyslog omfwd
+(system1, burst100, structured-data1, audit-derived SYSCALL1) и отдельную
+direct-socket RFC3164 fixture. Rsyslog source input — isolated local imtcp,
+а не production `/dev/log`/audit dispatcher; output — configured RFC5424,
+octet-counted TLS/mTLS либо explicit plain TCP. Все test sources имеют
+`source=simulated` и simulated provenance даже при реальном transport software.
+Проверено сохранение claimed HOSTNAME отдельно от logical source/mTLS SAN,
+plain authenticated=false, managed Target=`syslog:linux-01`, carrier
+syslog-tls/syslog-tcp, structured-data escapes/raw, timezone→UTC и отсутствие
+year/timezone inference legacy. Audit fixture сохранила EventID1791450001.123:42,
+UID/AUID/PID/syscall/success и независимый enclosing syslog timestamp.
+
+TLS phase сначала работал при offline Mock: Receiver admitted104, durable queue
+132 total messages (logs+служебные messages), 198397 payload bytes, file565248
+bytes, dropped_logs0. Затем Collector остановлен и запущен с тем же state:
+AgentID сохранился, SessionID сменился, Mock получил все104 log records и
+отправил application ACK; snapshot queue1 (текущий heartbeat), dropped_logs0.
+TCP phase дополнительно отправил malformed huge declared prefix: client
+изолирован с safe `syslog_oversized_frame`, последующие104 records delivered/ACKed.
+Все собственные sender/Collector/Mock processes остановлены SIGTERM в bounded
+время без global process termination.
+
+Первый rehearsal использовал слишком короткое ожидание и остановил Collector
+до чтения всей transport backlog. Окончательный сценарий ждёт104 synced
+admissions/Mock receipts и использует новый state. Этот rehearsal дополнительно
+показывает, почему network write нельзя выдавать за durable log admission.
+Он не является доказательством lossless sender→Collector delivery.
+
+Artifacts: `.cache/phase3-e2e/mock-{tls,tcp}.jsonl`, `diagnostics-{offline,acked,tcp}.json`,
+`verification.txt`, Collector/sender logs, configs/scripts и retained states.
+Live auditd/audisp-syslog/kernel audit generation отсутствовали; canonical
+audit-derived fixture не подменяет live dispatcher validation. Production
+Backend/PostgreSQL ingest/REST search не проверялись. Это development Mock E2E.
+
+### Unit/fixture, fuzz и полный regression
+
+| Реальная команда | Результат |
+|---|---|
+| `go build ./...` | PASS |
+| `go vet ./...` | PASS |
+| `go test -count=1 ./...` (default parallel packages, два запуска) | FAIL: Windows TempDir cleanup `ERROR_DIR_NOT_EMPTY` в existing queue/PKI tests; test bodies не сообщили assertion failure |
+| `$env:GOFLAGS='-p=1'; go test -count=1 ./...` | PASS, полный suite без test cache; test logic ради обхода cleanup не изменена |
+| `go test -race -count=1 ./...` (Windows amd64, CGO1, portable LLVM-MinGW) | PASS |
+| `go test -race -count=1 ./internal/logs ./internal/syslogreceiver` | PASS, final scoped receiver/parser security/lifecycle tests |
+| `go mod verify` | PASS |
+| `go test -count=1 -tags=integration ./internal/queue ./internal/commands` | PASS |
+| `go test ./internal/logs -run '^$' -fuzz '^FuzzSyslogParse$' -fuzztime=20s -parallel=2` | PASS, 247698 executions |
+| `go test ./internal/logs -run '^$' -fuzz '^FuzzStructuredDataBoundary$' -fuzztime=20s -parallel=2` | PASS, 354457 executions |
+| `go test ./internal/syslogreceiver -run '^$' -fuzz '^FuzzReadFrame$' -fuzztime=20s -parallel=2` | PASS, 275148 executions |
+
+Зависимости/production CGO requirements не добавлены. Parser tests покрывают
+RFC5424 fields/NILVALUE/SD escapes, invalid PRI/version/timestamp, timezone,
+RFC3164 unknown year/timezone и malformed input, opaque message/raw, audit
+SYSCALL/EXECVE/PATH/USER_AUTH/USER_LOGIN, malformed header/duplicate fields и
+EventID без fractional seconds. Framing tests покрывают fragmented prefix/body,
+multiple/many frames, embedded LF, zero/invalid/huge length/overflow, mismatch,
+LF mode и disconnect mid-frame. Fuzz inputs bounded; panic/OOM/leak не наблюдались.
+
+TLS fixtures генерируют свои certificates и проверяют verified sender/server,
+missing/unknown/expired client certificate, invalid server trust, SAN mapping,
+unknown/ambiguous identity, server-only TLS approved IPs и rejection LF on TLS.
+Connection/per-logical-source/per-peer limits, handshake/read/idle deadlines,
+startup rollback/bind failure/disabled/duplicate Run, cancellation/shutdown,
+queue full retry/stable message ID/storage failure и malformed-client isolation
+проверены bounded loopback fixtures. Security fixtures включают non-UTF8 raw
+octets, sanitizer/private-key suppression и separate CA/cert-key validation.
+
+Linux runtime regression использовал `CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+go test -c -tags=integration -o <artifact> ./internal/<package>`, затем
+`wsl.exe -d docker-desktop --cd <workspace>/internal/<package> --exec <artifact>
+-test.v=true -test.count=1 -test.timeout=120s`. Все16 compiled suites и их
+запуски PASS: platform/linux, logs, queue, commands, protocol/snmp, driver/snmp,
+driver/routeros, pki, platform/openwrt, agent, simulator, telephony,
+transport/grpc, config, platform, syslogreceiver. Exact commands/status/output
+сохранены в `.cache/phase3-regression/{linux-commands,linux-status}.log`.
+Linux proc/sys/file I/O реально выполнялся; RouterOS/SNMP/SIP/OpenWrt остаются
+local protocol/schema fixtures, не испытанием внешнего hardware/PBX.
+
+Existing default3s Linux telemetry integration: baseline intervals
+3.000015139/2.999953559s, final3.000161366/3.000193787s. Phase 2 NTP config/status
+tests и existing commands/journal/rollback/PKI/durable ACK/replay/Simulator прошли
+в рамках этих suites; NTP synchronization живой системной службы и hardware
+результаты этим не заявляются.
+
+### Cross-build и fixture resource measurements
+
+`scripts/build.ps1 -Cross` (проверенный Go SDK в PATH) — PASS,
+`CGO_ENABLED=0`: Collector Linux amd64/arm64/arm/mips/mipsle, GOARM7 и
+GOMIPS=hardfloat; Mock Controller/Simulator/Mock Enrollment Linux amd64/arm64.
+Cross-build сохраняет portable Go matrix и не доказывает OpenWrt runtime.
+
+`TestSustainedInputFixtureResourceSample` внутри Windows/Linux receiver suites
+обработал1000 loopback fixture messages: Windows39.1899ms, Linux10.794742ms.
+Linux sample TotalAlloc3818952B, heap2119192→2809024B, goroutines baseline4/peak
+sample5, connection peak1. Emit в этом small burst sample был memory fixture;
+он не измеряет synced durable storage, production throughput, network latency
+или долговременный RAM budget. Сравнивать эти числа с Phase 2 как production
+performance ratio нельзя: workload/host/cache differ.
+
+Дополнительный sustained probe выполнен командой
+`go run ./.cache/phase3-regression/loadprobe/main.go` с environment
+`CGO_ENABLED=0`, `GOOS=windows`, `GOARCH=amd64`, тем же SDK и локальными
+caches — PASS. Это isolated 5s loopback fixture:
+четыре synthetic TCP sender с target 500 messages/s каждый, Receiver → existing
+durable outbox 16 messages/128KiB → fixture consumer Pop/ACK с delay 2ms.
+Дополнительной delivery queue, gRPC или настоящего Backend в probe нет.
+
+Sender записал 9986 frames (1996.91/s); Receiver выполнил 6634 synced admissions,
+без admission errors. Peak queue — 16/16 messages и 25440/131072 bytes (19.4%).
+Existing priority eviction вытеснила 6616 logs: 2 consumer ACK подтвердили ещё
+retained records, 1206 ACK относились к уже вытесненным records. 3352 sender
+frames не достигли admission до отмены и закрытия sockets. Ни TCP write,
+ни успешный admission не означают бессрочную retention при перегрузке.
+Это измерение подтверждает resource bounds и documented loss semantics,
+а не lossless delivery или пригодность этих limits для production workload.
+
+Heap baseline 400008B → sampled peak 3417944B → после shutdown/GC 639328B;
+goroutines 12 → sampled peak 14 → 1; peak connections 4, после shutdown 0;
+shutdown 3ms. Cumulative TotalAlloc за probe 2211212272B: bounded live heap
+не означает низкую стоимость allocations/GC. Высокая allocation churn,
+synced admissions, eviction и flash wear требуют отдельного sizing/load test
+на реальном storage и constrained Linux/OpenWrt hardware. Production throughput
+и сравнимый Phase 2 RAM/CPU benchmark этим probe не подтверждены.
+Source provenance simulated; consumer/provenance errors 0. Полные command/env,
+JSON и 100ms samples — `.cache/phase3-regression/loadprobe/load-probe.log`.
+
+`go run ./cmd/infrapulse-agent validate-config --config configs/config.syslog.example.yaml`
+— PASS для текущего source CLI и disabled receiver example. Проверка старым
+`bin/infrapulse-agent.exe` ранее завершилась invalid YAML из-за устаревшей
+сборки; это не результат проверки текущего example. `gofmt -l` по всем
+Go sources api/cmd/internal не вывел файлов.
+
+Markdown local links изменённых documents и `git diff --check` — PASS.
+Git сообщает только configured LF→CRLF warnings, без whitespace errors.
+
+### Delivery/deployment ограничения Phase 3
+
+Collector→Backend использует existing retained at-least-once durable outbox,
+stable message IDs и application ACK/replay. TCP/TLS sender→Collector не имеет
+per-record application ACK: disconnect/crash может дать loss/duplicates, а
+finite sender/outbox capacity и retention/priority eviction допускают потери.
+Нет claims exactly-once, lossless sender pipeline или production throughput.
+UDP/RELP, Backend LogStore/search, отдельный audit protocol и новая logging DB
+не реализованы. Certificate rotation listener выполняется через restart.
+
+OpenWrt/Russian Linux/hardware/PBX production runtime не подтверждены.
+Receiver disabled по умолчанию; OpenWrt durable receiver требует подходящего
+persistent storage и measurement RAM/flash/concurrency на конкретном device.
+Phase 4 Redfish автоматически не начиналась; будущему adapter нужны official
+schemas/traversal/credentials/TLS/fixtures и bounded multi-resource inventory.

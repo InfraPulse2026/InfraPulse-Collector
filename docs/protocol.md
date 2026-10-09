@@ -144,8 +144,9 @@ SNMP `sysUpTime` относится к management subsystem, не обязате
 
 `model.ObservationMetadata` содержит SourceRef и ObservationTime; payloads
 сохраняют существующие `source` и timestamp fields. Дополнительная metadata
-хранится во внутренней модели и JSON outbox/diagnostics, но Phase 1 не добавляет
-её в protobuf. Encoding использует прежние wire fields. Decoding старого peer
+хранится во внутренней модели и JSON outbox/diagnostics. Phase 3 добавляет
+optional observation на LogRecord/LogBatch для source/time attribution
+network logs; остальные payloads сохраняют прежние wire fields. Decoding старого peer
 не может восстановить неизвестный Target ID, clock offset или provenance
 manual/external и не выдаёт guessed значения за измерения.
 
@@ -159,18 +160,17 @@ manual/external и не выдаёт guessed значения за измере�
 | Observation/collection time | Оба поля у telemetry/topology; один observed timestamp у inventory/telephony, timestamps событий/log records |
 | Source-reported log time | Optional `LogRecord.original_timestamp` |
 | Raw topology identity | Chassis/port bytes/subtypes, protocol и evidence в `Neighbor` |
-| Full SourceRef | Нет общего поля source type + target + protocol + instance + provenance |
+| Full SourceRef | Phase 3: LogRecord.observation и LogBatch.observation; для остальных payloads общего поля нет |
 | Normalized IdentityEvidence | Нет repeated typed/scoped evidence; доступны отдельные inventory fields и topology evidence |
-| Clock model | Нет optional measured offset, uncertainty или clock quality |
+| Clock model | Phase 3: optional source/observed/collected time, offset/uncertainty presence и quality только в logs observation |
 
 `source_timestamp` означает время, сообщённое source, и не заменяет автоматически
 `observed_at`. Unknown offset/uncertainty — absence, не 0. `received_at`
 принадлежит Backend и отсутствует в модели Collector. `sent_at` относится к
 попытке отправки, не к observation или Backend receipt.
 
-Для следующей фазы нужны additive protobuf messages/fields: полная observation
-metadata на существующих payloads, SourceRef с отдельным Target ID, typed/scoped
-IdentityEvidence и optional SourceTimestamp/ClockOffset/Uncertainty/ClockQuality.
+Для остальных payloads будущие additive changes должны отдельно передать
+observation metadata, typed/scoped IdentityEvidence и clock fields при необходимости.
 Существующие field numbers должны сохраняться, Duration/Timestamp presence —
 различать unknown и measured zero. Clock offset estimation потребует отдельно
 согласованного Collector ↔ Backend exchange; в Phase 1 его нет. Точные temporal
@@ -287,9 +287,10 @@ Private keys, tokens и certificates/CSR bytes через Agent stream не пе
 ## LogBatch и audit
 
 `AgentEnvelope.logs=15` содержит `observed_at`, source и до 1024 records.
-Каждый record сохраняет stable deterministic ID, device ID, source/source ID,
+Каждый file record сохраняет deterministic ID, network record — UUID,
+стабильный в пределах durable admission/replay. Передаются device ID, source/source ID,
 observed time, optional parsed original timestamp, optional severity/facility,
-достоверные host/process/PID, sanitized message/raw, truncated flag и исходные
+распознанные host/process/PID, sanitized message/raw, truncated flag и исходные
 file identity/offset. Нулевые optional values сохраняют presence. BSD timestamp
 без года/timezone не превращается в выдуманный UTC timestamp.
 
@@ -307,6 +308,36 @@ failure блокирует reads и может дать record replay. Controlle
 отказы/eviction; dropped_other включает их тоже. Durable logs имеют medium,
 audit — high priority; memory сохраняет P2 lower log priority. CommandResult защищены.
 Подробнее — [logs](logs.md).
+
+Phase 3 использует тот же `AgentEnvelope.logs=15`, добавляя совместимые поля:
+
+| Новое поле | Номер | Смысл |
+|---|---:|---|
+| `LogRecord.syslog` | 18 | Format/version/MSGID/SD/raw timestamp, peer IP, transport, verified TLS identity, authenticated/managed flags, sanitized non-UTF8 raw bytes |
+| `LogRecord.observation` | 19 | Existing SourceRef и ObservationTime на wire |
+| `LogBatch.observation` | 4 | Source/time attribution всей batch |
+
+`SourceRef` разделяет type, collector_id, target_id, protocol, instance_id и
+provenance. `ObservationTime` содержит optional source timestamp, observed_at,
+collected_at, optional offset/uncertainty и clock_quality. Unknown clock data
+не кодируется измеренным zero. Номера существующих fields/RPC/version1 сохранены;
+old peer может игнорировать additions, но тогда не получит полную attribution.
+Новый Backend должен хранить metadata при ingest; изменение Backend здесь
+не выполнялось.
+
+Network source использует `syslog:<configured-id>` только как logical Target/
+legacy source label, не Global Asset ID. Host/process — sender claims;
+authentication отдельно в SyslogMetadata. SourceRef type=syslog либо auditd
+при recognized configured audit plugin, protocol=syslog-tls/syslog-tcp.
+Raw сохраняется после sanitizer; для non-UTF8 bytes дополнительно используется
+`SyslogMetadata.raw_payload`, потому что protobuf/JSON strings требуют UTF-8.
+
+Network admission требует existing durable outbox/application ACK policy.
+Collector→Backend ACK не распространяется на rsyslog→Collector: обычный TCP/TLS
+syslog не имеет нашего per-record application ACK. Duplicate sender transmission
+может стать новой record с новым ID; exactly-once/универсальный sender dedup не
+заявляются. Read в socket не означает durable admission.
+[Receiver contract](syslog-receiver.md).
 
 ## TelephonyUpdate
 

@@ -1,0 +1,46 @@
+# Receiver is opt-in. Install separate Syslog PKI files before enabling.
+# Backend security/enrollment must be configured separately for production.
+agent:
+  name: edge-syslog-collector
+  state_dir: /var/lib/infrapulse-agent
+controller:
+  address: backend.company.example:9443
+security:
+  mode: production
+  ca_file: /etc/infrapulse/backend/ca.crt
+  cert_file: /etc/infrapulse/backend/client.crt
+  key_file: /etc/infrapulse/backend/client.key
+local:
+  enabled: false
+queue:
+  mode: durable
+  ack_fallback: reject
+syslog_receiver:
+  enabled: false
+  unknown_source_policy: reject
+  tls:
+    enabled: true
+    listen: "0.0.0.0:6514"
+    cert_file: /etc/infrapulse/syslog/server.crt
+    key_file: /etc/infrapulse/syslog/server.key
+    client_auth: require_and_verify
+    client_ca_file: /etc/infrapulse/syslog/clients-ca.crt
+  tcp:
+    enabled: false
+    listen: "127.0.0.1:1514"
+    framing: octet_counting
+    allow_non_loopback: false
+  limits:
+    max_message_bytes: 8192
+    max_connections: 64
+    max_connections_per_source: 8
+    read_timeout: 10s
+    idle_timeout: 60s
+    admission_timeout: 2s
+  sources:
+    - id: linux-01
+      tls_identity: "dns:linux-01.company.example"
+      # Both selectors must match if peer_cidrs is supplied.
+      peer_cidrs: ["192.0.2.10/32"]
+      audit_apps: [audispd, audisp-syslog]
+      provenance: real

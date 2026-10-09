@@ -560,6 +560,45 @@ message AuditRecord {
   string result = 9;
   string host = 10;
 }
+// Sender header claims remain on LogRecord; this metadata distinguishes them
+// from transport evidence. Raw payload contains sanitized non-UTF-8 octets.
+message SyslogMetadata {
+  uint32 version = 1;
+  string message_id = 2;
+  string structured_data = 3;
+  string raw_timestamp = 4;
+  string format = 5;
+  string parse_status = 6;
+  string peer_ip = 7;
+  string transport = 8;
+  string tls_identity = 9;
+  bool authenticated = 10;
+  bool managed = 11;
+  bytes raw_payload = 12;
+}
+// Logical source attribution is independent of Backend asset resolution.
+message SourceRef {
+  string type = 1;
+  string collector_id = 2;
+  string target_id = 3;
+  string protocol = 4;
+  string instance_id = 5;
+  string provenance = 6;
+}
+// received_at belongs to the Backend. Missing offset/uncertainty are unknown;
+// present zero values are measured zero. No clock correction is applied here.
+message ObservationTime {
+  google.protobuf.Timestamp source_timestamp = 1;
+  google.protobuf.Timestamp observed_at = 2;
+  google.protobuf.Timestamp collected_at = 3;
+  google.protobuf.Duration clock_offset = 4;
+  google.protobuf.Duration uncertainty = 5;
+  string clock_quality = 6;
+}
+message ObservationMetadata {
+  SourceRef source = 1;
+  ObservationTime time = 2;
+}
 message LogRecord {
   string id = 1;
   string device_id = 2;
@@ -578,12 +617,16 @@ message LogRecord {
   string file_identity = 15;
   int64 offset = 16;
   AuditRecord audit = 17;
+  SyslogMetadata syslog = 18;
+  ObservationMetadata observation = 19;
 }
-// Cursor advances after RAM outbox admission, not after durable delivery.
+// Local cursors advance after configured outbox admission, independently of
+// Backend application ACK. Durable delivery is bounded and at-least-once.
 message LogBatch {
   google.protobuf.Timestamp observed_at = 1;
   string source = 2;
   repeated LogRecord records = 3;
+  ObservationMetadata observation = 4;
 }
 message TelephonyHealth {
   string target_id = 1;

@@ -5017,6 +5017,363 @@ func (x *AuditRecord) GetHost() string {
 	return ""
 }
 
+// Sender header claims remain on LogRecord; this metadata distinguishes them
+// from transport evidence. Raw payload contains sanitized non-UTF-8 octets.
+type SyslogMetadata struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Version        uint32                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	MessageId      string                 `protobuf:"bytes,2,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
+	StructuredData string                 `protobuf:"bytes,3,opt,name=structured_data,json=structuredData,proto3" json:"structured_data,omitempty"`
+	RawTimestamp   string                 `protobuf:"bytes,4,opt,name=raw_timestamp,json=rawTimestamp,proto3" json:"raw_timestamp,omitempty"`
+	Format         string                 `protobuf:"bytes,5,opt,name=format,proto3" json:"format,omitempty"`
+	ParseStatus    string                 `protobuf:"bytes,6,opt,name=parse_status,json=parseStatus,proto3" json:"parse_status,omitempty"`
+	PeerIp         string                 `protobuf:"bytes,7,opt,name=peer_ip,json=peerIp,proto3" json:"peer_ip,omitempty"`
+	Transport      string                 `protobuf:"bytes,8,opt,name=transport,proto3" json:"transport,omitempty"`
+	TlsIdentity    string                 `protobuf:"bytes,9,opt,name=tls_identity,json=tlsIdentity,proto3" json:"tls_identity,omitempty"`
+	Authenticated  bool                   `protobuf:"varint,10,opt,name=authenticated,proto3" json:"authenticated,omitempty"`
+	Managed        bool                   `protobuf:"varint,11,opt,name=managed,proto3" json:"managed,omitempty"`
+	RawPayload     []byte                 `protobuf:"bytes,12,opt,name=raw_payload,json=rawPayload,proto3" json:"raw_payload,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SyslogMetadata) Reset() {
+	*x = SyslogMetadata{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyslogMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyslogMetadata) ProtoMessage() {}
+
+func (x *SyslogMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyslogMetadata.ProtoReflect.Descriptor instead.
+func (*SyslogMetadata) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *SyslogMetadata) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *SyslogMetadata) GetMessageId() string {
+	if x != nil {
+		return x.MessageId
+	}
+	return ""
+}
+
+func (x *SyslogMetadata) GetStructuredData() string {
+	if x != nil {
+		return x.StructuredData
+	}
+	return ""
+}
+
+func (x *SyslogMetadata) GetRawTimestamp() string {
+	if x != nil {
+		return x.RawTimestamp
+	}
+	return ""
+}
+
+func (x *SyslogMetadata) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+func (x *SyslogMetadata) GetParseStatus() string {
+	if x != nil {
+		return x.ParseStatus
+	}
+	return ""
+}
+
+func (x *SyslogMetadata) GetPeerIp() string {
+	if x != nil {
+		return x.PeerIp
+	}
+	return ""
+}
+
+func (x *SyslogMetadata) GetTransport() string {
+	if x != nil {
+		return x.Transport
+	}
+	return ""
+}
+
+func (x *SyslogMetadata) GetTlsIdentity() string {
+	if x != nil {
+		return x.TlsIdentity
+	}
+	return ""
+}
+
+func (x *SyslogMetadata) GetAuthenticated() bool {
+	if x != nil {
+		return x.Authenticated
+	}
+	return false
+}
+
+func (x *SyslogMetadata) GetManaged() bool {
+	if x != nil {
+		return x.Managed
+	}
+	return false
+}
+
+func (x *SyslogMetadata) GetRawPayload() []byte {
+	if x != nil {
+		return x.RawPayload
+	}
+	return nil
+}
+
+// Logical source attribution is independent of Backend asset resolution.
+type SourceRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	CollectorId   string                 `protobuf:"bytes,2,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
+	TargetId      string                 `protobuf:"bytes,3,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
+	Protocol      string                 `protobuf:"bytes,4,opt,name=protocol,proto3" json:"protocol,omitempty"`
+	InstanceId    string                 `protobuf:"bytes,5,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	Provenance    string                 `protobuf:"bytes,6,opt,name=provenance,proto3" json:"provenance,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SourceRef) Reset() {
+	*x = SourceRef{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SourceRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SourceRef) ProtoMessage() {}
+
+func (x *SourceRef) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SourceRef.ProtoReflect.Descriptor instead.
+func (*SourceRef) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *SourceRef) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *SourceRef) GetCollectorId() string {
+	if x != nil {
+		return x.CollectorId
+	}
+	return ""
+}
+
+func (x *SourceRef) GetTargetId() string {
+	if x != nil {
+		return x.TargetId
+	}
+	return ""
+}
+
+func (x *SourceRef) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+func (x *SourceRef) GetInstanceId() string {
+	if x != nil {
+		return x.InstanceId
+	}
+	return ""
+}
+
+func (x *SourceRef) GetProvenance() string {
+	if x != nil {
+		return x.Provenance
+	}
+	return ""
+}
+
+// received_at belongs to the Backend. Missing offset/uncertainty are unknown;
+// present zero values are measured zero. No clock correction is applied here.
+type ObservationTime struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	SourceTimestamp *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=source_timestamp,json=sourceTimestamp,proto3" json:"source_timestamp,omitempty"`
+	ObservedAt      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	CollectedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=collected_at,json=collectedAt,proto3" json:"collected_at,omitempty"`
+	ClockOffset     *durationpb.Duration   `protobuf:"bytes,4,opt,name=clock_offset,json=clockOffset,proto3" json:"clock_offset,omitempty"`
+	Uncertainty     *durationpb.Duration   `protobuf:"bytes,5,opt,name=uncertainty,proto3" json:"uncertainty,omitempty"`
+	ClockQuality    string                 `protobuf:"bytes,6,opt,name=clock_quality,json=clockQuality,proto3" json:"clock_quality,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ObservationTime) Reset() {
+	*x = ObservationTime{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObservationTime) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObservationTime) ProtoMessage() {}
+
+func (x *ObservationTime) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObservationTime.ProtoReflect.Descriptor instead.
+func (*ObservationTime) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *ObservationTime) GetSourceTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SourceTimestamp
+	}
+	return nil
+}
+
+func (x *ObservationTime) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *ObservationTime) GetCollectedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CollectedAt
+	}
+	return nil
+}
+
+func (x *ObservationTime) GetClockOffset() *durationpb.Duration {
+	if x != nil {
+		return x.ClockOffset
+	}
+	return nil
+}
+
+func (x *ObservationTime) GetUncertainty() *durationpb.Duration {
+	if x != nil {
+		return x.Uncertainty
+	}
+	return nil
+}
+
+func (x *ObservationTime) GetClockQuality() string {
+	if x != nil {
+		return x.ClockQuality
+	}
+	return ""
+}
+
+type ObservationMetadata struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *SourceRef             `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Time          *ObservationTime       `protobuf:"bytes,2,opt,name=time,proto3" json:"time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ObservationMetadata) Reset() {
+	*x = ObservationMetadata{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObservationMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObservationMetadata) ProtoMessage() {}
+
+func (x *ObservationMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObservationMetadata.ProtoReflect.Descriptor instead.
+func (*ObservationMetadata) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *ObservationMetadata) GetSource() *SourceRef {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *ObservationMetadata) GetTime() *ObservationTime {
+	if x != nil {
+		return x.Time
+	}
+	return nil
+}
+
 type LogRecord struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -5036,13 +5393,15 @@ type LogRecord struct {
 	FileIdentity      string                 `protobuf:"bytes,15,opt,name=file_identity,json=fileIdentity,proto3" json:"file_identity,omitempty"`
 	Offset            int64                  `protobuf:"varint,16,opt,name=offset,proto3" json:"offset,omitempty"`
 	Audit             *AuditRecord           `protobuf:"bytes,17,opt,name=audit,proto3" json:"audit,omitempty"`
+	Syslog            *SyslogMetadata        `protobuf:"bytes,18,opt,name=syslog,proto3" json:"syslog,omitempty"`
+	Observation       *ObservationMetadata   `protobuf:"bytes,19,opt,name=observation,proto3" json:"observation,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *LogRecord) Reset() {
 	*x = LogRecord{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5054,7 +5413,7 @@ func (x *LogRecord) String() string {
 func (*LogRecord) ProtoMessage() {}
 
 func (x *LogRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5067,7 +5426,7 @@ func (x *LogRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogRecord.ProtoReflect.Descriptor instead.
 func (*LogRecord) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{47}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *LogRecord) GetId() string {
@@ -5189,19 +5548,35 @@ func (x *LogRecord) GetAudit() *AuditRecord {
 	return nil
 }
 
-// Cursor advances after RAM outbox admission, not after durable delivery.
+func (x *LogRecord) GetSyslog() *SyslogMetadata {
+	if x != nil {
+		return x.Syslog
+	}
+	return nil
+}
+
+func (x *LogRecord) GetObservation() *ObservationMetadata {
+	if x != nil {
+		return x.Observation
+	}
+	return nil
+}
+
+// Local cursors advance after configured outbox admission, independently of
+// Backend application ACK. Durable delivery is bounded and at-least-once.
 type LogBatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
 	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
 	Records       []*LogRecord           `protobuf:"bytes,3,rep,name=records,proto3" json:"records,omitempty"`
+	Observation   *ObservationMetadata   `protobuf:"bytes,4,opt,name=observation,proto3" json:"observation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LogBatch) Reset() {
 	*x = LogBatch{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[48]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5213,7 +5588,7 @@ func (x *LogBatch) String() string {
 func (*LogBatch) ProtoMessage() {}
 
 func (x *LogBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[48]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5226,7 +5601,7 @@ func (x *LogBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogBatch.ProtoReflect.Descriptor instead.
 func (*LogBatch) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{48}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *LogBatch) GetObservedAt() *timestamppb.Timestamp {
@@ -5250,6 +5625,13 @@ func (x *LogBatch) GetRecords() []*LogRecord {
 	return nil
 }
 
+func (x *LogBatch) GetObservation() *ObservationMetadata {
+	if x != nil {
+		return x.Observation
+	}
+	return nil
+}
+
 type TelephonyHealth struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	TargetId            string                 `protobuf:"bytes,1,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
@@ -5269,7 +5651,7 @@ type TelephonyHealth struct {
 
 func (x *TelephonyHealth) Reset() {
 	*x = TelephonyHealth{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[49]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5281,7 +5663,7 @@ func (x *TelephonyHealth) String() string {
 func (*TelephonyHealth) ProtoMessage() {}
 
 func (x *TelephonyHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[49]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5294,7 +5676,7 @@ func (x *TelephonyHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelephonyHealth.ProtoReflect.Descriptor instead.
 func (*TelephonyHealth) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{49}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *TelephonyHealth) GetTargetId() string {
@@ -5385,7 +5767,7 @@ type TelephonyUpdate struct {
 
 func (x *TelephonyUpdate) Reset() {
 	*x = TelephonyUpdate{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[50]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5397,7 +5779,7 @@ func (x *TelephonyUpdate) String() string {
 func (*TelephonyUpdate) ProtoMessage() {}
 
 func (x *TelephonyUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[50]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5410,7 +5792,7 @@ func (x *TelephonyUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelephonyUpdate.ProtoReflect.Descriptor instead.
 func (*TelephonyUpdate) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{50}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *TelephonyUpdate) GetObservedAt() *timestamppb.Timestamp {
@@ -5934,7 +6316,44 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\x05_auidB\x06\n" +
 	"\x04_pidB\n" +
 	"\n" +
-	"\b_success\"\xd7\x04\n" +
+	"\b_success\"\x8d\x03\n" +
+	"\x0eSyslogMetadata\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\rR\aversion\x12\x1d\n" +
+	"\n" +
+	"message_id\x18\x02 \x01(\tR\tmessageId\x12'\n" +
+	"\x0fstructured_data\x18\x03 \x01(\tR\x0estructuredData\x12#\n" +
+	"\rraw_timestamp\x18\x04 \x01(\tR\frawTimestamp\x12\x16\n" +
+	"\x06format\x18\x05 \x01(\tR\x06format\x12!\n" +
+	"\fparse_status\x18\x06 \x01(\tR\vparseStatus\x12\x17\n" +
+	"\apeer_ip\x18\a \x01(\tR\x06peerIp\x12\x1c\n" +
+	"\ttransport\x18\b \x01(\tR\ttransport\x12!\n" +
+	"\ftls_identity\x18\t \x01(\tR\vtlsIdentity\x12$\n" +
+	"\rauthenticated\x18\n" +
+	" \x01(\bR\rauthenticated\x12\x18\n" +
+	"\amanaged\x18\v \x01(\bR\amanaged\x12\x1f\n" +
+	"\vraw_payload\x18\f \x01(\fR\n" +
+	"rawPayload\"\xbc\x01\n" +
+	"\tSourceRef\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12!\n" +
+	"\fcollector_id\x18\x02 \x01(\tR\vcollectorId\x12\x1b\n" +
+	"\ttarget_id\x18\x03 \x01(\tR\btargetId\x12\x1a\n" +
+	"\bprotocol\x18\x04 \x01(\tR\bprotocol\x12\x1f\n" +
+	"\vinstance_id\x18\x05 \x01(\tR\n" +
+	"instanceId\x12\x1e\n" +
+	"\n" +
+	"provenance\x18\x06 \x01(\tR\n" +
+	"provenance\"\xf4\x02\n" +
+	"\x0fObservationTime\x12E\n" +
+	"\x10source_timestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x0fsourceTimestamp\x12;\n" +
+	"\vobserved_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x12=\n" +
+	"\fcollected_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vcollectedAt\x12<\n" +
+	"\fclock_offset\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vclockOffset\x12;\n" +
+	"\vuncertainty\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vuncertainty\x12#\n" +
+	"\rclock_quality\x18\x06 \x01(\tR\fclockQuality\"{\n" +
+	"\x13ObservationMetadata\x120\n" +
+	"\x06source\x18\x01 \x01(\v2\x18.infrapulse.v1.SourceRefR\x06source\x122\n" +
+	"\x04time\x18\x02 \x01(\v2\x1e.infrapulse.v1.ObservationTimeR\x04time\"\xd4\x05\n" +
 	"\tLogRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tdevice_id\x18\x02 \x01(\tR\bdeviceId\x12\x16\n" +
@@ -5955,14 +6374,17 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\ttruncated\x18\x0e \x01(\bR\ttruncated\x12#\n" +
 	"\rfile_identity\x18\x0f \x01(\tR\ffileIdentity\x12\x16\n" +
 	"\x06offset\x18\x10 \x01(\x03R\x06offset\x120\n" +
-	"\x05audit\x18\x11 \x01(\v2\x1a.infrapulse.v1.AuditRecordR\x05auditB\v\n" +
+	"\x05audit\x18\x11 \x01(\v2\x1a.infrapulse.v1.AuditRecordR\x05audit\x125\n" +
+	"\x06syslog\x18\x12 \x01(\v2\x1d.infrapulse.v1.SyslogMetadataR\x06syslog\x12D\n" +
+	"\vobservation\x18\x13 \x01(\v2\".infrapulse.v1.ObservationMetadataR\vobservationB\v\n" +
 	"\t_severityB\v\n" +
-	"\t_facility\"\x93\x01\n" +
+	"\t_facility\"\xd9\x01\n" +
 	"\bLogBatch\x12;\n" +
 	"\vobserved_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x122\n" +
-	"\arecords\x18\x03 \x03(\v2\x18.infrapulse.v1.LogRecordR\arecords\"\xb8\x03\n" +
+	"\arecords\x18\x03 \x03(\v2\x18.infrapulse.v1.LogRecordR\arecords\x12D\n" +
+	"\vobservation\x18\x04 \x01(\v2\".infrapulse.v1.ObservationMetadataR\vobservation\"\xb8\x03\n" +
 	"\x0fTelephonyHealth\x12\x1b\n" +
 	"\ttarget_id\x18\x01 \x01(\tR\btargetId\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x1c\n" +
@@ -6050,7 +6472,7 @@ func file_infrapulse_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_infrapulse_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_infrapulse_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_infrapulse_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_infrapulse_v1_agent_proto_goTypes = []any{
 	(DeviceType)(0),               // 0: infrapulse.v1.DeviceType
 	(SnapshotCompleteness)(0),     // 1: infrapulse.v1.SnapshotCompleteness
@@ -6106,112 +6528,126 @@ var file_infrapulse_v1_agent_proto_goTypes = []any{
 	(*FirewallRule)(nil),          // 51: infrapulse.v1.FirewallRule
 	(*FirewallRedirect)(nil),      // 52: infrapulse.v1.FirewallRedirect
 	(*AuditRecord)(nil),           // 53: infrapulse.v1.AuditRecord
-	(*LogRecord)(nil),             // 54: infrapulse.v1.LogRecord
-	(*LogBatch)(nil),              // 55: infrapulse.v1.LogBatch
-	(*TelephonyHealth)(nil),       // 56: infrapulse.v1.TelephonyHealth
-	(*TelephonyUpdate)(nil),       // 57: infrapulse.v1.TelephonyUpdate
-	(*timestamppb.Timestamp)(nil), // 58: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 59: google.protobuf.Duration
+	(*SyslogMetadata)(nil),        // 54: infrapulse.v1.SyslogMetadata
+	(*SourceRef)(nil),             // 55: infrapulse.v1.SourceRef
+	(*ObservationTime)(nil),       // 56: infrapulse.v1.ObservationTime
+	(*ObservationMetadata)(nil),   // 57: infrapulse.v1.ObservationMetadata
+	(*LogRecord)(nil),             // 58: infrapulse.v1.LogRecord
+	(*LogBatch)(nil),              // 59: infrapulse.v1.LogBatch
+	(*TelephonyHealth)(nil),       // 60: infrapulse.v1.TelephonyHealth
+	(*TelephonyUpdate)(nil),       // 61: infrapulse.v1.TelephonyUpdate
+	(*timestamppb.Timestamp)(nil), // 62: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 63: google.protobuf.Duration
 }
 var file_infrapulse_v1_agent_proto_depIdxs = []int32{
-	58, // 0: infrapulse.v1.AgentEnvelope.sent_at:type_name -> google.protobuf.Timestamp
-	11, // 1: infrapulse.v1.AgentEnvelope.hello:type_name -> infrapulse.v1.AgentHello
-	31, // 2: infrapulse.v1.AgentEnvelope.heartbeat:type_name -> infrapulse.v1.Heartbeat
-	29, // 3: infrapulse.v1.AgentEnvelope.telemetry:type_name -> infrapulse.v1.TelemetryBatch
-	33, // 4: infrapulse.v1.AgentEnvelope.inventory:type_name -> infrapulse.v1.InventoryUpdate
-	34, // 5: infrapulse.v1.AgentEnvelope.topology:type_name -> infrapulse.v1.TopologyUpdate
-	55, // 6: infrapulse.v1.AgentEnvelope.logs:type_name -> infrapulse.v1.LogBatch
-	37, // 7: infrapulse.v1.AgentEnvelope.events:type_name -> infrapulse.v1.EventBatch
-	57, // 8: infrapulse.v1.AgentEnvelope.telephony:type_name -> infrapulse.v1.TelephonyUpdate
-	43, // 9: infrapulse.v1.AgentEnvelope.command_result:type_name -> infrapulse.v1.CommandResult
-	38, // 10: infrapulse.v1.AgentEnvelope.error:type_name -> infrapulse.v1.ErrorReport
-	12, // 11: infrapulse.v1.ControllerEnvelope.hello_ack:type_name -> infrapulse.v1.HelloAck
-	41, // 12: infrapulse.v1.ControllerEnvelope.command:type_name -> infrapulse.v1.Command
-	9,  // 13: infrapulse.v1.ControllerEnvelope.message_ack:type_name -> infrapulse.v1.MessageACK
-	10, // 14: infrapulse.v1.AgentHello.build:type_name -> infrapulse.v1.BuildInfo
-	58, // 15: infrapulse.v1.AgentHello.started_at:type_name -> google.protobuf.Timestamp
-	15, // 16: infrapulse.v1.AgentHello.device:type_name -> infrapulse.v1.Device
-	0,  // 17: infrapulse.v1.Device.type:type_name -> infrapulse.v1.DeviceType
-	58, // 18: infrapulse.v1.Device.last_seen:type_name -> google.protobuf.Timestamp
-	14, // 19: infrapulse.v1.Device.location:type_name -> infrapulse.v1.PhysicalLocation
-	13, // 20: infrapulse.v1.Device.capabilities:type_name -> infrapulse.v1.Capability
-	16, // 21: infrapulse.v1.Device.vendor_evidence:type_name -> infrapulse.v1.Evidence
-	17, // 22: infrapulse.v1.Device.components:type_name -> infrapulse.v1.InventoryComponent
-	16, // 23: infrapulse.v1.Device.platform_evidence:type_name -> infrapulse.v1.Evidence
-	45, // 24: infrapulse.v1.Device.services:type_name -> infrapulse.v1.Service
-	48, // 25: infrapulse.v1.Device.firewall:type_name -> infrapulse.v1.FirewallSnapshot
-	47, // 26: infrapulse.v1.Device.networks:type_name -> infrapulse.v1.NetworkState
-	22, // 27: infrapulse.v1.InterfaceRates.available:type_name -> infrapulse.v1.CounterAvailability
-	22, // 28: infrapulse.v1.CounterMetadata.available:type_name -> infrapulse.v1.CounterAvailability
-	23, // 29: infrapulse.v1.CounterMetadata.widths:type_name -> infrapulse.v1.CounterWidths
-	20, // 30: infrapulse.v1.Interface.counters:type_name -> infrapulse.v1.InterfaceCounters
-	21, // 31: infrapulse.v1.Interface.rates:type_name -> infrapulse.v1.InterfaceRates
-	25, // 32: infrapulse.v1.Interface.metadata:type_name -> infrapulse.v1.InterfaceMetadata
-	24, // 33: infrapulse.v1.Interface.counter_metadata:type_name -> infrapulse.v1.CounterMetadata
-	58, // 34: infrapulse.v1.TelemetrySample.observed_at:type_name -> google.protobuf.Timestamp
-	58, // 35: infrapulse.v1.TelemetrySample.collected_at:type_name -> google.protobuf.Timestamp
-	18, // 36: infrapulse.v1.TelemetrySample.cpu:type_name -> infrapulse.v1.CPUStats
-	19, // 37: infrapulse.v1.TelemetrySample.memory:type_name -> infrapulse.v1.MemoryStats
-	26, // 38: infrapulse.v1.TelemetrySample.interfaces:type_name -> infrapulse.v1.Interface
-	27, // 39: infrapulse.v1.TelemetrySample.metrics:type_name -> infrapulse.v1.Metric
-	28, // 40: infrapulse.v1.TelemetryBatch.samples:type_name -> infrapulse.v1.TelemetrySample
-	58, // 41: infrapulse.v1.QueueState.oldest_pending:type_name -> google.protobuf.Timestamp
-	58, // 42: infrapulse.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
-	10, // 43: infrapulse.v1.Heartbeat.build:type_name -> infrapulse.v1.BuildInfo
-	30, // 44: infrapulse.v1.Heartbeat.queue:type_name -> infrapulse.v1.QueueState
-	32, // 45: infrapulse.v1.Heartbeat.certificate:type_name -> infrapulse.v1.CertificateStatus
-	58, // 46: infrapulse.v1.CertificateStatus.expires_at:type_name -> google.protobuf.Timestamp
-	58, // 47: infrapulse.v1.CertificateStatus.last_successful_renewal:type_name -> google.protobuf.Timestamp
-	58, // 48: infrapulse.v1.InventoryUpdate.observed_at:type_name -> google.protobuf.Timestamp
-	15, // 49: infrapulse.v1.InventoryUpdate.devices:type_name -> infrapulse.v1.Device
-	58, // 50: infrapulse.v1.TopologyUpdate.observed_at:type_name -> google.protobuf.Timestamp
-	58, // 51: infrapulse.v1.TopologyUpdate.collected_at:type_name -> google.protobuf.Timestamp
-	1,  // 52: infrapulse.v1.TopologyUpdate.completeness:type_name -> infrapulse.v1.SnapshotCompleteness
-	35, // 53: infrapulse.v1.TopologyUpdate.observations:type_name -> infrapulse.v1.Neighbor
-	2,  // 54: infrapulse.v1.Neighbor.protocol:type_name -> infrapulse.v1.DiscoveryProtocol
-	58, // 55: infrapulse.v1.Neighbor.observed_at:type_name -> google.protobuf.Timestamp
-	58, // 56: infrapulse.v1.Neighbor.expires_at:type_name -> google.protobuf.Timestamp
-	16, // 57: infrapulse.v1.Neighbor.evidence:type_name -> infrapulse.v1.Evidence
-	58, // 58: infrapulse.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
-	36, // 59: infrapulse.v1.EventBatch.events:type_name -> infrapulse.v1.Event
-	58, // 60: infrapulse.v1.ErrorReport.timestamp:type_name -> google.protobuf.Timestamp
-	4,  // 61: infrapulse.v1.InterfaceAction.operation:type_name -> infrapulse.v1.InterfaceOperation
-	5,  // 62: infrapulse.v1.ServiceAction.operation:type_name -> infrapulse.v1.ServiceOperation
-	58, // 63: infrapulse.v1.Command.requested_at:type_name -> google.protobuf.Timestamp
-	59, // 64: infrapulse.v1.Command.timeout:type_name -> google.protobuf.Duration
-	3,  // 65: infrapulse.v1.Command.initiator:type_name -> infrapulse.v1.CommandInitiator
-	39, // 66: infrapulse.v1.Command.interface:type_name -> infrapulse.v1.InterfaceAction
-	40, // 67: infrapulse.v1.Command.service:type_name -> infrapulse.v1.ServiceAction
-	42, // 68: infrapulse.v1.Command.rollback:type_name -> infrapulse.v1.RollbackAction
-	6,  // 69: infrapulse.v1.CommandResult.status:type_name -> infrapulse.v1.CommandStatus
-	58, // 70: infrapulse.v1.CommandResult.started_at:type_name -> google.protobuf.Timestamp
-	58, // 71: infrapulse.v1.CommandResult.finished_at:type_name -> google.protobuf.Timestamp
-	44, // 72: infrapulse.v1.CommandResult.verification:type_name -> infrapulse.v1.InterfaceVerification
-	58, // 73: infrapulse.v1.InterfaceVerification.observed_at:type_name -> google.protobuf.Timestamp
-	58, // 74: infrapulse.v1.Service.observed_at:type_name -> google.protobuf.Timestamp
-	46, // 75: infrapulse.v1.Service.instances:type_name -> infrapulse.v1.ServiceInstance
-	58, // 76: infrapulse.v1.NetworkState.observed_at:type_name -> google.protobuf.Timestamp
-	58, // 77: infrapulse.v1.FirewallSnapshot.observed_at:type_name -> google.protobuf.Timestamp
-	49, // 78: infrapulse.v1.FirewallSnapshot.zones:type_name -> infrapulse.v1.FirewallZone
-	50, // 79: infrapulse.v1.FirewallSnapshot.forwardings:type_name -> infrapulse.v1.FirewallForwarding
-	51, // 80: infrapulse.v1.FirewallSnapshot.rules:type_name -> infrapulse.v1.FirewallRule
-	52, // 81: infrapulse.v1.FirewallSnapshot.redirects:type_name -> infrapulse.v1.FirewallRedirect
-	51, // 82: infrapulse.v1.FirewallRedirect.rule:type_name -> infrapulse.v1.FirewallRule
-	58, // 83: infrapulse.v1.LogRecord.observed_at:type_name -> google.protobuf.Timestamp
-	58, // 84: infrapulse.v1.LogRecord.original_timestamp:type_name -> google.protobuf.Timestamp
-	53, // 85: infrapulse.v1.LogRecord.audit:type_name -> infrapulse.v1.AuditRecord
-	58, // 86: infrapulse.v1.LogBatch.observed_at:type_name -> google.protobuf.Timestamp
-	54, // 87: infrapulse.v1.LogBatch.records:type_name -> infrapulse.v1.LogRecord
-	58, // 88: infrapulse.v1.TelephonyHealth.observed_at:type_name -> google.protobuf.Timestamp
-	58, // 89: infrapulse.v1.TelephonyUpdate.observed_at:type_name -> google.protobuf.Timestamp
-	56, // 90: infrapulse.v1.TelephonyUpdate.targets:type_name -> infrapulse.v1.TelephonyHealth
-	7,  // 91: infrapulse.v1.AgentService.Connect:input_type -> infrapulse.v1.AgentEnvelope
-	8,  // 92: infrapulse.v1.AgentService.Connect:output_type -> infrapulse.v1.ControllerEnvelope
-	92, // [92:93] is the sub-list for method output_type
-	91, // [91:92] is the sub-list for method input_type
-	91, // [91:91] is the sub-list for extension type_name
-	91, // [91:91] is the sub-list for extension extendee
-	0,  // [0:91] is the sub-list for field type_name
+	62,  // 0: infrapulse.v1.AgentEnvelope.sent_at:type_name -> google.protobuf.Timestamp
+	11,  // 1: infrapulse.v1.AgentEnvelope.hello:type_name -> infrapulse.v1.AgentHello
+	31,  // 2: infrapulse.v1.AgentEnvelope.heartbeat:type_name -> infrapulse.v1.Heartbeat
+	29,  // 3: infrapulse.v1.AgentEnvelope.telemetry:type_name -> infrapulse.v1.TelemetryBatch
+	33,  // 4: infrapulse.v1.AgentEnvelope.inventory:type_name -> infrapulse.v1.InventoryUpdate
+	34,  // 5: infrapulse.v1.AgentEnvelope.topology:type_name -> infrapulse.v1.TopologyUpdate
+	59,  // 6: infrapulse.v1.AgentEnvelope.logs:type_name -> infrapulse.v1.LogBatch
+	37,  // 7: infrapulse.v1.AgentEnvelope.events:type_name -> infrapulse.v1.EventBatch
+	61,  // 8: infrapulse.v1.AgentEnvelope.telephony:type_name -> infrapulse.v1.TelephonyUpdate
+	43,  // 9: infrapulse.v1.AgentEnvelope.command_result:type_name -> infrapulse.v1.CommandResult
+	38,  // 10: infrapulse.v1.AgentEnvelope.error:type_name -> infrapulse.v1.ErrorReport
+	12,  // 11: infrapulse.v1.ControllerEnvelope.hello_ack:type_name -> infrapulse.v1.HelloAck
+	41,  // 12: infrapulse.v1.ControllerEnvelope.command:type_name -> infrapulse.v1.Command
+	9,   // 13: infrapulse.v1.ControllerEnvelope.message_ack:type_name -> infrapulse.v1.MessageACK
+	10,  // 14: infrapulse.v1.AgentHello.build:type_name -> infrapulse.v1.BuildInfo
+	62,  // 15: infrapulse.v1.AgentHello.started_at:type_name -> google.protobuf.Timestamp
+	15,  // 16: infrapulse.v1.AgentHello.device:type_name -> infrapulse.v1.Device
+	0,   // 17: infrapulse.v1.Device.type:type_name -> infrapulse.v1.DeviceType
+	62,  // 18: infrapulse.v1.Device.last_seen:type_name -> google.protobuf.Timestamp
+	14,  // 19: infrapulse.v1.Device.location:type_name -> infrapulse.v1.PhysicalLocation
+	13,  // 20: infrapulse.v1.Device.capabilities:type_name -> infrapulse.v1.Capability
+	16,  // 21: infrapulse.v1.Device.vendor_evidence:type_name -> infrapulse.v1.Evidence
+	17,  // 22: infrapulse.v1.Device.components:type_name -> infrapulse.v1.InventoryComponent
+	16,  // 23: infrapulse.v1.Device.platform_evidence:type_name -> infrapulse.v1.Evidence
+	45,  // 24: infrapulse.v1.Device.services:type_name -> infrapulse.v1.Service
+	48,  // 25: infrapulse.v1.Device.firewall:type_name -> infrapulse.v1.FirewallSnapshot
+	47,  // 26: infrapulse.v1.Device.networks:type_name -> infrapulse.v1.NetworkState
+	22,  // 27: infrapulse.v1.InterfaceRates.available:type_name -> infrapulse.v1.CounterAvailability
+	22,  // 28: infrapulse.v1.CounterMetadata.available:type_name -> infrapulse.v1.CounterAvailability
+	23,  // 29: infrapulse.v1.CounterMetadata.widths:type_name -> infrapulse.v1.CounterWidths
+	20,  // 30: infrapulse.v1.Interface.counters:type_name -> infrapulse.v1.InterfaceCounters
+	21,  // 31: infrapulse.v1.Interface.rates:type_name -> infrapulse.v1.InterfaceRates
+	25,  // 32: infrapulse.v1.Interface.metadata:type_name -> infrapulse.v1.InterfaceMetadata
+	24,  // 33: infrapulse.v1.Interface.counter_metadata:type_name -> infrapulse.v1.CounterMetadata
+	62,  // 34: infrapulse.v1.TelemetrySample.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 35: infrapulse.v1.TelemetrySample.collected_at:type_name -> google.protobuf.Timestamp
+	18,  // 36: infrapulse.v1.TelemetrySample.cpu:type_name -> infrapulse.v1.CPUStats
+	19,  // 37: infrapulse.v1.TelemetrySample.memory:type_name -> infrapulse.v1.MemoryStats
+	26,  // 38: infrapulse.v1.TelemetrySample.interfaces:type_name -> infrapulse.v1.Interface
+	27,  // 39: infrapulse.v1.TelemetrySample.metrics:type_name -> infrapulse.v1.Metric
+	28,  // 40: infrapulse.v1.TelemetryBatch.samples:type_name -> infrapulse.v1.TelemetrySample
+	62,  // 41: infrapulse.v1.QueueState.oldest_pending:type_name -> google.protobuf.Timestamp
+	62,  // 42: infrapulse.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
+	10,  // 43: infrapulse.v1.Heartbeat.build:type_name -> infrapulse.v1.BuildInfo
+	30,  // 44: infrapulse.v1.Heartbeat.queue:type_name -> infrapulse.v1.QueueState
+	32,  // 45: infrapulse.v1.Heartbeat.certificate:type_name -> infrapulse.v1.CertificateStatus
+	62,  // 46: infrapulse.v1.CertificateStatus.expires_at:type_name -> google.protobuf.Timestamp
+	62,  // 47: infrapulse.v1.CertificateStatus.last_successful_renewal:type_name -> google.protobuf.Timestamp
+	62,  // 48: infrapulse.v1.InventoryUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	15,  // 49: infrapulse.v1.InventoryUpdate.devices:type_name -> infrapulse.v1.Device
+	62,  // 50: infrapulse.v1.TopologyUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 51: infrapulse.v1.TopologyUpdate.collected_at:type_name -> google.protobuf.Timestamp
+	1,   // 52: infrapulse.v1.TopologyUpdate.completeness:type_name -> infrapulse.v1.SnapshotCompleteness
+	35,  // 53: infrapulse.v1.TopologyUpdate.observations:type_name -> infrapulse.v1.Neighbor
+	2,   // 54: infrapulse.v1.Neighbor.protocol:type_name -> infrapulse.v1.DiscoveryProtocol
+	62,  // 55: infrapulse.v1.Neighbor.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 56: infrapulse.v1.Neighbor.expires_at:type_name -> google.protobuf.Timestamp
+	16,  // 57: infrapulse.v1.Neighbor.evidence:type_name -> infrapulse.v1.Evidence
+	62,  // 58: infrapulse.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
+	36,  // 59: infrapulse.v1.EventBatch.events:type_name -> infrapulse.v1.Event
+	62,  // 60: infrapulse.v1.ErrorReport.timestamp:type_name -> google.protobuf.Timestamp
+	4,   // 61: infrapulse.v1.InterfaceAction.operation:type_name -> infrapulse.v1.InterfaceOperation
+	5,   // 62: infrapulse.v1.ServiceAction.operation:type_name -> infrapulse.v1.ServiceOperation
+	62,  // 63: infrapulse.v1.Command.requested_at:type_name -> google.protobuf.Timestamp
+	63,  // 64: infrapulse.v1.Command.timeout:type_name -> google.protobuf.Duration
+	3,   // 65: infrapulse.v1.Command.initiator:type_name -> infrapulse.v1.CommandInitiator
+	39,  // 66: infrapulse.v1.Command.interface:type_name -> infrapulse.v1.InterfaceAction
+	40,  // 67: infrapulse.v1.Command.service:type_name -> infrapulse.v1.ServiceAction
+	42,  // 68: infrapulse.v1.Command.rollback:type_name -> infrapulse.v1.RollbackAction
+	6,   // 69: infrapulse.v1.CommandResult.status:type_name -> infrapulse.v1.CommandStatus
+	62,  // 70: infrapulse.v1.CommandResult.started_at:type_name -> google.protobuf.Timestamp
+	62,  // 71: infrapulse.v1.CommandResult.finished_at:type_name -> google.protobuf.Timestamp
+	44,  // 72: infrapulse.v1.CommandResult.verification:type_name -> infrapulse.v1.InterfaceVerification
+	62,  // 73: infrapulse.v1.InterfaceVerification.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 74: infrapulse.v1.Service.observed_at:type_name -> google.protobuf.Timestamp
+	46,  // 75: infrapulse.v1.Service.instances:type_name -> infrapulse.v1.ServiceInstance
+	62,  // 76: infrapulse.v1.NetworkState.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 77: infrapulse.v1.FirewallSnapshot.observed_at:type_name -> google.protobuf.Timestamp
+	49,  // 78: infrapulse.v1.FirewallSnapshot.zones:type_name -> infrapulse.v1.FirewallZone
+	50,  // 79: infrapulse.v1.FirewallSnapshot.forwardings:type_name -> infrapulse.v1.FirewallForwarding
+	51,  // 80: infrapulse.v1.FirewallSnapshot.rules:type_name -> infrapulse.v1.FirewallRule
+	52,  // 81: infrapulse.v1.FirewallSnapshot.redirects:type_name -> infrapulse.v1.FirewallRedirect
+	51,  // 82: infrapulse.v1.FirewallRedirect.rule:type_name -> infrapulse.v1.FirewallRule
+	62,  // 83: infrapulse.v1.ObservationTime.source_timestamp:type_name -> google.protobuf.Timestamp
+	62,  // 84: infrapulse.v1.ObservationTime.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 85: infrapulse.v1.ObservationTime.collected_at:type_name -> google.protobuf.Timestamp
+	63,  // 86: infrapulse.v1.ObservationTime.clock_offset:type_name -> google.protobuf.Duration
+	63,  // 87: infrapulse.v1.ObservationTime.uncertainty:type_name -> google.protobuf.Duration
+	55,  // 88: infrapulse.v1.ObservationMetadata.source:type_name -> infrapulse.v1.SourceRef
+	56,  // 89: infrapulse.v1.ObservationMetadata.time:type_name -> infrapulse.v1.ObservationTime
+	62,  // 90: infrapulse.v1.LogRecord.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 91: infrapulse.v1.LogRecord.original_timestamp:type_name -> google.protobuf.Timestamp
+	53,  // 92: infrapulse.v1.LogRecord.audit:type_name -> infrapulse.v1.AuditRecord
+	54,  // 93: infrapulse.v1.LogRecord.syslog:type_name -> infrapulse.v1.SyslogMetadata
+	57,  // 94: infrapulse.v1.LogRecord.observation:type_name -> infrapulse.v1.ObservationMetadata
+	62,  // 95: infrapulse.v1.LogBatch.observed_at:type_name -> google.protobuf.Timestamp
+	58,  // 96: infrapulse.v1.LogBatch.records:type_name -> infrapulse.v1.LogRecord
+	57,  // 97: infrapulse.v1.LogBatch.observation:type_name -> infrapulse.v1.ObservationMetadata
+	62,  // 98: infrapulse.v1.TelephonyHealth.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 99: infrapulse.v1.TelephonyUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	60,  // 100: infrapulse.v1.TelephonyUpdate.targets:type_name -> infrapulse.v1.TelephonyHealth
+	7,   // 101: infrapulse.v1.AgentService.Connect:input_type -> infrapulse.v1.AgentEnvelope
+	8,   // 102: infrapulse.v1.AgentService.Connect:output_type -> infrapulse.v1.ControllerEnvelope
+	102, // [102:103] is the sub-list for method output_type
+	101, // [101:102] is the sub-list for method input_type
+	101, // [101:101] is the sub-list for extension type_name
+	101, // [101:101] is the sub-list for extension extendee
+	0,   // [0:101] is the sub-list for field type_name
 }
 
 func init() { file_infrapulse_v1_agent_proto_init() }
@@ -6256,15 +6692,15 @@ func file_infrapulse_v1_agent_proto_init() {
 	file_infrapulse_v1_agent_proto_msgTypes[43].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[44].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[46].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[47].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[49].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[51].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[53].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_infrapulse_v1_agent_proto_rawDesc), len(file_infrapulse_v1_agent_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   51,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

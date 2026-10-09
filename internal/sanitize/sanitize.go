@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 type DataSanitizer interface {
@@ -119,12 +120,23 @@ func (k KnownSecrets) Sanitize(e model.Envelope) model.Envelope {
 		e.Events = events
 	}
 	if e.Logs != nil {
-		batch := *e.Logs
-		batch.Records = append([]model.LogRecord(nil), batch.Records...)
+		batch := model.CloneLogBatch(*e.Logs)
 		for i := range batch.Records {
 			r := &batch.Records[i]
 			r.Message, r.Raw = text(r.Message), text(r.Raw)
 			r.Host, r.Process, r.ProcessID = text(r.Host), text(r.Process), text(r.ProcessID)
+			if r.Syslog != nil {
+				s := r.Syslog
+				s.MessageID, s.StructuredData, s.RawTimestamp = text(s.MessageID), text(s.StructuredData), text(s.RawTimestamp)
+				if len(s.RawPayload) > 0 {
+					cleaned := text(string(s.RawPayload))
+					if utf8.ValidString(cleaned) {
+						s.RawPayload = nil
+					} else {
+						s.RawPayload = []byte(cleaned)
+					}
+				}
+			}
 			if r.Audit != nil {
 				audit := *r.Audit
 				audit.Executable, audit.Result, audit.Host = text(audit.Executable), text(audit.Result), text(audit.Host)

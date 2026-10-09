@@ -10,6 +10,34 @@ func clonePointer[T any](p *T) *T {
 	return &v
 }
 
+// CloneLogRecord owns mutable source/time, audit and raw-octet metadata.
+func CloneLogRecord(r LogRecord) LogRecord {
+	r.Observation = CloneObservation(r.Observation)
+	r.OriginalTimestamp = clonePointer(r.OriginalTimestamp)
+	r.Severity, r.Facility = clonePointer(r.Severity), clonePointer(r.Facility)
+	if r.Syslog != nil {
+		syslog := *r.Syslog
+		syslog.RawPayload = slices.Clone(syslog.RawPayload)
+		r.Syslog = &syslog
+	}
+	if r.Audit != nil {
+		audit := *r.Audit
+		audit.UID, audit.AUID, audit.PID = clonePointer(audit.UID), clonePointer(audit.AUID), clonePointer(audit.PID)
+		audit.Success = clonePointer(audit.Success)
+		r.Audit = &audit
+	}
+	return r
+}
+
+func CloneLogBatch(b LogBatch) LogBatch {
+	b.Observation = CloneObservation(b.Observation)
+	b.Records = slices.Clone(b.Records)
+	for i := range b.Records {
+		b.Records[i] = CloneLogRecord(b.Records[i])
+	}
+	return b
+}
+
 // CloneDevice owns all mutable inventory values. New nested P2 snapshots must
 // not share their storage with collectors or diagnostics callers.
 func CloneDevice(d Device) Device {

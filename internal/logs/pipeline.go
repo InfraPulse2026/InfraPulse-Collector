@@ -297,6 +297,7 @@ func (p *Pipeline) Poll(ctx context.Context, sourceID string) error {
 				marker := p.safeMarker("[LOG RECORD EXCEEDS BATCH LIMIT; REDACTED]")
 				r.Message, r.Raw = marker, marker
 				r.Host, r.Process, r.ProcessID, r.Audit = "", "", "", nil
+				r.Syslog = nil
 				r.Truncated = true
 				encoded, err = json.Marshal(r)
 				if err != nil || batchBytes+len(encoded)+11 > p.options.MaxBatchBytes {

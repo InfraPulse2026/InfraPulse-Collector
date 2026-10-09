@@ -2,7 +2,7 @@
 
 Module path — `InfraPulseAgent`, Go — 1.27. InfraPulse Collector / Edge Gateway
 использует один существующий `internal/agent.Agent` runtime: локальный
-Linux/OpenWrt, remote collection, file logs/audit и SIP health. Исторические
+Linux/OpenWrt, remote collection, file/network logs/audit и SIP health. Исторические
 CLI/protobuf/identity names сохранены; второго runtime нет.
 Backend, Web UI, LLM, server database и историческое хранилище находятся вне
 репозитория; embedded durable state принадлежит Collector.
@@ -34,6 +34,7 @@ Domain boundaries и архитектурный freeze Phase 1 описаны в
 | OpenWrt Platform | Linux decorator, typed ubus read-only operations и allowlisted normalized inventory schemas |
 | Vendor Profiles | Подтверждённый sysObjectID namespace; capabilities и standard MIB mappings остаются у driver |
 | Log Pipeline | Bounded file reads, parsers, sanitizer, rotation и persistent admission cursors |
+| Syslog Receiver | Opt-in bounded TCP/TLS ingress, framing, verified peer/source attribution и normalized LogBatch через существующий admission |
 | Telephony | Fixed SIP OPTIONS UDP/TCP/TLS, verified CA/SAN/SNI, latency/response/error semantics и отдельные state transitions |
 | Simulator | Deterministic development scenarios с simulated source через настоящий transport |
 
@@ -64,6 +65,7 @@ internal/transport/grpc/     protobuf mapping и verified TLS/mTLS
 internal/platform/openwrt/   decorator над Linux, typed ubus и schema mappings
 internal/vendorprofiles/     verified PEN detection, без отдельных SNMP drivers
 internal/logs/               file identity/cursors, syslog/audit parsing и redaction
+internal/syslogreceiver/     TCP/TLS lifecycle, framing, configured source mapping и bounded admission
 internal/telephony/          bounded OPTIONS и endpoint health state
 internal/simulator/          development-only generator и transport lifecycle
 ```
@@ -266,9 +268,10 @@ persistent journal/results, enrollment/rotation и typed interface rollback.
 Collector Core Phase 1 сохраняет этот фундамент и добавляет Target/Source,
 identity evidence и временную модель. Phase 2 использует standard OS corporate
 NTP через отдельный deployment apply. Local Platform collection interface,
-observation clocks, gRPC и Backend не меняются. Remote Syslog/Audit receiver,
-Redfish/IPMI и Collector ↔ Backend clock offset estimation пока отсутствуют;
-capabilities для них не объявлены. [Architecture freeze](collector-core.md).
+observation clocks и Backend не меняются. Phase 3 добавляет opt-in Syslog/Audit
+network source и additive logs metadata на gRPC. Redfish/IPMI и Collector ↔
+Backend clock offset estimation пока отсутствуют; capabilities для них не
+объявлены. [Architecture freeze](collector-core.md).
 Windows LocalPlatform относится к post-MVP/backlog. NETCONF/gNMI deferred:
 без подтверждённого typed use case новый protocol не добавляется.
 Фактически выполненные проверки находятся в [validation](validation.md).
@@ -429,3 +432,43 @@ read-only adapter, predefined paths и verified TLS; arbitrary writes запре
 Production Backend/UI/AI/history, universal backup/configuration manager, media
 и Windows LocalPlatform остаются post-MVP или вне scope. P3 production readiness
 не означает hardware certification или готовый production PKI/Backend.
+
+## Phase 3: Remote Syslog / Audit Receiver
+
+`internal/syslogreceiver` — transport source в существующем Collector runtime.
+Strict YAML содержит listener options отдельно от bounded configured mappings.
+Disabled receiver не создаёт listener/worker. Enabled startup проверяет TLS,
+создаёт listeners, затем запускает ограниченные accept/connection loops;
+shutdown останавливает accept, отменяет processing и закрывает active sockets.
+Receiver не использует polling scheduler и не занимает SNMP/SIP/log-file workers.
+
+TLS использует стандартный `crypto/tls`, TLS ≥1.2, отдельный server certificate
+и mTLS CA. После transport validation TCP/TLS проходят один path:
+
+```text
+bounded frame → existing sanitizer/syslog/audit parser → source/time metadata
+             → one LogRecord in LogBatch → existing Agent.push
+             → existing durable queue → one gRPC sender → application ACK
+```
+
+Protocol source не знает protobuf/session и не отправляет messages напрямую.
+Новой logging queue/DB/delivery subsystem нет. Для admission failure connection
+worker удерживает одну bounded record, прекращает читать и выполняет bounded
+retry; timeout закрывает connection. Accepted envelope получает обычный stable
+message ID/ACK/replay. TLS/TCP sender не получает application ACK от Collector.
+
+Managed source имеет `SourceRef.TargetID=syslog:<configured-id>`; HOSTNAME
+сохраняется sender claim отдельно от verified TLS SAN/fingerprint и peer IP.
+Explicit unmanaged policy не создаёт permanent Target/Asset; IP/hostname claims
+не используются для global Asset merge. Optional SyslogMetadata и observation
+на LogRecord/LogBatch передают эти сведения через additive wire fields.
+Local file reader/cursors/rotation и existing parser остаются общими механизмами.
+Audit normalization требует managed source, configured plugin APP-NAME и
+canonical kernel timestamp/serial; records сохраняются отдельно.
+
+Default message8192/connection64/per-source8 bounds и 10s read/60s idle/2s admission
+timeout предназначены для bounded deployment, а не production throughput claim.
+Enabled receiver требует durable mode и ACK reject policy; storage fallback
+не разрешает ему признать volatile admission durable. Source clock quality
+остаётся unknown; Phase 2 NTP/системные timestamps не изменены.
+Практические rules/examples и RFC scope — [syslog-receiver](syslog-receiver.md).
