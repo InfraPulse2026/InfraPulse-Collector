@@ -171,6 +171,10 @@ func (q *Queue) dropped(item entry) {
 
 func envelopePriority(e model.Envelope) (int, error) {
 	count, priority := 0, 5
+	if e.ConfigApplyResult != nil {
+		count++
+		priority = 1
+	}
 	if e.Logs != nil {
 		count++
 		priority = 6

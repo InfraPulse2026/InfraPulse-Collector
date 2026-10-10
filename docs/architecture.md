@@ -23,6 +23,7 @@ Domain boundaries и архитектурный freeze Phase 1 описаны в
 | Local Platform | Linux identity, CPU/memory/interfaces из `/proc` и `/sys`; не управляет удалёнными устройствами |
 | Host Time Setup | Trusted local `time_sync`, выбор стандартной NTP-службы ОС, opt-in deployment apply и read-only status; не создаёт clock model или remote-device command |
 | Remote Registry | Configured targets, lifecycle adapters, bounded polling, per-target exclusion, last successful observation, connectivity failures и state events |
+| Managed Configuration | Administrator-bounded typed snapshots, fixed canonical digest/revisions, full-set validation, prepared Registry/scheduler transition, last-known-good и statuses; не equipment commands |
 | Remote Driver | Нормализация данных источника и динамические capabilities; не читает YAML или protobuf и не выполняет глобальный Asset merge |
 | Protocol Adapter | SNMP v2c/v3 USM/UDP, RouterOS/Redfish HTTPS или IPMI LANplus UDP, authentication, deadlines, cancellation, response limits и безопасные категории ошибок |
 | CredentialProvider | Получение credentials по именованной ссылке из environment; заменяемый interface |
@@ -52,6 +53,7 @@ internal/agent/              composition root, diagnostics, command admission
 internal/config/             strict YAML, defaults и limits
 internal/credentials/        Provider и environment references
 internal/remote/             registry, polling и переходы состояния
+internal/managedconfig/      full snapshots, local policy, revision/digest, apply/recovery и LKG
 internal/driver/             Adapter, optional readers, compile-time Registry и InterfaceManager
 internal/driver/snmp/        SYSTEM/ENTITY/IF/IF-X/LLDP normalization
 internal/driver/routeros/    REST normalization, dependency resolution и verification
@@ -330,6 +332,17 @@ Backend clock offset estimation отсутствует. Phase 6 завершае
 и directed topology evidence с additive wire metadata и Backend handoff,
 сохраняя тот же runtime/outbox. [Architecture freeze](collector-core.md),
 [identity/topology](identity-topology.md).
+Phase 7 добавляет opt-in Backend-managed monitoring через existing gRPC/mTLS:
+typed snapshots отделены от commands и local YAML, `internal/managedconfig`
+использует existing adapter factory/Registry/scheduler. Новый scheduler для
+managed Targets не создаётся. Validate/prepare выполняются до остановки старых
+изменяемых jobs; replacement jobs paused до persistent LKG publication, затем
+commit. Failure восстанавливает предыдущий runnable набор bounded recovery.
+Unchanged entries и static local jobs сохраняются; outbox/journal не очищаются.
+Highest-seen revision/result и LKG identity-bound file сохраняются отдельно от
+actual active state: denied restore не выдаёт stored APPLIED за runtime success.
+[Ownership/lifecycle](managed-configuration.md),
+[Backend B9 contract](backend-managed-config-contract.md).
 Windows LocalPlatform относится к post-MVP/backlog. NETCONF/gNMI deferred:
 без подтверждённого typed use case новый protocol не добавляется.
 Фактически выполненные проверки находятся в [validation](validation.md).

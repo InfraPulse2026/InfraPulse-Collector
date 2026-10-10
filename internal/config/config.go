@@ -24,23 +24,24 @@ import (
 )
 
 type Config struct {
-	SyslogReceiver syslogreceiver.Settings          `yaml:"syslog_receiver"`
-	TimeSync       timesync.Settings                `yaml:"time_sync"`
-	Logs           Logs                             `yaml:"logs"`
-	Telephony      TelephonyHealth                  `yaml:"telephony"`
-	Agent          Agent                            `yaml:"agent"`
-	Controller     Controller                       `yaml:"controller"`
-	Security       Security                         `yaml:"security"`
-	Local          Local                            `yaml:"local"`
-	Telemetry      Telemetry                        `yaml:"telemetry"`
-	Queue          Queue                            `yaml:"queue"`
-	Scheduler      Scheduler                        `yaml:"scheduler"`
-	Logging        Logging                          `yaml:"logging"`
-	Location       model.PhysicalLocation           `yaml:"location"`
-	Devices        []Device                         `yaml:"devices"`
-	Commands       Commands                         `yaml:"commands"`
-	Remote         Remote                           `yaml:"remote"`
-	Credentials    map[string]credentials.Reference `yaml:"credentials" json:"-"`
+	RemoteManagement RemoteManagement                 `yaml:"remote_management"`
+	SyslogReceiver   syslogreceiver.Settings          `yaml:"syslog_receiver"`
+	TimeSync         timesync.Settings                `yaml:"time_sync"`
+	Logs             Logs                             `yaml:"logs"`
+	Telephony        TelephonyHealth                  `yaml:"telephony"`
+	Agent            Agent                            `yaml:"agent"`
+	Controller       Controller                       `yaml:"controller"`
+	Security         Security                         `yaml:"security"`
+	Local            Local                            `yaml:"local"`
+	Telemetry        Telemetry                        `yaml:"telemetry"`
+	Queue            Queue                            `yaml:"queue"`
+	Scheduler        Scheduler                        `yaml:"scheduler"`
+	Logging          Logging                          `yaml:"logging"`
+	Location         model.PhysicalLocation           `yaml:"location"`
+	Devices          []Device                         `yaml:"devices"`
+	Commands         Commands                         `yaml:"commands"`
+	Remote           Remote                           `yaml:"remote"`
+	Credentials      map[string]credentials.Reference `yaml:"credentials" json:"-"`
 }
 type Agent struct {
 	Name     string `yaml:"name"`
@@ -112,6 +113,10 @@ type Logging struct {
 	Level string `yaml:"level"`
 }
 type Device struct {
+	// Runtime-only values cannot be supplied through administrator YAML or wire.
+	Disabled        bool                   `yaml:"-"`
+	SIP             *telephony.Endpoint    `yaml:"-"`
+	DialAddress     string                 `yaml:"-"`
 	ID              string                 `yaml:"id"`
 	Name            string                 `yaml:"name"`
 	Driver          string                 `yaml:"driver"`
@@ -225,6 +230,7 @@ func Load(path string) (Config, error) {
 		}
 	}
 	ResolvePKIPaths(&c, base)
+	ResolveManagedPaths(&c, base)
 	return c, c.Validate()
 }
 
@@ -257,6 +263,9 @@ func IsLoopback(host string) bool {
 
 func (c Config) Validate() error {
 	var problems []error
+	if err := c.RemoteManagement.Validate(c); err != nil {
+		problems = append(problems, err)
+	}
 	if err := c.SyslogReceiver.Validate(); err != nil {
 		problems = append(problems, err)
 	}

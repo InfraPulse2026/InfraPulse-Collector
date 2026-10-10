@@ -23,6 +23,10 @@ type Session interface {
 	Close() error
 }
 
+// AuthenticatedSession attests the existing verified transport boundary.
+// Sessions without this interface are not authorized for managed configuration.
+type AuthenticatedSession interface{ Authenticated() bool }
+
 // SendCloser optionally finishes the outbound stream while leaving Receive
 // active. The single sender calls it after its final Send. A peer EOF can then
 // confirm graceful stream completion without an application delivery ACK.

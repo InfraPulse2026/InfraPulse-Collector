@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"InfraPulseAgent/internal/model"
 	transportgrpc "InfraPulseAgent/internal/transport/grpc"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func main() {
@@ -28,6 +30,16 @@ func main() {
 	}
 }
 func run() error {
+	var configFiles []string
+	flag.Func("desired-config", "typed DesiredConfigSnapshot protojson file; repeat flag for a scenario; collector_id and digest must be precomputed", func(path string) error {
+		if path == "" || len(configFiles) >= 128 {
+			return errors.New("desired-config requires a path, maximum 128 snapshots")
+		}
+		configFiles = append(configFiles, path)
+		return nil
+	})
+	repeatConfig := flag.Bool("repeat-config", false, "repeat each desired configuration once to exercise idempotency")
+	disconnectConfig := flag.Int("disconnect-after-config-status", 0, "disconnect once after N terminal configuration statuses to exercise reconnect")
 	address := flag.String("address", "127.0.0.1:9443", "loopback development listener")
 	mode := flag.String("security-mode", "development", "development or production (mTLS)")
 	ca := flag.String("ca-file", "", "trusted client CA PEM")
@@ -42,6 +54,33 @@ func run() error {
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
+	}
+	if *disconnectConfig < 0 || *disconnectConfig > 256 {
+		return errors.New("disconnect-after-config-status must be 0..256")
+	}
+	var desiredConfigs []model.DesiredCollectorConfig
+	for _, path := range configFiles {
+		f, err := os.Open(path)
+		if err != nil {
+			return errors.New("mock desired configuration file unavailable")
+		}
+		data, err := io.ReadAll(io.LimitReader(f, transportgrpc.MaxManagedConfigBytes+1))
+		_ = f.Close()
+		if err != nil || len(data) > transportgrpc.MaxManagedConfigBytes {
+			return errors.New("mock desired configuration file exceeds limit or cannot be read")
+		}
+		wire := new(pb.DesiredConfigSnapshot)
+		if err = (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(data, wire); err != nil {
+			return errors.New("mock desired configuration must use the typed DesiredConfigSnapshot protojson schema")
+		}
+		config, err := transportgrpc.DecodeDesiredConfig(wire)
+		if err != nil {
+			return errors.New("mock desired configuration is not representable by managed_config_v1")
+		}
+		if config.CollectorID == "" || config.ConfigurationDigest == "" {
+			return errors.New("mock desired configuration requires collector_id and its precomputed digest")
+		}
+		desiredConfigs = append(desiredConfigs, config)
 	}
 	var command *model.Command
 	if *action != "" {
@@ -81,6 +120,10 @@ func run() error {
 	server := grpc.NewServer(options...)
 	controller := mockcontroller.New(os.Stdout, command, nil)
 	controller.DisableACK = *disableACK
+	controller.RepeatConfig, controller.DisconnectAfterConfigStatus = *repeatConfig, *disconnectConfig
+	if err = controller.SetDesiredConfigs(desiredConfigs); err != nil {
+		return err
+	}
 	pb.RegisterAgentServiceServer(server, controller)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

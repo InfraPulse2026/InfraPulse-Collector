@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -38,7 +40,10 @@ type Record map[string]string
 type Authentication struct{ Username, Password string }
 type Authenticate func(context.Context) (Authentication, error)
 type Options struct {
-	Address                      string
+	Address string
+	// DialAddress pins an already policy-checked numeric IP without changing
+	// the HTTPS origin, Host header or TLS server identity. Empty uses DNS.
+	DialAddress                  string
 	TLSConfig                    *tls.Config
 	Timeout                      time.Duration
 	MaxResponseBytes, MaxRecords int
@@ -85,6 +90,25 @@ func New(opts Options, auth Authenticate) (*Client, error) {
 		}
 	}
 	transport := &http.Transport{TLSClientConfig: tlsConfig, Proxy: nil, MaxIdleConns: 2, MaxIdleConnsPerHost: 2, MaxConnsPerHost: 2, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: opts.Timeout, ResponseHeaderTimeout: opts.Timeout, DisableCompression: true, MaxResponseHeaderBytes: 32 << 10}
+	if opts.DialAddress != "" {
+		ip, parseErr := netip.ParseAddr(opts.DialAddress)
+		if parseErr != nil || ip.Zone() != "" {
+			return nil, errors.New("RouterOS dial address must be a numeric IP without a zone")
+		}
+		port := u.Port()
+		if port == "" {
+			port = "443"
+		}
+		pinned := net.JoinHostPort(ip.String(), port)
+		dialer := &net.Dialer{Timeout: opts.Timeout, KeepAlive: 30 * time.Second}
+		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			host, requestedPort, splitErr := net.SplitHostPort(address)
+			if splitErr != nil || !strings.EqualFold(host, u.Hostname()) || requestedPort != port {
+				return nil, ErrUnavailable
+			}
+			return dialer.DialContext(ctx, network, pinned)
+		}
+	}
 	client := &http.Client{Transport: transport, Timeout: opts.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return &Client{origin: u, http: client, transport: transport, auth: auth, maxBytes: opts.MaxResponseBytes, maxRecords: opts.MaxRecords}, nil
 }

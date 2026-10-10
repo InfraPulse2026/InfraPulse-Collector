@@ -23,6 +23,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ConfigStatus int32
+
+const (
+	ConfigStatus_CONFIG_STATUS_UNSPECIFIED ConfigStatus = 0
+	ConfigStatus_CONFIG_STATUS_RECEIVED    ConfigStatus = 1
+	ConfigStatus_CONFIG_STATUS_VALIDATING  ConfigStatus = 2
+	ConfigStatus_CONFIG_STATUS_APPLIED     ConfigStatus = 3
+	ConfigStatus_CONFIG_STATUS_REJECTED    ConfigStatus = 4
+	ConfigStatus_CONFIG_STATUS_FAILED      ConfigStatus = 5
+)
+
+// Enum value maps for ConfigStatus.
+var (
+	ConfigStatus_name = map[int32]string{
+		0: "CONFIG_STATUS_UNSPECIFIED",
+		1: "CONFIG_STATUS_RECEIVED",
+		2: "CONFIG_STATUS_VALIDATING",
+		3: "CONFIG_STATUS_APPLIED",
+		4: "CONFIG_STATUS_REJECTED",
+		5: "CONFIG_STATUS_FAILED",
+	}
+	ConfigStatus_value = map[string]int32{
+		"CONFIG_STATUS_UNSPECIFIED": 0,
+		"CONFIG_STATUS_RECEIVED":    1,
+		"CONFIG_STATUS_VALIDATING":  2,
+		"CONFIG_STATUS_APPLIED":     3,
+		"CONFIG_STATUS_REJECTED":    4,
+		"CONFIG_STATUS_FAILED":      5,
+	}
+)
+
+func (x ConfigStatus) Enum() *ConfigStatus {
+	p := new(ConfigStatus)
+	*p = x
+	return p
+}
+
+func (x ConfigStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ConfigStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_infrapulse_v1_agent_proto_enumTypes[0].Descriptor()
+}
+
+func (ConfigStatus) Type() protoreflect.EnumType {
+	return &file_infrapulse_v1_agent_proto_enumTypes[0]
+}
+
+func (x ConfigStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ConfigStatus.Descriptor instead.
+func (ConfigStatus) EnumDescriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{0}
+}
+
 type DeviceType int32
 
 const (
@@ -83,11 +141,11 @@ func (x DeviceType) String() string {
 }
 
 func (DeviceType) Descriptor() protoreflect.EnumDescriptor {
-	return file_infrapulse_v1_agent_proto_enumTypes[0].Descriptor()
+	return file_infrapulse_v1_agent_proto_enumTypes[1].Descriptor()
 }
 
 func (DeviceType) Type() protoreflect.EnumType {
-	return &file_infrapulse_v1_agent_proto_enumTypes[0]
+	return &file_infrapulse_v1_agent_proto_enumTypes[1]
 }
 
 func (x DeviceType) Number() protoreflect.EnumNumber {
@@ -96,7 +154,7 @@ func (x DeviceType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeviceType.Descriptor instead.
 func (DeviceType) EnumDescriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{0}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{1}
 }
 
 type SnapshotCompleteness int32
@@ -135,11 +193,11 @@ func (x SnapshotCompleteness) String() string {
 }
 
 func (SnapshotCompleteness) Descriptor() protoreflect.EnumDescriptor {
-	return file_infrapulse_v1_agent_proto_enumTypes[1].Descriptor()
+	return file_infrapulse_v1_agent_proto_enumTypes[2].Descriptor()
 }
 
 func (SnapshotCompleteness) Type() protoreflect.EnumType {
-	return &file_infrapulse_v1_agent_proto_enumTypes[1]
+	return &file_infrapulse_v1_agent_proto_enumTypes[2]
 }
 
 func (x SnapshotCompleteness) Number() protoreflect.EnumNumber {
@@ -148,7 +206,7 @@ func (x SnapshotCompleteness) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SnapshotCompleteness.Descriptor instead.
 func (SnapshotCompleteness) EnumDescriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{1}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{2}
 }
 
 type DiscoveryProtocol int32
@@ -190,11 +248,11 @@ func (x DiscoveryProtocol) String() string {
 }
 
 func (DiscoveryProtocol) Descriptor() protoreflect.EnumDescriptor {
-	return file_infrapulse_v1_agent_proto_enumTypes[2].Descriptor()
+	return file_infrapulse_v1_agent_proto_enumTypes[3].Descriptor()
 }
 
 func (DiscoveryProtocol) Type() protoreflect.EnumType {
-	return &file_infrapulse_v1_agent_proto_enumTypes[2]
+	return &file_infrapulse_v1_agent_proto_enumTypes[3]
 }
 
 func (x DiscoveryProtocol) Number() protoreflect.EnumNumber {
@@ -203,7 +261,7 @@ func (x DiscoveryProtocol) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DiscoveryProtocol.Descriptor instead.
 func (DiscoveryProtocol) EnumDescriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{2}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{3}
 }
 
 type CommandInitiator int32
@@ -242,11 +300,11 @@ func (x CommandInitiator) String() string {
 }
 
 func (CommandInitiator) Descriptor() protoreflect.EnumDescriptor {
-	return file_infrapulse_v1_agent_proto_enumTypes[3].Descriptor()
+	return file_infrapulse_v1_agent_proto_enumTypes[4].Descriptor()
 }
 
 func (CommandInitiator) Type() protoreflect.EnumType {
-	return &file_infrapulse_v1_agent_proto_enumTypes[3]
+	return &file_infrapulse_v1_agent_proto_enumTypes[4]
 }
 
 func (x CommandInitiator) Number() protoreflect.EnumNumber {
@@ -255,7 +313,7 @@ func (x CommandInitiator) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CommandInitiator.Descriptor instead.
 func (CommandInitiator) EnumDescriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{3}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{4}
 }
 
 type InterfaceOperation int32
@@ -291,11 +349,11 @@ func (x InterfaceOperation) String() string {
 }
 
 func (InterfaceOperation) Descriptor() protoreflect.EnumDescriptor {
-	return file_infrapulse_v1_agent_proto_enumTypes[4].Descriptor()
+	return file_infrapulse_v1_agent_proto_enumTypes[5].Descriptor()
 }
 
 func (InterfaceOperation) Type() protoreflect.EnumType {
-	return &file_infrapulse_v1_agent_proto_enumTypes[4]
+	return &file_infrapulse_v1_agent_proto_enumTypes[5]
 }
 
 func (x InterfaceOperation) Number() protoreflect.EnumNumber {
@@ -304,7 +362,7 @@ func (x InterfaceOperation) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use InterfaceOperation.Descriptor instead.
 func (InterfaceOperation) EnumDescriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{4}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{5}
 }
 
 type ServiceOperation int32
@@ -343,11 +401,11 @@ func (x ServiceOperation) String() string {
 }
 
 func (ServiceOperation) Descriptor() protoreflect.EnumDescriptor {
-	return file_infrapulse_v1_agent_proto_enumTypes[5].Descriptor()
+	return file_infrapulse_v1_agent_proto_enumTypes[6].Descriptor()
 }
 
 func (ServiceOperation) Type() protoreflect.EnumType {
-	return &file_infrapulse_v1_agent_proto_enumTypes[5]
+	return &file_infrapulse_v1_agent_proto_enumTypes[6]
 }
 
 func (x ServiceOperation) Number() protoreflect.EnumNumber {
@@ -356,7 +414,7 @@ func (x ServiceOperation) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ServiceOperation.Descriptor instead.
 func (ServiceOperation) EnumDescriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{5}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{6}
 }
 
 type CommandStatus int32
@@ -407,11 +465,11 @@ func (x CommandStatus) String() string {
 }
 
 func (CommandStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_infrapulse_v1_agent_proto_enumTypes[6].Descriptor()
+	return file_infrapulse_v1_agent_proto_enumTypes[7].Descriptor()
 }
 
 func (CommandStatus) Type() protoreflect.EnumType {
-	return &file_infrapulse_v1_agent_proto_enumTypes[6]
+	return &file_infrapulse_v1_agent_proto_enumTypes[7]
 }
 
 func (x CommandStatus) Number() protoreflect.EnumNumber {
@@ -420,7 +478,7 @@ func (x CommandStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CommandStatus.Descriptor instead.
 func (CommandStatus) EnumDescriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{6}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{7}
 }
 
 type AgentEnvelope struct {
@@ -442,6 +500,7 @@ type AgentEnvelope struct {
 	//	*AgentEnvelope_Telephony
 	//	*AgentEnvelope_CommandResult
 	//	*AgentEnvelope_Error
+	//	*AgentEnvelope_ConfigStatus
 	Payload       isAgentEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -609,6 +668,15 @@ func (x *AgentEnvelope) GetError() *ErrorReport {
 	return nil
 }
 
+func (x *AgentEnvelope) GetConfigStatus() *ConfigApplyStatus {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentEnvelope_ConfigStatus); ok {
+			return x.ConfigStatus
+		}
+	}
+	return nil
+}
+
 type isAgentEnvelope_Payload interface {
 	isAgentEnvelope_Payload()
 }
@@ -653,6 +721,10 @@ type AgentEnvelope_Error struct {
 	Error *ErrorReport `protobuf:"bytes,20,opt,name=error,proto3,oneof"`
 }
 
+type AgentEnvelope_ConfigStatus struct {
+	ConfigStatus *ConfigApplyStatus `protobuf:"bytes,21,opt,name=config_status,json=configStatus,proto3,oneof"`
+}
+
 func (*AgentEnvelope_Hello) isAgentEnvelope_Payload() {}
 
 func (*AgentEnvelope_Heartbeat) isAgentEnvelope_Payload() {}
@@ -673,6 +745,8 @@ func (*AgentEnvelope_CommandResult) isAgentEnvelope_Payload() {}
 
 func (*AgentEnvelope_Error) isAgentEnvelope_Payload() {}
 
+func (*AgentEnvelope_ConfigStatus) isAgentEnvelope_Payload() {}
+
 type ControllerEnvelope struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Payload:
@@ -680,6 +754,7 @@ type ControllerEnvelope struct {
 	//	*ControllerEnvelope_HelloAck
 	//	*ControllerEnvelope_Command
 	//	*ControllerEnvelope_MessageAck
+	//	*ControllerEnvelope_DesiredConfig
 	Payload       isControllerEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -749,6 +824,15 @@ func (x *ControllerEnvelope) GetMessageAck() *MessageACK {
 	return nil
 }
 
+func (x *ControllerEnvelope) GetDesiredConfig() *DesiredConfigSnapshot {
+	if x != nil {
+		if x, ok := x.Payload.(*ControllerEnvelope_DesiredConfig); ok {
+			return x.DesiredConfig
+		}
+	}
+	return nil
+}
+
 type isControllerEnvelope_Payload interface {
 	isControllerEnvelope_Payload()
 }
@@ -765,11 +849,17 @@ type ControllerEnvelope_MessageAck struct {
 	MessageAck *MessageACK `protobuf:"bytes,3,opt,name=message_ack,json=messageAck,proto3,oneof"`
 }
 
+type ControllerEnvelope_DesiredConfig struct {
+	DesiredConfig *DesiredConfigSnapshot `protobuf:"bytes,4,opt,name=desired_config,json=desiredConfig,proto3,oneof"`
+}
+
 func (*ControllerEnvelope_HelloAck) isControllerEnvelope_Payload() {}
 
 func (*ControllerEnvelope_Command) isControllerEnvelope_Payload() {}
 
 func (*ControllerEnvelope_MessageAck) isControllerEnvelope_Payload() {}
+
+func (*ControllerEnvelope_DesiredConfig) isControllerEnvelope_Payload() {}
 
 // ACK is emitted only after application acceptance. Send success is not ACK.
 type MessageACK struct {
@@ -877,17 +967,20 @@ func (x *BuildInfo) GetBuildTime() string {
 }
 
 type AgentHello struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	AgentId         string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	SessionId       string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Name            string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Build           *BuildInfo             `protobuf:"bytes,4,opt,name=build,proto3" json:"build,omitempty"`
-	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	Device          *Device                `protobuf:"bytes,6,opt,name=device,proto3" json:"device,omitempty"`
-	ProtocolVersion uint32                 `protobuf:"varint,7,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
-	ApplicationAck  bool                   `protobuf:"varint,8,opt,name=application_ack,json=applicationAck,proto3" json:"application_ack,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	AgentId                 string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	SessionId               string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Name                    string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Build                   *BuildInfo             `protobuf:"bytes,4,opt,name=build,proto3" json:"build,omitempty"`
+	StartedAt               *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	Device                  *Device                `protobuf:"bytes,6,opt,name=device,proto3" json:"device,omitempty"`
+	ProtocolVersion         uint32                 `protobuf:"varint,7,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
+	ApplicationAck          bool                   `protobuf:"varint,8,opt,name=application_ack,json=applicationAck,proto3" json:"application_ack,omitempty"`
+	ManagedConfigV1         bool                   `protobuf:"varint,9,opt,name=managed_config_v1,json=managedConfigV1,proto3" json:"managed_config_v1,omitempty"`
+	RemoteManagementEnabled bool                   `protobuf:"varint,10,opt,name=remote_management_enabled,json=remoteManagementEnabled,proto3" json:"remote_management_enabled,omitempty"`
+	AppliedConfig           *AppliedConfigState    `protobuf:"bytes,11,opt,name=applied_config,json=appliedConfig,proto3" json:"applied_config,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *AgentHello) Reset() {
@@ -976,11 +1069,33 @@ func (x *AgentHello) GetApplicationAck() bool {
 	return false
 }
 
+func (x *AgentHello) GetManagedConfigV1() bool {
+	if x != nil {
+		return x.ManagedConfigV1
+	}
+	return false
+}
+
+func (x *AgentHello) GetRemoteManagementEnabled() bool {
+	if x != nil {
+		return x.RemoteManagementEnabled
+	}
+	return false
+}
+
+func (x *AgentHello) GetAppliedConfig() *AppliedConfigState {
+	if x != nil {
+		return x.AppliedConfig
+	}
+	return nil
+}
+
 type HelloAck struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Accepted        bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
 	ProtocolVersion uint32                 `protobuf:"varint,2,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
 	ApplicationAck  bool                   `protobuf:"varint,3,opt,name=application_ack,json=applicationAck,proto3" json:"application_ack,omitempty"`
+	ManagedConfigV1 bool                   `protobuf:"varint,4,opt,name=managed_config_v1,json=managedConfigV1,proto3" json:"managed_config_v1,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1036,6 +1151,965 @@ func (x *HelloAck) GetApplicationAck() bool {
 	return false
 }
 
+func (x *HelloAck) GetManagedConfigV1() bool {
+	if x != nil {
+		return x.ManagedConfigV1
+	}
+	return false
+}
+
+// A complete Backend-owned monitoring namespace. No local administrative
+// settings or credential values are allowed. Configuration v1 is closed: unknown
+// fields are rejected, so extensions require explicit capability negotiation.
+type DesiredConfigSnapshot struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	CollectorId         string                 `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
+	SessionId           string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Revision            uint64                 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	ConfigurationDigest string                 `protobuf:"bytes,4,opt,name=configuration_digest,json=configurationDigest,proto3" json:"configuration_digest,omitempty"`
+	IssuedAt            *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
+	Targets             []*ManagedTargetSpec   `protobuf:"bytes,6,rep,name=targets,proto3" json:"targets,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *DesiredConfigSnapshot) Reset() {
+	*x = DesiredConfigSnapshot{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DesiredConfigSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DesiredConfigSnapshot) ProtoMessage() {}
+
+func (x *DesiredConfigSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DesiredConfigSnapshot.ProtoReflect.Descriptor instead.
+func (*DesiredConfigSnapshot) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *DesiredConfigSnapshot) GetCollectorId() string {
+	if x != nil {
+		return x.CollectorId
+	}
+	return ""
+}
+
+func (x *DesiredConfigSnapshot) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *DesiredConfigSnapshot) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *DesiredConfigSnapshot) GetConfigurationDigest() string {
+	if x != nil {
+		return x.ConfigurationDigest
+	}
+	return ""
+}
+
+func (x *DesiredConfigSnapshot) GetIssuedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IssuedAt
+	}
+	return nil
+}
+
+func (x *DesiredConfigSnapshot) GetTargets() []*ManagedTargetSpec {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
+type ManagedTargetPolling struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	FastInterval      *durationpb.Duration   `protobuf:"bytes,1,opt,name=fast_interval,json=fastInterval,proto3" json:"fast_interval,omitempty"`
+	MediumInterval    *durationpb.Duration   `protobuf:"bytes,2,opt,name=medium_interval,json=mediumInterval,proto3" json:"medium_interval,omitempty"`
+	InventoryInterval *durationpb.Duration   `protobuf:"bytes,3,opt,name=inventory_interval,json=inventoryInterval,proto3" json:"inventory_interval,omitempty"`
+	TopologyInterval  *durationpb.Duration   `protobuf:"bytes,4,opt,name=topology_interval,json=topologyInterval,proto3" json:"topology_interval,omitempty"`
+	Timeout           *durationpb.Duration   `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ManagedTargetPolling) Reset() {
+	*x = ManagedTargetPolling{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManagedTargetPolling) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManagedTargetPolling) ProtoMessage() {}
+
+func (x *ManagedTargetPolling) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManagedTargetPolling.ProtoReflect.Descriptor instead.
+func (*ManagedTargetPolling) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ManagedTargetPolling) GetFastInterval() *durationpb.Duration {
+	if x != nil {
+		return x.FastInterval
+	}
+	return nil
+}
+
+func (x *ManagedTargetPolling) GetMediumInterval() *durationpb.Duration {
+	if x != nil {
+		return x.MediumInterval
+	}
+	return nil
+}
+
+func (x *ManagedTargetPolling) GetInventoryInterval() *durationpb.Duration {
+	if x != nil {
+		return x.InventoryInterval
+	}
+	return nil
+}
+
+func (x *ManagedTargetPolling) GetTopologyInterval() *durationpb.Duration {
+	if x != nil {
+		return x.TopologyInterval
+	}
+	return nil
+}
+
+func (x *ManagedTargetPolling) GetTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.Timeout
+	}
+	return nil
+}
+
+type ManagedTargetSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TargetId      string                 `protobuf:"bytes,1,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
+	Protocol      string                 `protobuf:"bytes,2,opt,name=protocol,proto3" json:"protocol,omitempty"`
+	Enabled       bool                   `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Endpoint      string                 `protobuf:"bytes,4,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	CredentialRef string                 `protobuf:"bytes,5,opt,name=credential_ref,json=credentialRef,proto3" json:"credential_ref,omitempty"`
+	Name          string                 `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
+	VendorHint    string                 `protobuf:"bytes,7,opt,name=vendor_hint,json=vendorHint,proto3" json:"vendor_hint,omitempty"`
+	Location      *PhysicalLocation      `protobuf:"bytes,8,opt,name=location,proto3" json:"location,omitempty"`
+	Polling       *ManagedTargetPolling  `protobuf:"bytes,9,opt,name=polling,proto3" json:"polling,omitempty"`
+	// A local administrator-defined key, never a filesystem path.
+	CaRef string `protobuf:"bytes,10,opt,name=ca_ref,json=caRef,proto3" json:"ca_ref,omitempty"`
+	// Types that are valid to be assigned to Options:
+	//
+	//	*ManagedTargetSpec_Snmp
+	//	*ManagedTargetSpec_Sip
+	//	*ManagedTargetSpec_Redfish
+	//	*ManagedTargetSpec_Ipmi
+	Options       isManagedTargetSpec_Options `protobuf_oneof:"options"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ManagedTargetSpec) Reset() {
+	*x = ManagedTargetSpec{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManagedTargetSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManagedTargetSpec) ProtoMessage() {}
+
+func (x *ManagedTargetSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManagedTargetSpec.ProtoReflect.Descriptor instead.
+func (*ManagedTargetSpec) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ManagedTargetSpec) GetTargetId() string {
+	if x != nil {
+		return x.TargetId
+	}
+	return ""
+}
+
+func (x *ManagedTargetSpec) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+func (x *ManagedTargetSpec) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *ManagedTargetSpec) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *ManagedTargetSpec) GetCredentialRef() string {
+	if x != nil {
+		return x.CredentialRef
+	}
+	return ""
+}
+
+func (x *ManagedTargetSpec) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ManagedTargetSpec) GetVendorHint() string {
+	if x != nil {
+		return x.VendorHint
+	}
+	return ""
+}
+
+func (x *ManagedTargetSpec) GetLocation() *PhysicalLocation {
+	if x != nil {
+		return x.Location
+	}
+	return nil
+}
+
+func (x *ManagedTargetSpec) GetPolling() *ManagedTargetPolling {
+	if x != nil {
+		return x.Polling
+	}
+	return nil
+}
+
+func (x *ManagedTargetSpec) GetCaRef() string {
+	if x != nil {
+		return x.CaRef
+	}
+	return ""
+}
+
+func (x *ManagedTargetSpec) GetOptions() isManagedTargetSpec_Options {
+	if x != nil {
+		return x.Options
+	}
+	return nil
+}
+
+func (x *ManagedTargetSpec) GetSnmp() *ManagedSNMPOptions {
+	if x != nil {
+		if x, ok := x.Options.(*ManagedTargetSpec_Snmp); ok {
+			return x.Snmp
+		}
+	}
+	return nil
+}
+
+func (x *ManagedTargetSpec) GetSip() *ManagedSIPOptions {
+	if x != nil {
+		if x, ok := x.Options.(*ManagedTargetSpec_Sip); ok {
+			return x.Sip
+		}
+	}
+	return nil
+}
+
+func (x *ManagedTargetSpec) GetRedfish() *ManagedRedfishOptions {
+	if x != nil {
+		if x, ok := x.Options.(*ManagedTargetSpec_Redfish); ok {
+			return x.Redfish
+		}
+	}
+	return nil
+}
+
+func (x *ManagedTargetSpec) GetIpmi() *ManagedIPMIOptions {
+	if x != nil {
+		if x, ok := x.Options.(*ManagedTargetSpec_Ipmi); ok {
+			return x.Ipmi
+		}
+	}
+	return nil
+}
+
+type isManagedTargetSpec_Options interface {
+	isManagedTargetSpec_Options()
+}
+
+type ManagedTargetSpec_Snmp struct {
+	Snmp *ManagedSNMPOptions `protobuf:"bytes,20,opt,name=snmp,proto3,oneof"`
+}
+
+type ManagedTargetSpec_Sip struct {
+	Sip *ManagedSIPOptions `protobuf:"bytes,21,opt,name=sip,proto3,oneof"`
+}
+
+type ManagedTargetSpec_Redfish struct {
+	Redfish *ManagedRedfishOptions `protobuf:"bytes,22,opt,name=redfish,proto3,oneof"`
+}
+
+type ManagedTargetSpec_Ipmi struct {
+	Ipmi *ManagedIPMIOptions `protobuf:"bytes,23,opt,name=ipmi,proto3,oneof"`
+}
+
+func (*ManagedTargetSpec_Snmp) isManagedTargetSpec_Options() {}
+
+func (*ManagedTargetSpec_Sip) isManagedTargetSpec_Options() {}
+
+func (*ManagedTargetSpec_Redfish) isManagedTargetSpec_Options() {}
+
+func (*ManagedTargetSpec_Ipmi) isManagedTargetSpec_Options() {}
+
+type ManagedSNMPOptions struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Version         string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	SecurityLevel   string                 `protobuf:"bytes,2,opt,name=security_level,json=securityLevel,proto3" json:"security_level,omitempty"`
+	AuthProtocol    string                 `protobuf:"bytes,3,opt,name=auth_protocol,json=authProtocol,proto3" json:"auth_protocol,omitempty"`
+	PrivacyProtocol string                 `protobuf:"bytes,4,opt,name=privacy_protocol,json=privacyProtocol,proto3" json:"privacy_protocol,omitempty"`
+	ContextName     string                 `protobuf:"bytes,5,opt,name=context_name,json=contextName,proto3" json:"context_name,omitempty"`
+	Port            uint32                 `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
+	Retries         int32                  `protobuf:"varint,7,opt,name=retries,proto3" json:"retries,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ManagedSNMPOptions) Reset() {
+	*x = ManagedSNMPOptions{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManagedSNMPOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManagedSNMPOptions) ProtoMessage() {}
+
+func (x *ManagedSNMPOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManagedSNMPOptions.ProtoReflect.Descriptor instead.
+func (*ManagedSNMPOptions) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ManagedSNMPOptions) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *ManagedSNMPOptions) GetSecurityLevel() string {
+	if x != nil {
+		return x.SecurityLevel
+	}
+	return ""
+}
+
+func (x *ManagedSNMPOptions) GetAuthProtocol() string {
+	if x != nil {
+		return x.AuthProtocol
+	}
+	return ""
+}
+
+func (x *ManagedSNMPOptions) GetPrivacyProtocol() string {
+	if x != nil {
+		return x.PrivacyProtocol
+	}
+	return ""
+}
+
+func (x *ManagedSNMPOptions) GetContextName() string {
+	if x != nil {
+		return x.ContextName
+	}
+	return ""
+}
+
+func (x *ManagedSNMPOptions) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *ManagedSNMPOptions) GetRetries() int32 {
+	if x != nil {
+		return x.Retries
+	}
+	return 0
+}
+
+type ManagedSIPOptions struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Port             uint32                 `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`
+	Transport        string                 `protobuf:"bytes,2,opt,name=transport,proto3" json:"transport,omitempty"`
+	FromUser         string                 `protobuf:"bytes,3,opt,name=from_user,json=fromUser,proto3" json:"from_user,omitempty"`
+	ToUser           string                 `protobuf:"bytes,4,opt,name=to_user,json=toUser,proto3" json:"to_user,omitempty"`
+	Domain           string                 `protobuf:"bytes,5,opt,name=domain,proto3" json:"domain,omitempty"`
+	ServerName       string                 `protobuf:"bytes,6,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
+	FailureThreshold uint32                 `protobuf:"varint,7,opt,name=failure_threshold,json=failureThreshold,proto3" json:"failure_threshold,omitempty"`
+	LatencyThreshold *durationpb.Duration   `protobuf:"bytes,8,opt,name=latency_threshold,json=latencyThreshold,proto3" json:"latency_threshold,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ManagedSIPOptions) Reset() {
+	*x = ManagedSIPOptions{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManagedSIPOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManagedSIPOptions) ProtoMessage() {}
+
+func (x *ManagedSIPOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManagedSIPOptions.ProtoReflect.Descriptor instead.
+func (*ManagedSIPOptions) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ManagedSIPOptions) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *ManagedSIPOptions) GetTransport() string {
+	if x != nil {
+		return x.Transport
+	}
+	return ""
+}
+
+func (x *ManagedSIPOptions) GetFromUser() string {
+	if x != nil {
+		return x.FromUser
+	}
+	return ""
+}
+
+func (x *ManagedSIPOptions) GetToUser() string {
+	if x != nil {
+		return x.ToUser
+	}
+	return ""
+}
+
+func (x *ManagedSIPOptions) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
+func (x *ManagedSIPOptions) GetServerName() string {
+	if x != nil {
+		return x.ServerName
+	}
+	return ""
+}
+
+func (x *ManagedSIPOptions) GetFailureThreshold() uint32 {
+	if x != nil {
+		return x.FailureThreshold
+	}
+	return 0
+}
+
+func (x *ManagedSIPOptions) GetLatencyThreshold() *durationpb.Duration {
+	if x != nil {
+		return x.LatencyThreshold
+	}
+	return nil
+}
+
+type ManagedRedfishOptions struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Auth           string                 `protobuf:"bytes,1,opt,name=auth,proto3" json:"auth,omitempty"`
+	RequestTimeout *durationpb.Duration   `protobuf:"bytes,2,opt,name=request_timeout,json=requestTimeout,proto3" json:"request_timeout,omitempty"`
+	MaxResources   int32                  `protobuf:"varint,3,opt,name=max_resources,json=maxResources,proto3" json:"max_resources,omitempty"`
+	MaxPages       int32                  `protobuf:"varint,4,opt,name=max_pages,json=maxPages,proto3" json:"max_pages,omitempty"`
+	MaxRequests    int32                  `protobuf:"varint,5,opt,name=max_requests,json=maxRequests,proto3" json:"max_requests,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ManagedRedfishOptions) Reset() {
+	*x = ManagedRedfishOptions{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManagedRedfishOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManagedRedfishOptions) ProtoMessage() {}
+
+func (x *ManagedRedfishOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManagedRedfishOptions.ProtoReflect.Descriptor instead.
+func (*ManagedRedfishOptions) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ManagedRedfishOptions) GetAuth() string {
+	if x != nil {
+		return x.Auth
+	}
+	return ""
+}
+
+func (x *ManagedRedfishOptions) GetRequestTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.RequestTimeout
+	}
+	return nil
+}
+
+func (x *ManagedRedfishOptions) GetMaxResources() int32 {
+	if x != nil {
+		return x.MaxResources
+	}
+	return 0
+}
+
+func (x *ManagedRedfishOptions) GetMaxPages() int32 {
+	if x != nil {
+		return x.MaxPages
+	}
+	return 0
+}
+
+func (x *ManagedRedfishOptions) GetMaxRequests() int32 {
+	if x != nil {
+		return x.MaxRequests
+	}
+	return 0
+}
+
+type ManagedIPMIOptions struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Port               *uint32                `protobuf:"varint,1,opt,name=port,proto3,oneof" json:"port,omitempty"`
+	CipherSuite        *uint32                `protobuf:"varint,2,opt,name=cipher_suite,json=cipherSuite,proto3,oneof" json:"cipher_suite,omitempty"`
+	Privilege          string                 `protobuf:"bytes,3,opt,name=privilege,proto3" json:"privilege,omitempty"`
+	Retries            int32                  `protobuf:"varint,4,opt,name=retries,proto3" json:"retries,omitempty"`
+	RequestTimeout     *durationpb.Duration   `protobuf:"bytes,5,opt,name=request_timeout,json=requestTimeout,proto3" json:"request_timeout,omitempty"`
+	MaxSessionDuration *durationpb.Duration   `protobuf:"bytes,6,opt,name=max_session_duration,json=maxSessionDuration,proto3" json:"max_session_duration,omitempty"`
+	MaxOperations      int32                  `protobuf:"varint,7,opt,name=max_operations,json=maxOperations,proto3" json:"max_operations,omitempty"`
+	MaxSdrRecords      int32                  `protobuf:"varint,8,opt,name=max_sdr_records,json=maxSdrRecords,proto3" json:"max_sdr_records,omitempty"`
+	MaxSdrBytes        int32                  `protobuf:"varint,9,opt,name=max_sdr_bytes,json=maxSdrBytes,proto3" json:"max_sdr_bytes,omitempty"`
+	MaxFruRecords      int32                  `protobuf:"varint,10,opt,name=max_fru_records,json=maxFruRecords,proto3" json:"max_fru_records,omitempty"`
+	MaxFruBytes        int32                  `protobuf:"varint,11,opt,name=max_fru_bytes,json=maxFruBytes,proto3" json:"max_fru_bytes,omitempty"`
+	MaxPollBytes       int32                  `protobuf:"varint,12,opt,name=max_poll_bytes,json=maxPollBytes,proto3" json:"max_poll_bytes,omitempty"`
+	SdrCacheTtl        *durationpb.Duration   `protobuf:"bytes,13,opt,name=sdr_cache_ttl,json=sdrCacheTtl,proto3" json:"sdr_cache_ttl,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ManagedIPMIOptions) Reset() {
+	*x = ManagedIPMIOptions{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManagedIPMIOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManagedIPMIOptions) ProtoMessage() {}
+
+func (x *ManagedIPMIOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManagedIPMIOptions.ProtoReflect.Descriptor instead.
+func (*ManagedIPMIOptions) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ManagedIPMIOptions) GetPort() uint32 {
+	if x != nil && x.Port != nil {
+		return *x.Port
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetCipherSuite() uint32 {
+	if x != nil && x.CipherSuite != nil {
+		return *x.CipherSuite
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetPrivilege() string {
+	if x != nil {
+		return x.Privilege
+	}
+	return ""
+}
+
+func (x *ManagedIPMIOptions) GetRetries() int32 {
+	if x != nil {
+		return x.Retries
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetRequestTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.RequestTimeout
+	}
+	return nil
+}
+
+func (x *ManagedIPMIOptions) GetMaxSessionDuration() *durationpb.Duration {
+	if x != nil {
+		return x.MaxSessionDuration
+	}
+	return nil
+}
+
+func (x *ManagedIPMIOptions) GetMaxOperations() int32 {
+	if x != nil {
+		return x.MaxOperations
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetMaxSdrRecords() int32 {
+	if x != nil {
+		return x.MaxSdrRecords
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetMaxSdrBytes() int32 {
+	if x != nil {
+		return x.MaxSdrBytes
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetMaxFruRecords() int32 {
+	if x != nil {
+		return x.MaxFruRecords
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetMaxFruBytes() int32 {
+	if x != nil {
+		return x.MaxFruBytes
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetMaxPollBytes() int32 {
+	if x != nil {
+		return x.MaxPollBytes
+	}
+	return 0
+}
+
+func (x *ManagedIPMIOptions) GetSdrCacheTtl() *durationpb.Duration {
+	if x != nil {
+		return x.SdrCacheTtl
+	}
+	return nil
+}
+
+type AppliedConfigState struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Revision            uint64                 `protobuf:"varint,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	ConfigurationDigest string                 `protobuf:"bytes,2,opt,name=configuration_digest,json=configurationDigest,proto3" json:"configuration_digest,omitempty"`
+	Status              ConfigStatus           `protobuf:"varint,3,opt,name=status,proto3,enum=infrapulse.v1.ConfigStatus" json:"status,omitempty"`
+	AppliedAt           *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=applied_at,json=appliedAt,proto3" json:"applied_at,omitempty"`
+	TargetCount         uint32                 `protobuf:"varint,5,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *AppliedConfigState) Reset() {
+	*x = AppliedConfigState{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppliedConfigState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppliedConfigState) ProtoMessage() {}
+
+func (x *AppliedConfigState) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppliedConfigState.ProtoReflect.Descriptor instead.
+func (*AppliedConfigState) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *AppliedConfigState) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *AppliedConfigState) GetConfigurationDigest() string {
+	if x != nil {
+		return x.ConfigurationDigest
+	}
+	return ""
+}
+
+func (x *AppliedConfigState) GetStatus() ConfigStatus {
+	if x != nil {
+		return x.Status
+	}
+	return ConfigStatus_CONFIG_STATUS_UNSPECIFIED
+}
+
+func (x *AppliedConfigState) GetAppliedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AppliedAt
+	}
+	return nil
+}
+
+func (x *AppliedConfigState) GetTargetCount() uint32 {
+	if x != nil {
+		return x.TargetCount
+	}
+	return 0
+}
+
+// APPLIED means runtime activation and last-known-good persistence succeeded.
+// A MessageACK acknowledges this envelope's receipt, not configuration apply.
+type ConfigApplyStatus struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	CollectorId           string                 `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
+	Revision              uint64                 `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	ConfigurationDigest   string                 `protobuf:"bytes,3,opt,name=configuration_digest,json=configurationDigest,proto3" json:"configuration_digest,omitempty"`
+	Status                ConfigStatus           `protobuf:"varint,4,opt,name=status,proto3,enum=infrapulse.v1.ConfigStatus" json:"status,omitempty"`
+	AppliedAt             *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=applied_at,json=appliedAt,proto3" json:"applied_at,omitempty"`
+	ErrorCode             string                 `protobuf:"bytes,6,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	SanitizedErrorMessage string                 `protobuf:"bytes,7,opt,name=sanitized_error_message,json=sanitizedErrorMessage,proto3" json:"sanitized_error_message,omitempty"`
+	AppliedRevision       uint64                 `protobuf:"varint,8,opt,name=applied_revision,json=appliedRevision,proto3" json:"applied_revision,omitempty"`
+	AppliedDigest         string                 `protobuf:"bytes,9,opt,name=applied_digest,json=appliedDigest,proto3" json:"applied_digest,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *ConfigApplyStatus) Reset() {
+	*x = ConfigApplyStatus{}
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigApplyStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigApplyStatus) ProtoMessage() {}
+
+func (x *ConfigApplyStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigApplyStatus.ProtoReflect.Descriptor instead.
+func (*ConfigApplyStatus) Descriptor() ([]byte, []int) {
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ConfigApplyStatus) GetCollectorId() string {
+	if x != nil {
+		return x.CollectorId
+	}
+	return ""
+}
+
+func (x *ConfigApplyStatus) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *ConfigApplyStatus) GetConfigurationDigest() string {
+	if x != nil {
+		return x.ConfigurationDigest
+	}
+	return ""
+}
+
+func (x *ConfigApplyStatus) GetStatus() ConfigStatus {
+	if x != nil {
+		return x.Status
+	}
+	return ConfigStatus_CONFIG_STATUS_UNSPECIFIED
+}
+
+func (x *ConfigApplyStatus) GetAppliedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AppliedAt
+	}
+	return nil
+}
+
+func (x *ConfigApplyStatus) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *ConfigApplyStatus) GetSanitizedErrorMessage() string {
+	if x != nil {
+		return x.SanitizedErrorMessage
+	}
+	return ""
+}
+
+func (x *ConfigApplyStatus) GetAppliedRevision() uint64 {
+	if x != nil {
+		return x.AppliedRevision
+	}
+	return 0
+}
+
+func (x *ConfigApplyStatus) GetAppliedDigest() string {
+	if x != nil {
+		return x.AppliedDigest
+	}
+	return ""
+}
+
 type Capability struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1047,7 +2121,7 @@ type Capability struct {
 
 func (x *Capability) Reset() {
 	*x = Capability{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[6]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1059,7 +2133,7 @@ func (x *Capability) String() string {
 func (*Capability) ProtoMessage() {}
 
 func (x *Capability) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[6]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1072,7 +2146,7 @@ func (x *Capability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Capability.ProtoReflect.Descriptor instead.
 func (*Capability) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{6}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Capability) GetName() string {
@@ -1112,7 +2186,7 @@ type PhysicalLocation struct {
 
 func (x *PhysicalLocation) Reset() {
 	*x = PhysicalLocation{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[7]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1124,7 +2198,7 @@ func (x *PhysicalLocation) String() string {
 func (*PhysicalLocation) ProtoMessage() {}
 
 func (x *PhysicalLocation) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[7]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1137,7 +2211,7 @@ func (x *PhysicalLocation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PhysicalLocation.ProtoReflect.Descriptor instead.
 func (*PhysicalLocation) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{7}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PhysicalLocation) GetSite() string {
@@ -1249,7 +2323,7 @@ type Device struct {
 
 func (x *Device) Reset() {
 	*x = Device{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[8]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1261,7 +2335,7 @@ func (x *Device) String() string {
 func (*Device) ProtoMessage() {}
 
 func (x *Device) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[8]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1274,7 +2348,7 @@ func (x *Device) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Device.ProtoReflect.Descriptor instead.
 func (*Device) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{8}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Device) GetId() string {
@@ -1582,7 +2656,7 @@ type Evidence struct {
 
 func (x *Evidence) Reset() {
 	*x = Evidence{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[9]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1594,7 +2668,7 @@ func (x *Evidence) String() string {
 func (*Evidence) ProtoMessage() {}
 
 func (x *Evidence) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[9]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1607,7 +2681,7 @@ func (x *Evidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Evidence.ProtoReflect.Descriptor instead.
 func (*Evidence) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{9}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Evidence) GetSource() string {
@@ -1652,7 +2726,7 @@ type InventoryComponent struct {
 
 func (x *InventoryComponent) Reset() {
 	*x = InventoryComponent{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[10]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1664,7 +2738,7 @@ func (x *InventoryComponent) String() string {
 func (*InventoryComponent) ProtoMessage() {}
 
 func (x *InventoryComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[10]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1677,7 +2751,7 @@ func (x *InventoryComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InventoryComponent.ProtoReflect.Descriptor instead.
 func (*InventoryComponent) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{10}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *InventoryComponent) GetId() string {
@@ -1784,7 +2858,7 @@ type HardwareStatus struct {
 
 func (x *HardwareStatus) Reset() {
 	*x = HardwareStatus{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[11]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1796,7 +2870,7 @@ func (x *HardwareStatus) String() string {
 func (*HardwareStatus) ProtoMessage() {}
 
 func (x *HardwareStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[11]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1809,7 +2883,7 @@ func (x *HardwareStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HardwareStatus.ProtoReflect.Descriptor instead.
 func (*HardwareStatus) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{11}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *HardwareStatus) GetHealth() string {
@@ -1843,7 +2917,7 @@ type ResourceRelationship struct {
 
 func (x *ResourceRelationship) Reset() {
 	*x = ResourceRelationship{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[12]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1855,7 +2929,7 @@ func (x *ResourceRelationship) String() string {
 func (*ResourceRelationship) ProtoMessage() {}
 
 func (x *ResourceRelationship) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[12]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1868,7 +2942,7 @@ func (x *ResourceRelationship) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceRelationship.ProtoReflect.Descriptor instead.
 func (*ResourceRelationship) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{12}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ResourceRelationship) GetType() string {
@@ -1914,7 +2988,7 @@ type HardwareInventory struct {
 
 func (x *HardwareInventory) Reset() {
 	*x = HardwareInventory{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[13]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1926,7 +3000,7 @@ func (x *HardwareInventory) String() string {
 func (*HardwareInventory) ProtoMessage() {}
 
 func (x *HardwareInventory) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[13]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1939,7 +3013,7 @@ func (x *HardwareInventory) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HardwareInventory.ProtoReflect.Descriptor instead.
 func (*HardwareInventory) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{13}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *HardwareInventory) GetResourceType() string {
@@ -2102,7 +3176,7 @@ type ComponentHealth struct {
 
 func (x *ComponentHealth) Reset() {
 	*x = ComponentHealth{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[14]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2114,7 +3188,7 @@ func (x *ComponentHealth) String() string {
 func (*ComponentHealth) ProtoMessage() {}
 
 func (x *ComponentHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[14]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2127,7 +3201,7 @@ func (x *ComponentHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentHealth.ProtoReflect.Descriptor instead.
 func (*ComponentHealth) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{14}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ComponentHealth) GetId() string {
@@ -2187,7 +3261,7 @@ type IdentityEvidence struct {
 
 func (x *IdentityEvidence) Reset() {
 	*x = IdentityEvidence{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[15]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2199,7 +3273,7 @@ func (x *IdentityEvidence) String() string {
 func (*IdentityEvidence) ProtoMessage() {}
 
 func (x *IdentityEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[15]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2212,7 +3286,7 @@ func (x *IdentityEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentityEvidence.ProtoReflect.Descriptor instead.
 func (*IdentityEvidence) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{15}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *IdentityEvidence) GetType() string {
@@ -2314,7 +3388,7 @@ type CPUStats struct {
 
 func (x *CPUStats) Reset() {
 	*x = CPUStats{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[16]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2326,7 +3400,7 @@ func (x *CPUStats) String() string {
 func (*CPUStats) ProtoMessage() {}
 
 func (x *CPUStats) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[16]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2339,7 +3413,7 @@ func (x *CPUStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CPUStats.ProtoReflect.Descriptor instead.
 func (*CPUStats) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{16}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CPUStats) GetLogicalCpus() int32 {
@@ -2406,7 +3480,7 @@ type MemoryStats struct {
 
 func (x *MemoryStats) Reset() {
 	*x = MemoryStats{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[17]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2418,7 +3492,7 @@ func (x *MemoryStats) String() string {
 func (*MemoryStats) ProtoMessage() {}
 
 func (x *MemoryStats) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[17]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2431,7 +3505,7 @@ func (x *MemoryStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryStats.ProtoReflect.Descriptor instead.
 func (*MemoryStats) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{17}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *MemoryStats) GetTotalBytes() uint64 {
@@ -2499,7 +3573,7 @@ type InterfaceCounters struct {
 
 func (x *InterfaceCounters) Reset() {
 	*x = InterfaceCounters{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[18]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2511,7 +3585,7 @@ func (x *InterfaceCounters) String() string {
 func (*InterfaceCounters) ProtoMessage() {}
 
 func (x *InterfaceCounters) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[18]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2524,7 +3598,7 @@ func (x *InterfaceCounters) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterfaceCounters.ProtoReflect.Descriptor instead.
 func (*InterfaceCounters) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{18}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *InterfaceCounters) GetRxBytes() uint64 {
@@ -2600,7 +3674,7 @@ type InterfaceRates struct {
 
 func (x *InterfaceRates) Reset() {
 	*x = InterfaceRates{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[19]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2612,7 +3686,7 @@ func (x *InterfaceRates) String() string {
 func (*InterfaceRates) ProtoMessage() {}
 
 func (x *InterfaceRates) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[19]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2625,7 +3699,7 @@ func (x *InterfaceRates) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterfaceRates.ProtoReflect.Descriptor instead.
 func (*InterfaceRates) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{19}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *InterfaceRates) GetRxBytesPerSecond() float64 {
@@ -2709,7 +3783,7 @@ type CounterAvailability struct {
 
 func (x *CounterAvailability) Reset() {
 	*x = CounterAvailability{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[20]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2721,7 +3795,7 @@ func (x *CounterAvailability) String() string {
 func (*CounterAvailability) ProtoMessage() {}
 
 func (x *CounterAvailability) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[20]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2734,7 +3808,7 @@ func (x *CounterAvailability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CounterAvailability.ProtoReflect.Descriptor instead.
 func (*CounterAvailability) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{20}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CounterAvailability) GetRxBytes() bool {
@@ -2811,7 +3885,7 @@ type CounterWidths struct {
 
 func (x *CounterWidths) Reset() {
 	*x = CounterWidths{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[21]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2823,7 +3897,7 @@ func (x *CounterWidths) String() string {
 func (*CounterWidths) ProtoMessage() {}
 
 func (x *CounterWidths) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[21]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2836,7 +3910,7 @@ func (x *CounterWidths) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CounterWidths.ProtoReflect.Descriptor instead.
 func (*CounterWidths) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{21}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CounterWidths) GetRxBytes() uint32 {
@@ -2906,7 +3980,7 @@ type CounterMetadata struct {
 
 func (x *CounterMetadata) Reset() {
 	*x = CounterMetadata{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[22]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2918,7 +3992,7 @@ func (x *CounterMetadata) String() string {
 func (*CounterMetadata) ProtoMessage() {}
 
 func (x *CounterMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[22]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2931,7 +4005,7 @@ func (x *CounterMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CounterMetadata.ProtoReflect.Descriptor instead.
 func (*CounterMetadata) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{22}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *CounterMetadata) GetAvailable() *CounterAvailability {
@@ -2966,7 +4040,7 @@ type InterfaceMetadata struct {
 
 func (x *InterfaceMetadata) Reset() {
 	*x = InterfaceMetadata{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[23]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2978,7 +4052,7 @@ func (x *InterfaceMetadata) String() string {
 func (*InterfaceMetadata) ProtoMessage() {}
 
 func (x *InterfaceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[23]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2991,7 +4065,7 @@ func (x *InterfaceMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterfaceMetadata.ProtoReflect.Descriptor instead.
 func (*InterfaceMetadata) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{23}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *InterfaceMetadata) GetIndex() bool {
@@ -3039,7 +4113,7 @@ type Interface struct {
 
 func (x *Interface) Reset() {
 	*x = Interface{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[24]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3051,7 +4125,7 @@ func (x *Interface) String() string {
 func (*Interface) ProtoMessage() {}
 
 func (x *Interface) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[24]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3064,7 +4138,7 @@ func (x *Interface) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Interface.ProtoReflect.Descriptor instead.
 func (*Interface) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{24}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *Interface) GetId() string {
@@ -3194,7 +4268,7 @@ type Metric struct {
 
 func (x *Metric) Reset() {
 	*x = Metric{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[25]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3206,7 +4280,7 @@ func (x *Metric) String() string {
 func (*Metric) ProtoMessage() {}
 
 func (x *Metric) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[25]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3219,7 +4293,7 @@ func (x *Metric) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metric.ProtoReflect.Descriptor instead.
 func (*Metric) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{25}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *Metric) GetName() string {
@@ -3295,7 +4369,7 @@ type TelemetrySample struct {
 
 func (x *TelemetrySample) Reset() {
 	*x = TelemetrySample{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[26]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3307,7 +4381,7 @@ func (x *TelemetrySample) String() string {
 func (*TelemetrySample) ProtoMessage() {}
 
 func (x *TelemetrySample) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[26]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3320,7 +4394,7 @@ func (x *TelemetrySample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelemetrySample.ProtoReflect.Descriptor instead.
 func (*TelemetrySample) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{26}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *TelemetrySample) GetDeviceId() string {
@@ -3446,7 +4520,7 @@ type TelemetryBatch struct {
 
 func (x *TelemetryBatch) Reset() {
 	*x = TelemetryBatch{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[27]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3458,7 +4532,7 @@ func (x *TelemetryBatch) String() string {
 func (*TelemetryBatch) ProtoMessage() {}
 
 func (x *TelemetryBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[27]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3471,7 +4545,7 @@ func (x *TelemetryBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelemetryBatch.ProtoReflect.Descriptor instead.
 func (*TelemetryBatch) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{27}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *TelemetryBatch) GetSamples() []*TelemetrySample {
@@ -3500,7 +4574,7 @@ type QueueState struct {
 
 func (x *QueueState) Reset() {
 	*x = QueueState{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[28]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3512,7 +4586,7 @@ func (x *QueueState) String() string {
 func (*QueueState) ProtoMessage() {}
 
 func (x *QueueState) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[28]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3525,7 +4599,7 @@ func (x *QueueState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueueState.ProtoReflect.Descriptor instead.
 func (*QueueState) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{28}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *QueueState) GetMessages() uint64 {
@@ -3614,13 +4688,14 @@ type Heartbeat struct {
 	RemoteDeviceCount uint32                 `protobuf:"varint,5,opt,name=remote_device_count,json=remoteDeviceCount,proto3" json:"remote_device_count,omitempty"`
 	Queue             *QueueState            `protobuf:"bytes,6,opt,name=queue,proto3" json:"queue,omitempty"`
 	Certificate       *CertificateStatus     `protobuf:"bytes,7,opt,name=certificate,proto3" json:"certificate,omitempty"`
+	ManagedConfig     *ConfigApplyStatus     `protobuf:"bytes,8,opt,name=managed_config,json=managedConfig,proto3" json:"managed_config,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[29]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3632,7 +4707,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[29]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3645,7 +4720,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{29}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *Heartbeat) GetTimestamp() *timestamppb.Timestamp {
@@ -3697,6 +4772,13 @@ func (x *Heartbeat) GetCertificate() *CertificateStatus {
 	return nil
 }
 
+func (x *Heartbeat) GetManagedConfig() *ConfigApplyStatus {
+	if x != nil {
+		return x.ManagedConfig
+	}
+	return nil
+}
+
 type CertificateStatus struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	ExpiresAt             *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
@@ -3711,7 +4793,7 @@ type CertificateStatus struct {
 
 func (x *CertificateStatus) Reset() {
 	*x = CertificateStatus{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[30]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3723,7 +4805,7 @@ func (x *CertificateStatus) String() string {
 func (*CertificateStatus) ProtoMessage() {}
 
 func (x *CertificateStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[30]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3736,7 +4818,7 @@ func (x *CertificateStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CertificateStatus.ProtoReflect.Descriptor instead.
 func (*CertificateStatus) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{30}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *CertificateStatus) GetExpiresAt() *timestamppb.Timestamp {
@@ -3794,7 +4876,7 @@ type InventoryUpdate struct {
 
 func (x *InventoryUpdate) Reset() {
 	*x = InventoryUpdate{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[31]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3806,7 +4888,7 @@ func (x *InventoryUpdate) String() string {
 func (*InventoryUpdate) ProtoMessage() {}
 
 func (x *InventoryUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[31]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3819,7 +4901,7 @@ func (x *InventoryUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InventoryUpdate.ProtoReflect.Descriptor instead.
 func (*InventoryUpdate) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{31}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *InventoryUpdate) GetObservedAt() *timestamppb.Timestamp {
@@ -3869,7 +4951,7 @@ type TopologyUpdate struct {
 
 func (x *TopologyUpdate) Reset() {
 	*x = TopologyUpdate{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[32]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3881,7 +4963,7 @@ func (x *TopologyUpdate) String() string {
 func (*TopologyUpdate) ProtoMessage() {}
 
 func (x *TopologyUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[32]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3894,7 +4976,7 @@ func (x *TopologyUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopologyUpdate.ProtoReflect.Descriptor instead.
 func (*TopologyUpdate) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{32}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *TopologyUpdate) GetDeviceId() string {
@@ -3976,7 +5058,7 @@ type ManagementAddress struct {
 
 func (x *ManagementAddress) Reset() {
 	*x = ManagementAddress{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[33]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3988,7 +5070,7 @@ func (x *ManagementAddress) String() string {
 func (*ManagementAddress) ProtoMessage() {}
 
 func (x *ManagementAddress) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[33]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4001,7 +5083,7 @@ func (x *ManagementAddress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManagementAddress.ProtoReflect.Descriptor instead.
 func (*ManagementAddress) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{33}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ManagementAddress) GetAddressFamily() uint32 {
@@ -4083,7 +5165,7 @@ type Neighbor struct {
 
 func (x *Neighbor) Reset() {
 	*x = Neighbor{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[34]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4095,7 +5177,7 @@ func (x *Neighbor) String() string {
 func (*Neighbor) ProtoMessage() {}
 
 func (x *Neighbor) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[34]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4108,7 +5190,7 @@ func (x *Neighbor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Neighbor.ProtoReflect.Descriptor instead.
 func (*Neighbor) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{34}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *Neighbor) GetLocalDeviceId() string {
@@ -4365,7 +5447,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[35]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4377,7 +5459,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[35]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4390,7 +5472,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{35}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *Event) GetId() string {
@@ -4458,7 +5540,7 @@ type EventBatch struct {
 
 func (x *EventBatch) Reset() {
 	*x = EventBatch{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[36]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4470,7 +5552,7 @@ func (x *EventBatch) String() string {
 func (*EventBatch) ProtoMessage() {}
 
 func (x *EventBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[36]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4483,7 +5565,7 @@ func (x *EventBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventBatch.ProtoReflect.Descriptor instead.
 func (*EventBatch) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{36}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *EventBatch) GetEvents() []*Event {
@@ -4505,7 +5587,7 @@ type ErrorReport struct {
 
 func (x *ErrorReport) Reset() {
 	*x = ErrorReport{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[37]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4517,7 +5599,7 @@ func (x *ErrorReport) String() string {
 func (*ErrorReport) ProtoMessage() {}
 
 func (x *ErrorReport) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[37]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4530,7 +5612,7 @@ func (x *ErrorReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorReport.ProtoReflect.Descriptor instead.
 func (*ErrorReport) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{37}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ErrorReport) GetComponent() string {
@@ -4571,7 +5653,7 @@ type InterfaceAction struct {
 
 func (x *InterfaceAction) Reset() {
 	*x = InterfaceAction{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[38]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4583,7 +5665,7 @@ func (x *InterfaceAction) String() string {
 func (*InterfaceAction) ProtoMessage() {}
 
 func (x *InterfaceAction) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[38]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4596,7 +5678,7 @@ func (x *InterfaceAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterfaceAction.ProtoReflect.Descriptor instead.
 func (*InterfaceAction) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{38}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *InterfaceAction) GetInterfaceId() string {
@@ -4623,7 +5705,7 @@ type ServiceAction struct {
 
 func (x *ServiceAction) Reset() {
 	*x = ServiceAction{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[39]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4635,7 +5717,7 @@ func (x *ServiceAction) String() string {
 func (*ServiceAction) ProtoMessage() {}
 
 func (x *ServiceAction) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[39]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4648,7 +5730,7 @@ func (x *ServiceAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceAction.ProtoReflect.Descriptor instead.
 func (*ServiceAction) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{39}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ServiceAction) GetService() string {
@@ -4687,7 +5769,7 @@ type Command struct {
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[40]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4699,7 +5781,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[40]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4712,7 +5794,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{40}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *Command) GetId() string {
@@ -4822,7 +5904,7 @@ type RollbackAction struct {
 
 func (x *RollbackAction) Reset() {
 	*x = RollbackAction{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[41]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4834,7 +5916,7 @@ func (x *RollbackAction) String() string {
 func (*RollbackAction) ProtoMessage() {}
 
 func (x *RollbackAction) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[41]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4847,7 +5929,7 @@ func (x *RollbackAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackAction.ProtoReflect.Descriptor instead.
 func (*RollbackAction) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{41}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *RollbackAction) GetSnapshotId() string {
@@ -4875,7 +5957,7 @@ type CommandResult struct {
 
 func (x *CommandResult) Reset() {
 	*x = CommandResult{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[42]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4887,7 +5969,7 @@ func (x *CommandResult) String() string {
 func (*CommandResult) ProtoMessage() {}
 
 func (x *CommandResult) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[42]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4900,7 +5982,7 @@ func (x *CommandResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResult.ProtoReflect.Descriptor instead.
 func (*CommandResult) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{42}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *CommandResult) GetCommandId() string {
@@ -4990,7 +6072,7 @@ type InterfaceVerification struct {
 
 func (x *InterfaceVerification) Reset() {
 	*x = InterfaceVerification{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[43]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5002,7 +6084,7 @@ func (x *InterfaceVerification) String() string {
 func (*InterfaceVerification) ProtoMessage() {}
 
 func (x *InterfaceVerification) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[43]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5015,7 +6097,7 @@ func (x *InterfaceVerification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterfaceVerification.ProtoReflect.Descriptor instead.
 func (*InterfaceVerification) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{43}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *InterfaceVerification) GetInterfaceId() string {
@@ -5097,7 +6179,7 @@ type Service struct {
 
 func (x *Service) Reset() {
 	*x = Service{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[44]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5109,7 +6191,7 @@ func (x *Service) String() string {
 func (*Service) ProtoMessage() {}
 
 func (x *Service) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[44]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5122,7 +6204,7 @@ func (x *Service) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Service.ProtoReflect.Descriptor instead.
 func (*Service) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{44}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *Service) GetName() string {
@@ -5185,7 +6267,7 @@ type ServiceInstance struct {
 
 func (x *ServiceInstance) Reset() {
 	*x = ServiceInstance{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[45]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5197,7 +6279,7 @@ func (x *ServiceInstance) String() string {
 func (*ServiceInstance) ProtoMessage() {}
 
 func (x *ServiceInstance) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[45]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5210,7 +6292,7 @@ func (x *ServiceInstance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceInstance.ProtoReflect.Descriptor instead.
 func (*ServiceInstance) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{45}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ServiceInstance) GetName() string {
@@ -5251,7 +6333,7 @@ type NetworkState struct {
 
 func (x *NetworkState) Reset() {
 	*x = NetworkState{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[46]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5263,7 +6345,7 @@ func (x *NetworkState) String() string {
 func (*NetworkState) ProtoMessage() {}
 
 func (x *NetworkState) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[46]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5276,7 +6358,7 @@ func (x *NetworkState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkState.ProtoReflect.Descriptor instead.
 func (*NetworkState) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{46}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *NetworkState) GetName() string {
@@ -5359,7 +6441,7 @@ type FirewallSnapshot struct {
 
 func (x *FirewallSnapshot) Reset() {
 	*x = FirewallSnapshot{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5371,7 +6453,7 @@ func (x *FirewallSnapshot) String() string {
 func (*FirewallSnapshot) ProtoMessage() {}
 
 func (x *FirewallSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[47]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5384,7 +6466,7 @@ func (x *FirewallSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FirewallSnapshot.ProtoReflect.Descriptor instead.
 func (*FirewallSnapshot) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{47}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *FirewallSnapshot) GetObservedAt() *timestamppb.Timestamp {
@@ -5465,7 +6547,7 @@ type FirewallZone struct {
 
 func (x *FirewallZone) Reset() {
 	*x = FirewallZone{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[48]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5477,7 +6559,7 @@ func (x *FirewallZone) String() string {
 func (*FirewallZone) ProtoMessage() {}
 
 func (x *FirewallZone) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[48]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5490,7 +6572,7 @@ func (x *FirewallZone) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FirewallZone.ProtoReflect.Descriptor instead.
 func (*FirewallZone) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{48}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *FirewallZone) GetId() string {
@@ -5554,7 +6636,7 @@ type FirewallForwarding struct {
 
 func (x *FirewallForwarding) Reset() {
 	*x = FirewallForwarding{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[49]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5566,7 +6648,7 @@ func (x *FirewallForwarding) String() string {
 func (*FirewallForwarding) ProtoMessage() {}
 
 func (x *FirewallForwarding) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[49]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5579,7 +6661,7 @@ func (x *FirewallForwarding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FirewallForwarding.ProtoReflect.Descriptor instead.
 func (*FirewallForwarding) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{49}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *FirewallForwarding) GetId() string {
@@ -5630,7 +6712,7 @@ type FirewallRule struct {
 
 func (x *FirewallRule) Reset() {
 	*x = FirewallRule{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[50]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5642,7 +6724,7 @@ func (x *FirewallRule) String() string {
 func (*FirewallRule) ProtoMessage() {}
 
 func (x *FirewallRule) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[50]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5655,7 +6737,7 @@ func (x *FirewallRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FirewallRule.ProtoReflect.Descriptor instead.
 func (*FirewallRule) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{50}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *FirewallRule) GetId() string {
@@ -5754,7 +6836,7 @@ type FirewallRedirect struct {
 
 func (x *FirewallRedirect) Reset() {
 	*x = FirewallRedirect{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[51]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5766,7 +6848,7 @@ func (x *FirewallRedirect) String() string {
 func (*FirewallRedirect) ProtoMessage() {}
 
 func (x *FirewallRedirect) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[51]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5779,7 +6861,7 @@ func (x *FirewallRedirect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FirewallRedirect.ProtoReflect.Descriptor instead.
 func (*FirewallRedirect) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{51}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *FirewallRedirect) GetRule() *FirewallRule {
@@ -5828,7 +6910,7 @@ type AuditRecord struct {
 
 func (x *AuditRecord) Reset() {
 	*x = AuditRecord{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[52]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5840,7 +6922,7 @@ func (x *AuditRecord) String() string {
 func (*AuditRecord) ProtoMessage() {}
 
 func (x *AuditRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[52]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5853,7 +6935,7 @@ func (x *AuditRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditRecord.ProtoReflect.Descriptor instead.
 func (*AuditRecord) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{52}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *AuditRecord) GetEventId() string {
@@ -5948,7 +7030,7 @@ type SyslogMetadata struct {
 
 func (x *SyslogMetadata) Reset() {
 	*x = SyslogMetadata{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[53]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5960,7 +7042,7 @@ func (x *SyslogMetadata) String() string {
 func (*SyslogMetadata) ProtoMessage() {}
 
 func (x *SyslogMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[53]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5973,7 +7055,7 @@ func (x *SyslogMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyslogMetadata.ProtoReflect.Descriptor instead.
 func (*SyslogMetadata) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{53}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *SyslogMetadata) GetVersion() uint32 {
@@ -6076,7 +7158,7 @@ type SourceRef struct {
 
 func (x *SourceRef) Reset() {
 	*x = SourceRef{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[54]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6088,7 +7170,7 @@ func (x *SourceRef) String() string {
 func (*SourceRef) ProtoMessage() {}
 
 func (x *SourceRef) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[54]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6101,7 +7183,7 @@ func (x *SourceRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceRef.ProtoReflect.Descriptor instead.
 func (*SourceRef) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{54}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *SourceRef) GetType() string {
@@ -6169,7 +7251,7 @@ type ObservationTime struct {
 
 func (x *ObservationTime) Reset() {
 	*x = ObservationTime{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[55]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6181,7 +7263,7 @@ func (x *ObservationTime) String() string {
 func (*ObservationTime) ProtoMessage() {}
 
 func (x *ObservationTime) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[55]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6194,7 +7276,7 @@ func (x *ObservationTime) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObservationTime.ProtoReflect.Descriptor instead.
 func (*ObservationTime) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{55}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *ObservationTime) GetSourceTimestamp() *timestamppb.Timestamp {
@@ -6249,7 +7331,7 @@ type ObservationMetadata struct {
 
 func (x *ObservationMetadata) Reset() {
 	*x = ObservationMetadata{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[56]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6261,7 +7343,7 @@ func (x *ObservationMetadata) String() string {
 func (*ObservationMetadata) ProtoMessage() {}
 
 func (x *ObservationMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[56]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6274,7 +7356,7 @@ func (x *ObservationMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObservationMetadata.ProtoReflect.Descriptor instead.
 func (*ObservationMetadata) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{56}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *ObservationMetadata) GetSource() *SourceRef {
@@ -6318,7 +7400,7 @@ type LogRecord struct {
 
 func (x *LogRecord) Reset() {
 	*x = LogRecord{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[57]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6330,7 +7412,7 @@ func (x *LogRecord) String() string {
 func (*LogRecord) ProtoMessage() {}
 
 func (x *LogRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[57]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6343,7 +7425,7 @@ func (x *LogRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogRecord.ProtoReflect.Descriptor instead.
 func (*LogRecord) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{57}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *LogRecord) GetId() string {
@@ -6493,7 +7575,7 @@ type LogBatch struct {
 
 func (x *LogBatch) Reset() {
 	*x = LogBatch{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[58]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6505,7 +7587,7 @@ func (x *LogBatch) String() string {
 func (*LogBatch) ProtoMessage() {}
 
 func (x *LogBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[58]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6518,7 +7600,7 @@ func (x *LogBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogBatch.ProtoReflect.Descriptor instead.
 func (*LogBatch) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{58}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *LogBatch) GetObservedAt() *timestamppb.Timestamp {
@@ -6569,7 +7651,7 @@ type TelephonyHealth struct {
 
 func (x *TelephonyHealth) Reset() {
 	*x = TelephonyHealth{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[59]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6581,7 +7663,7 @@ func (x *TelephonyHealth) String() string {
 func (*TelephonyHealth) ProtoMessage() {}
 
 func (x *TelephonyHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[59]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6594,7 +7676,7 @@ func (x *TelephonyHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelephonyHealth.ProtoReflect.Descriptor instead.
 func (*TelephonyHealth) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{59}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *TelephonyHealth) GetTargetId() string {
@@ -6693,7 +7775,7 @@ type TelephonyUpdate struct {
 
 func (x *TelephonyUpdate) Reset() {
 	*x = TelephonyUpdate{}
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[60]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6705,7 +7787,7 @@ func (x *TelephonyUpdate) String() string {
 func (*TelephonyUpdate) ProtoMessage() {}
 
 func (x *TelephonyUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_infrapulse_v1_agent_proto_msgTypes[60]
+	mi := &file_infrapulse_v1_agent_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6718,7 +7800,7 @@ func (x *TelephonyUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelephonyUpdate.ProtoReflect.Descriptor instead.
 func (*TelephonyUpdate) Descriptor() ([]byte, []int) {
-	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{60}
+	return file_infrapulse_v1_agent_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *TelephonyUpdate) GetObservedAt() *timestamppb.Timestamp {
@@ -6753,7 +7835,7 @@ var File_infrapulse_v1_agent_proto protoreflect.FileDescriptor
 
 const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x19infrapulse/v1/agent.proto\x12\rinfrapulse.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8c\x06\n" +
+	"\x19infrapulse/v1/agent.proto\x12\rinfrapulse.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd5\x06\n" +
 	"\rAgentEnvelope\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12\x19\n" +
@@ -6772,13 +7854,15 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\x06events\x18\x10 \x01(\v2\x19.infrapulse.v1.EventBatchH\x00R\x06events\x12>\n" +
 	"\ttelephony\x18\x11 \x01(\v2\x1e.infrapulse.v1.TelephonyUpdateH\x00R\ttelephony\x12E\n" +
 	"\x0ecommand_result\x18\x12 \x01(\v2\x1c.infrapulse.v1.CommandResultH\x00R\rcommandResult\x122\n" +
-	"\x05error\x18\x14 \x01(\v2\x1a.infrapulse.v1.ErrorReportH\x00R\x05errorB\t\n" +
-	"\apayload\"\xc9\x01\n" +
+	"\x05error\x18\x14 \x01(\v2\x1a.infrapulse.v1.ErrorReportH\x00R\x05error\x12G\n" +
+	"\rconfig_status\x18\x15 \x01(\v2 .infrapulse.v1.ConfigApplyStatusH\x00R\fconfigStatusB\t\n" +
+	"\apayload\"\x98\x02\n" +
 	"\x12ControllerEnvelope\x126\n" +
 	"\thello_ack\x18\x01 \x01(\v2\x17.infrapulse.v1.HelloAckH\x00R\bhelloAck\x122\n" +
 	"\acommand\x18\x02 \x01(\v2\x16.infrapulse.v1.CommandH\x00R\acommand\x12<\n" +
 	"\vmessage_ack\x18\x03 \x01(\v2\x19.infrapulse.v1.MessageACKH\x00R\n" +
-	"messageAckB\t\n" +
+	"messageAck\x12M\n" +
+	"\x0edesired_config\x18\x04 \x01(\v2$.infrapulse.v1.DesiredConfigSnapshotH\x00R\rdesiredConfigB\t\n" +
 	"\apayload\"+\n" +
 	"\n" +
 	"MessageACK\x12\x1d\n" +
@@ -6788,7 +7872,7 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
 	"\x06commit\x18\x02 \x01(\tR\x06commit\x12\x1d\n" +
 	"\n" +
-	"build_time\x18\x03 \x01(\tR\tbuildTime\"\xc8\x02\n" +
+	"build_time\x18\x03 \x01(\tR\tbuildTime\"\xfa\x03\n" +
 	"\n" +
 	"AgentHello\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1d\n" +
@@ -6800,11 +7884,108 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"started_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12-\n" +
 	"\x06device\x18\x06 \x01(\v2\x15.infrapulse.v1.DeviceR\x06device\x12)\n" +
 	"\x10protocol_version\x18\a \x01(\rR\x0fprotocolVersion\x12'\n" +
-	"\x0fapplication_ack\x18\b \x01(\bR\x0eapplicationAck\"z\n" +
+	"\x0fapplication_ack\x18\b \x01(\bR\x0eapplicationAck\x12*\n" +
+	"\x11managed_config_v1\x18\t \x01(\bR\x0fmanagedConfigV1\x12:\n" +
+	"\x19remote_management_enabled\x18\n" +
+	" \x01(\bR\x17remoteManagementEnabled\x12H\n" +
+	"\x0eapplied_config\x18\v \x01(\v2!.infrapulse.v1.AppliedConfigStateR\rappliedConfig\"\xa6\x01\n" +
 	"\bHelloAck\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12)\n" +
 	"\x10protocol_version\x18\x02 \x01(\rR\x0fprotocolVersion\x12'\n" +
-	"\x0fapplication_ack\x18\x03 \x01(\bR\x0eapplicationAck\"V\n" +
+	"\x0fapplication_ack\x18\x03 \x01(\bR\x0eapplicationAck\x12*\n" +
+	"\x11managed_config_v1\x18\x04 \x01(\bR\x0fmanagedConfigV1\"\x9d\x02\n" +
+	"\x15DesiredConfigSnapshot\x12!\n" +
+	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\x04R\brevision\x121\n" +
+	"\x14configuration_digest\x18\x04 \x01(\tR\x13configurationDigest\x127\n" +
+	"\tissued_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x12:\n" +
+	"\atargets\x18\x06 \x03(\v2 .infrapulse.v1.ManagedTargetSpecR\atargets\"\xe1\x02\n" +
+	"\x14ManagedTargetPolling\x12>\n" +
+	"\rfast_interval\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\ffastInterval\x12B\n" +
+	"\x0fmedium_interval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0emediumInterval\x12H\n" +
+	"\x12inventory_interval\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x11inventoryInterval\x12F\n" +
+	"\x11topology_interval\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x10topologyInterval\x123\n" +
+	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\xe6\x04\n" +
+	"\x11ManagedTargetSpec\x12\x1b\n" +
+	"\ttarget_id\x18\x01 \x01(\tR\btargetId\x12\x1a\n" +
+	"\bprotocol\x18\x02 \x01(\tR\bprotocol\x12\x18\n" +
+	"\aenabled\x18\x03 \x01(\bR\aenabled\x12\x1a\n" +
+	"\bendpoint\x18\x04 \x01(\tR\bendpoint\x12%\n" +
+	"\x0ecredential_ref\x18\x05 \x01(\tR\rcredentialRef\x12\x12\n" +
+	"\x04name\x18\x06 \x01(\tR\x04name\x12\x1f\n" +
+	"\vvendor_hint\x18\a \x01(\tR\n" +
+	"vendorHint\x12;\n" +
+	"\blocation\x18\b \x01(\v2\x1f.infrapulse.v1.PhysicalLocationR\blocation\x12=\n" +
+	"\apolling\x18\t \x01(\v2#.infrapulse.v1.ManagedTargetPollingR\apolling\x12\x15\n" +
+	"\x06ca_ref\x18\n" +
+	" \x01(\tR\x05caRef\x127\n" +
+	"\x04snmp\x18\x14 \x01(\v2!.infrapulse.v1.ManagedSNMPOptionsH\x00R\x04snmp\x124\n" +
+	"\x03sip\x18\x15 \x01(\v2 .infrapulse.v1.ManagedSIPOptionsH\x00R\x03sip\x12@\n" +
+	"\aredfish\x18\x16 \x01(\v2$.infrapulse.v1.ManagedRedfishOptionsH\x00R\aredfish\x127\n" +
+	"\x04ipmi\x18\x17 \x01(\v2!.infrapulse.v1.ManagedIPMIOptionsH\x00R\x04ipmiB\t\n" +
+	"\aoptions\"\xf6\x01\n" +
+	"\x12ManagedSNMPOptions\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12%\n" +
+	"\x0esecurity_level\x18\x02 \x01(\tR\rsecurityLevel\x12#\n" +
+	"\rauth_protocol\x18\x03 \x01(\tR\fauthProtocol\x12)\n" +
+	"\x10privacy_protocol\x18\x04 \x01(\tR\x0fprivacyProtocol\x12!\n" +
+	"\fcontext_name\x18\x05 \x01(\tR\vcontextName\x12\x12\n" +
+	"\x04port\x18\x06 \x01(\rR\x04port\x12\x18\n" +
+	"\aretries\x18\a \x01(\x05R\aretries\"\xa9\x02\n" +
+	"\x11ManagedSIPOptions\x12\x12\n" +
+	"\x04port\x18\x01 \x01(\rR\x04port\x12\x1c\n" +
+	"\ttransport\x18\x02 \x01(\tR\ttransport\x12\x1b\n" +
+	"\tfrom_user\x18\x03 \x01(\tR\bfromUser\x12\x17\n" +
+	"\ato_user\x18\x04 \x01(\tR\x06toUser\x12\x16\n" +
+	"\x06domain\x18\x05 \x01(\tR\x06domain\x12\x1f\n" +
+	"\vserver_name\x18\x06 \x01(\tR\n" +
+	"serverName\x12+\n" +
+	"\x11failure_threshold\x18\a \x01(\rR\x10failureThreshold\x12F\n" +
+	"\x11latency_threshold\x18\b \x01(\v2\x19.google.protobuf.DurationR\x10latencyThreshold\"\xd4\x01\n" +
+	"\x15ManagedRedfishOptions\x12\x12\n" +
+	"\x04auth\x18\x01 \x01(\tR\x04auth\x12B\n" +
+	"\x0frequest_timeout\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0erequestTimeout\x12#\n" +
+	"\rmax_resources\x18\x03 \x01(\x05R\fmaxResources\x12\x1b\n" +
+	"\tmax_pages\x18\x04 \x01(\x05R\bmaxPages\x12!\n" +
+	"\fmax_requests\x18\x05 \x01(\x05R\vmaxRequests\"\xdc\x04\n" +
+	"\x12ManagedIPMIOptions\x12\x17\n" +
+	"\x04port\x18\x01 \x01(\rH\x00R\x04port\x88\x01\x01\x12&\n" +
+	"\fcipher_suite\x18\x02 \x01(\rH\x01R\vcipherSuite\x88\x01\x01\x12\x1c\n" +
+	"\tprivilege\x18\x03 \x01(\tR\tprivilege\x12\x18\n" +
+	"\aretries\x18\x04 \x01(\x05R\aretries\x12B\n" +
+	"\x0frequest_timeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x0erequestTimeout\x12K\n" +
+	"\x14max_session_duration\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\x12maxSessionDuration\x12%\n" +
+	"\x0emax_operations\x18\a \x01(\x05R\rmaxOperations\x12&\n" +
+	"\x0fmax_sdr_records\x18\b \x01(\x05R\rmaxSdrRecords\x12\"\n" +
+	"\rmax_sdr_bytes\x18\t \x01(\x05R\vmaxSdrBytes\x12&\n" +
+	"\x0fmax_fru_records\x18\n" +
+	" \x01(\x05R\rmaxFruRecords\x12\"\n" +
+	"\rmax_fru_bytes\x18\v \x01(\x05R\vmaxFruBytes\x12$\n" +
+	"\x0emax_poll_bytes\x18\f \x01(\x05R\fmaxPollBytes\x12=\n" +
+	"\rsdr_cache_ttl\x18\r \x01(\v2\x19.google.protobuf.DurationR\vsdrCacheTtlB\a\n" +
+	"\x05_portB\x0f\n" +
+	"\r_cipher_suite\"\xf6\x01\n" +
+	"\x12AppliedConfigState\x12\x1a\n" +
+	"\brevision\x18\x01 \x01(\x04R\brevision\x121\n" +
+	"\x14configuration_digest\x18\x02 \x01(\tR\x13configurationDigest\x123\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1b.infrapulse.v1.ConfigStatusR\x06status\x129\n" +
+	"\n" +
+	"applied_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tappliedAt\x12!\n" +
+	"\ftarget_count\x18\x05 \x01(\rR\vtargetCount\"\x9e\x03\n" +
+	"\x11ConfigApplyStatus\x12!\n" +
+	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\x04R\brevision\x121\n" +
+	"\x14configuration_digest\x18\x03 \x01(\tR\x13configurationDigest\x123\n" +
+	"\x06status\x18\x04 \x01(\x0e2\x1b.infrapulse.v1.ConfigStatusR\x06status\x129\n" +
+	"\n" +
+	"applied_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tappliedAt\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x06 \x01(\tR\terrorCode\x126\n" +
+	"\x17sanitized_error_message\x18\a \x01(\tR\x15sanitizedErrorMessage\x12)\n" +
+	"\x10applied_revision\x18\b \x01(\x04R\x0fappliedRevision\x12%\n" +
+	"\x0eapplied_digest\x18\t \x01(\tR\rappliedDigest\"V\n" +
 	"\n" +
 	"Capability\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
@@ -7102,7 +8283,7 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\aunacked\x18\t \x01(\x04R\aunacked\x12'\n" +
 	"\x0fpending_results\x18\n" +
 	" \x01(\x04R\x0ependingResults\x12#\n" +
-	"\rstorage_error\x18\v \x01(\tR\fstorageError\"\xd9\x02\n" +
+	"\rstorage_error\x18\v \x01(\tR\fstorageError\"\xa2\x03\n" +
 	"\tHeartbeat\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12%\n" +
 	"\x0euptime_seconds\x18\x02 \x01(\x01R\ruptimeSeconds\x12.\n" +
@@ -7110,7 +8291,8 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"\x06health\x18\x04 \x01(\tR\x06health\x12.\n" +
 	"\x13remote_device_count\x18\x05 \x01(\rR\x11remoteDeviceCount\x12/\n" +
 	"\x05queue\x18\x06 \x01(\v2\x19.infrapulse.v1.QueueStateR\x05queue\x12B\n" +
-	"\vcertificate\x18\a \x01(\v2 .infrapulse.v1.CertificateStatusR\vcertificate\"\xbe\x02\n" +
+	"\vcertificate\x18\a \x01(\v2 .infrapulse.v1.CertificateStatusR\vcertificate\x12G\n" +
+	"\x0emanaged_config\x18\b \x01(\v2 .infrapulse.v1.ConfigApplyStatusR\rmanagedConfig\"\xbe\x02\n" +
 	"\x11CertificateStatus\x129\n" +
 	"\n" +
 	"expires_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12+\n" +
@@ -7457,7 +8639,14 @@ const file_infrapulse_v1_agent_proto_rawDesc = "" +
 	"observedAt\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x128\n" +
 	"\atargets\x18\x03 \x03(\v2\x1e.infrapulse.v1.TelephonyHealthR\atargets\x12D\n" +
-	"\vobservation\x18\x04 \x01(\v2\".infrapulse.v1.ObservationMetadataR\vobservation*\xc8\x02\n" +
+	"\vobservation\x18\x04 \x01(\v2\".infrapulse.v1.ObservationMetadataR\vobservation*\xb8\x01\n" +
+	"\fConfigStatus\x12\x1d\n" +
+	"\x19CONFIG_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16CONFIG_STATUS_RECEIVED\x10\x01\x12\x1c\n" +
+	"\x18CONFIG_STATUS_VALIDATING\x10\x02\x12\x19\n" +
+	"\x15CONFIG_STATUS_APPLIED\x10\x03\x12\x1a\n" +
+	"\x16CONFIG_STATUS_REJECTED\x10\x04\x12\x18\n" +
+	"\x14CONFIG_STATUS_FAILED\x10\x05*\xc8\x02\n" +
 	"\n" +
 	"DeviceType\x12\x1b\n" +
 	"\x17DEVICE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -7522,219 +8711,255 @@ func file_infrapulse_v1_agent_proto_rawDescGZIP() []byte {
 	return file_infrapulse_v1_agent_proto_rawDescData
 }
 
-var file_infrapulse_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_infrapulse_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
+var file_infrapulse_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
+var file_infrapulse_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 70)
 var file_infrapulse_v1_agent_proto_goTypes = []any{
-	(DeviceType)(0),               // 0: infrapulse.v1.DeviceType
-	(SnapshotCompleteness)(0),     // 1: infrapulse.v1.SnapshotCompleteness
-	(DiscoveryProtocol)(0),        // 2: infrapulse.v1.DiscoveryProtocol
-	(CommandInitiator)(0),         // 3: infrapulse.v1.CommandInitiator
-	(InterfaceOperation)(0),       // 4: infrapulse.v1.InterfaceOperation
-	(ServiceOperation)(0),         // 5: infrapulse.v1.ServiceOperation
-	(CommandStatus)(0),            // 6: infrapulse.v1.CommandStatus
-	(*AgentEnvelope)(nil),         // 7: infrapulse.v1.AgentEnvelope
-	(*ControllerEnvelope)(nil),    // 8: infrapulse.v1.ControllerEnvelope
-	(*MessageACK)(nil),            // 9: infrapulse.v1.MessageACK
-	(*BuildInfo)(nil),             // 10: infrapulse.v1.BuildInfo
-	(*AgentHello)(nil),            // 11: infrapulse.v1.AgentHello
-	(*HelloAck)(nil),              // 12: infrapulse.v1.HelloAck
-	(*Capability)(nil),            // 13: infrapulse.v1.Capability
-	(*PhysicalLocation)(nil),      // 14: infrapulse.v1.PhysicalLocation
-	(*Device)(nil),                // 15: infrapulse.v1.Device
-	(*Evidence)(nil),              // 16: infrapulse.v1.Evidence
-	(*InventoryComponent)(nil),    // 17: infrapulse.v1.InventoryComponent
-	(*HardwareStatus)(nil),        // 18: infrapulse.v1.HardwareStatus
-	(*ResourceRelationship)(nil),  // 19: infrapulse.v1.ResourceRelationship
-	(*HardwareInventory)(nil),     // 20: infrapulse.v1.HardwareInventory
-	(*ComponentHealth)(nil),       // 21: infrapulse.v1.ComponentHealth
-	(*IdentityEvidence)(nil),      // 22: infrapulse.v1.IdentityEvidence
-	(*CPUStats)(nil),              // 23: infrapulse.v1.CPUStats
-	(*MemoryStats)(nil),           // 24: infrapulse.v1.MemoryStats
-	(*InterfaceCounters)(nil),     // 25: infrapulse.v1.InterfaceCounters
-	(*InterfaceRates)(nil),        // 26: infrapulse.v1.InterfaceRates
-	(*CounterAvailability)(nil),   // 27: infrapulse.v1.CounterAvailability
-	(*CounterWidths)(nil),         // 28: infrapulse.v1.CounterWidths
-	(*CounterMetadata)(nil),       // 29: infrapulse.v1.CounterMetadata
-	(*InterfaceMetadata)(nil),     // 30: infrapulse.v1.InterfaceMetadata
-	(*Interface)(nil),             // 31: infrapulse.v1.Interface
-	(*Metric)(nil),                // 32: infrapulse.v1.Metric
-	(*TelemetrySample)(nil),       // 33: infrapulse.v1.TelemetrySample
-	(*TelemetryBatch)(nil),        // 34: infrapulse.v1.TelemetryBatch
-	(*QueueState)(nil),            // 35: infrapulse.v1.QueueState
-	(*Heartbeat)(nil),             // 36: infrapulse.v1.Heartbeat
-	(*CertificateStatus)(nil),     // 37: infrapulse.v1.CertificateStatus
-	(*InventoryUpdate)(nil),       // 38: infrapulse.v1.InventoryUpdate
-	(*TopologyUpdate)(nil),        // 39: infrapulse.v1.TopologyUpdate
-	(*ManagementAddress)(nil),     // 40: infrapulse.v1.ManagementAddress
-	(*Neighbor)(nil),              // 41: infrapulse.v1.Neighbor
-	(*Event)(nil),                 // 42: infrapulse.v1.Event
-	(*EventBatch)(nil),            // 43: infrapulse.v1.EventBatch
-	(*ErrorReport)(nil),           // 44: infrapulse.v1.ErrorReport
-	(*InterfaceAction)(nil),       // 45: infrapulse.v1.InterfaceAction
-	(*ServiceAction)(nil),         // 46: infrapulse.v1.ServiceAction
-	(*Command)(nil),               // 47: infrapulse.v1.Command
-	(*RollbackAction)(nil),        // 48: infrapulse.v1.RollbackAction
-	(*CommandResult)(nil),         // 49: infrapulse.v1.CommandResult
-	(*InterfaceVerification)(nil), // 50: infrapulse.v1.InterfaceVerification
-	(*Service)(nil),               // 51: infrapulse.v1.Service
-	(*ServiceInstance)(nil),       // 52: infrapulse.v1.ServiceInstance
-	(*NetworkState)(nil),          // 53: infrapulse.v1.NetworkState
-	(*FirewallSnapshot)(nil),      // 54: infrapulse.v1.FirewallSnapshot
-	(*FirewallZone)(nil),          // 55: infrapulse.v1.FirewallZone
-	(*FirewallForwarding)(nil),    // 56: infrapulse.v1.FirewallForwarding
-	(*FirewallRule)(nil),          // 57: infrapulse.v1.FirewallRule
-	(*FirewallRedirect)(nil),      // 58: infrapulse.v1.FirewallRedirect
-	(*AuditRecord)(nil),           // 59: infrapulse.v1.AuditRecord
-	(*SyslogMetadata)(nil),        // 60: infrapulse.v1.SyslogMetadata
-	(*SourceRef)(nil),             // 61: infrapulse.v1.SourceRef
-	(*ObservationTime)(nil),       // 62: infrapulse.v1.ObservationTime
-	(*ObservationMetadata)(nil),   // 63: infrapulse.v1.ObservationMetadata
-	(*LogRecord)(nil),             // 64: infrapulse.v1.LogRecord
-	(*LogBatch)(nil),              // 65: infrapulse.v1.LogBatch
-	(*TelephonyHealth)(nil),       // 66: infrapulse.v1.TelephonyHealth
-	(*TelephonyUpdate)(nil),       // 67: infrapulse.v1.TelephonyUpdate
-	(*timestamppb.Timestamp)(nil), // 68: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 69: google.protobuf.Duration
+	(ConfigStatus)(0),             // 0: infrapulse.v1.ConfigStatus
+	(DeviceType)(0),               // 1: infrapulse.v1.DeviceType
+	(SnapshotCompleteness)(0),     // 2: infrapulse.v1.SnapshotCompleteness
+	(DiscoveryProtocol)(0),        // 3: infrapulse.v1.DiscoveryProtocol
+	(CommandInitiator)(0),         // 4: infrapulse.v1.CommandInitiator
+	(InterfaceOperation)(0),       // 5: infrapulse.v1.InterfaceOperation
+	(ServiceOperation)(0),         // 6: infrapulse.v1.ServiceOperation
+	(CommandStatus)(0),            // 7: infrapulse.v1.CommandStatus
+	(*AgentEnvelope)(nil),         // 8: infrapulse.v1.AgentEnvelope
+	(*ControllerEnvelope)(nil),    // 9: infrapulse.v1.ControllerEnvelope
+	(*MessageACK)(nil),            // 10: infrapulse.v1.MessageACK
+	(*BuildInfo)(nil),             // 11: infrapulse.v1.BuildInfo
+	(*AgentHello)(nil),            // 12: infrapulse.v1.AgentHello
+	(*HelloAck)(nil),              // 13: infrapulse.v1.HelloAck
+	(*DesiredConfigSnapshot)(nil), // 14: infrapulse.v1.DesiredConfigSnapshot
+	(*ManagedTargetPolling)(nil),  // 15: infrapulse.v1.ManagedTargetPolling
+	(*ManagedTargetSpec)(nil),     // 16: infrapulse.v1.ManagedTargetSpec
+	(*ManagedSNMPOptions)(nil),    // 17: infrapulse.v1.ManagedSNMPOptions
+	(*ManagedSIPOptions)(nil),     // 18: infrapulse.v1.ManagedSIPOptions
+	(*ManagedRedfishOptions)(nil), // 19: infrapulse.v1.ManagedRedfishOptions
+	(*ManagedIPMIOptions)(nil),    // 20: infrapulse.v1.ManagedIPMIOptions
+	(*AppliedConfigState)(nil),    // 21: infrapulse.v1.AppliedConfigState
+	(*ConfigApplyStatus)(nil),     // 22: infrapulse.v1.ConfigApplyStatus
+	(*Capability)(nil),            // 23: infrapulse.v1.Capability
+	(*PhysicalLocation)(nil),      // 24: infrapulse.v1.PhysicalLocation
+	(*Device)(nil),                // 25: infrapulse.v1.Device
+	(*Evidence)(nil),              // 26: infrapulse.v1.Evidence
+	(*InventoryComponent)(nil),    // 27: infrapulse.v1.InventoryComponent
+	(*HardwareStatus)(nil),        // 28: infrapulse.v1.HardwareStatus
+	(*ResourceRelationship)(nil),  // 29: infrapulse.v1.ResourceRelationship
+	(*HardwareInventory)(nil),     // 30: infrapulse.v1.HardwareInventory
+	(*ComponentHealth)(nil),       // 31: infrapulse.v1.ComponentHealth
+	(*IdentityEvidence)(nil),      // 32: infrapulse.v1.IdentityEvidence
+	(*CPUStats)(nil),              // 33: infrapulse.v1.CPUStats
+	(*MemoryStats)(nil),           // 34: infrapulse.v1.MemoryStats
+	(*InterfaceCounters)(nil),     // 35: infrapulse.v1.InterfaceCounters
+	(*InterfaceRates)(nil),        // 36: infrapulse.v1.InterfaceRates
+	(*CounterAvailability)(nil),   // 37: infrapulse.v1.CounterAvailability
+	(*CounterWidths)(nil),         // 38: infrapulse.v1.CounterWidths
+	(*CounterMetadata)(nil),       // 39: infrapulse.v1.CounterMetadata
+	(*InterfaceMetadata)(nil),     // 40: infrapulse.v1.InterfaceMetadata
+	(*Interface)(nil),             // 41: infrapulse.v1.Interface
+	(*Metric)(nil),                // 42: infrapulse.v1.Metric
+	(*TelemetrySample)(nil),       // 43: infrapulse.v1.TelemetrySample
+	(*TelemetryBatch)(nil),        // 44: infrapulse.v1.TelemetryBatch
+	(*QueueState)(nil),            // 45: infrapulse.v1.QueueState
+	(*Heartbeat)(nil),             // 46: infrapulse.v1.Heartbeat
+	(*CertificateStatus)(nil),     // 47: infrapulse.v1.CertificateStatus
+	(*InventoryUpdate)(nil),       // 48: infrapulse.v1.InventoryUpdate
+	(*TopologyUpdate)(nil),        // 49: infrapulse.v1.TopologyUpdate
+	(*ManagementAddress)(nil),     // 50: infrapulse.v1.ManagementAddress
+	(*Neighbor)(nil),              // 51: infrapulse.v1.Neighbor
+	(*Event)(nil),                 // 52: infrapulse.v1.Event
+	(*EventBatch)(nil),            // 53: infrapulse.v1.EventBatch
+	(*ErrorReport)(nil),           // 54: infrapulse.v1.ErrorReport
+	(*InterfaceAction)(nil),       // 55: infrapulse.v1.InterfaceAction
+	(*ServiceAction)(nil),         // 56: infrapulse.v1.ServiceAction
+	(*Command)(nil),               // 57: infrapulse.v1.Command
+	(*RollbackAction)(nil),        // 58: infrapulse.v1.RollbackAction
+	(*CommandResult)(nil),         // 59: infrapulse.v1.CommandResult
+	(*InterfaceVerification)(nil), // 60: infrapulse.v1.InterfaceVerification
+	(*Service)(nil),               // 61: infrapulse.v1.Service
+	(*ServiceInstance)(nil),       // 62: infrapulse.v1.ServiceInstance
+	(*NetworkState)(nil),          // 63: infrapulse.v1.NetworkState
+	(*FirewallSnapshot)(nil),      // 64: infrapulse.v1.FirewallSnapshot
+	(*FirewallZone)(nil),          // 65: infrapulse.v1.FirewallZone
+	(*FirewallForwarding)(nil),    // 66: infrapulse.v1.FirewallForwarding
+	(*FirewallRule)(nil),          // 67: infrapulse.v1.FirewallRule
+	(*FirewallRedirect)(nil),      // 68: infrapulse.v1.FirewallRedirect
+	(*AuditRecord)(nil),           // 69: infrapulse.v1.AuditRecord
+	(*SyslogMetadata)(nil),        // 70: infrapulse.v1.SyslogMetadata
+	(*SourceRef)(nil),             // 71: infrapulse.v1.SourceRef
+	(*ObservationTime)(nil),       // 72: infrapulse.v1.ObservationTime
+	(*ObservationMetadata)(nil),   // 73: infrapulse.v1.ObservationMetadata
+	(*LogRecord)(nil),             // 74: infrapulse.v1.LogRecord
+	(*LogBatch)(nil),              // 75: infrapulse.v1.LogBatch
+	(*TelephonyHealth)(nil),       // 76: infrapulse.v1.TelephonyHealth
+	(*TelephonyUpdate)(nil),       // 77: infrapulse.v1.TelephonyUpdate
+	(*timestamppb.Timestamp)(nil), // 78: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 79: google.protobuf.Duration
 }
 var file_infrapulse_v1_agent_proto_depIdxs = []int32{
-	68,  // 0: infrapulse.v1.AgentEnvelope.sent_at:type_name -> google.protobuf.Timestamp
-	11,  // 1: infrapulse.v1.AgentEnvelope.hello:type_name -> infrapulse.v1.AgentHello
-	36,  // 2: infrapulse.v1.AgentEnvelope.heartbeat:type_name -> infrapulse.v1.Heartbeat
-	34,  // 3: infrapulse.v1.AgentEnvelope.telemetry:type_name -> infrapulse.v1.TelemetryBatch
-	38,  // 4: infrapulse.v1.AgentEnvelope.inventory:type_name -> infrapulse.v1.InventoryUpdate
-	39,  // 5: infrapulse.v1.AgentEnvelope.topology:type_name -> infrapulse.v1.TopologyUpdate
-	65,  // 6: infrapulse.v1.AgentEnvelope.logs:type_name -> infrapulse.v1.LogBatch
-	43,  // 7: infrapulse.v1.AgentEnvelope.events:type_name -> infrapulse.v1.EventBatch
-	67,  // 8: infrapulse.v1.AgentEnvelope.telephony:type_name -> infrapulse.v1.TelephonyUpdate
-	49,  // 9: infrapulse.v1.AgentEnvelope.command_result:type_name -> infrapulse.v1.CommandResult
-	44,  // 10: infrapulse.v1.AgentEnvelope.error:type_name -> infrapulse.v1.ErrorReport
-	12,  // 11: infrapulse.v1.ControllerEnvelope.hello_ack:type_name -> infrapulse.v1.HelloAck
-	47,  // 12: infrapulse.v1.ControllerEnvelope.command:type_name -> infrapulse.v1.Command
-	9,   // 13: infrapulse.v1.ControllerEnvelope.message_ack:type_name -> infrapulse.v1.MessageACK
-	10,  // 14: infrapulse.v1.AgentHello.build:type_name -> infrapulse.v1.BuildInfo
-	68,  // 15: infrapulse.v1.AgentHello.started_at:type_name -> google.protobuf.Timestamp
-	15,  // 16: infrapulse.v1.AgentHello.device:type_name -> infrapulse.v1.Device
-	0,   // 17: infrapulse.v1.Device.type:type_name -> infrapulse.v1.DeviceType
-	68,  // 18: infrapulse.v1.Device.last_seen:type_name -> google.protobuf.Timestamp
-	14,  // 19: infrapulse.v1.Device.location:type_name -> infrapulse.v1.PhysicalLocation
-	13,  // 20: infrapulse.v1.Device.capabilities:type_name -> infrapulse.v1.Capability
-	16,  // 21: infrapulse.v1.Device.vendor_evidence:type_name -> infrapulse.v1.Evidence
-	17,  // 22: infrapulse.v1.Device.components:type_name -> infrapulse.v1.InventoryComponent
-	16,  // 23: infrapulse.v1.Device.platform_evidence:type_name -> infrapulse.v1.Evidence
-	51,  // 24: infrapulse.v1.Device.services:type_name -> infrapulse.v1.Service
-	54,  // 25: infrapulse.v1.Device.firewall:type_name -> infrapulse.v1.FirewallSnapshot
-	53,  // 26: infrapulse.v1.Device.networks:type_name -> infrapulse.v1.NetworkState
-	20,  // 27: infrapulse.v1.Device.hardware:type_name -> infrapulse.v1.HardwareInventory
-	63,  // 28: infrapulse.v1.Device.observation:type_name -> infrapulse.v1.ObservationMetadata
-	22,  // 29: infrapulse.v1.Device.identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
-	22,  // 30: infrapulse.v1.Device.extended_identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
-	20,  // 31: infrapulse.v1.InventoryComponent.hardware:type_name -> infrapulse.v1.HardwareInventory
-	63,  // 32: infrapulse.v1.InventoryComponent.observation:type_name -> infrapulse.v1.ObservationMetadata
-	18,  // 33: infrapulse.v1.HardwareInventory.status:type_name -> infrapulse.v1.HardwareStatus
-	19,  // 34: infrapulse.v1.HardwareInventory.relations:type_name -> infrapulse.v1.ResourceRelationship
-	18,  // 35: infrapulse.v1.ComponentHealth.status:type_name -> infrapulse.v1.HardwareStatus
-	63,  // 36: infrapulse.v1.ComponentHealth.observation:type_name -> infrapulse.v1.ObservationMetadata
-	61,  // 37: infrapulse.v1.IdentityEvidence.source:type_name -> infrapulse.v1.SourceRef
-	62,  // 38: infrapulse.v1.IdentityEvidence.time:type_name -> infrapulse.v1.ObservationTime
-	27,  // 39: infrapulse.v1.InterfaceRates.available:type_name -> infrapulse.v1.CounterAvailability
-	27,  // 40: infrapulse.v1.CounterMetadata.available:type_name -> infrapulse.v1.CounterAvailability
-	28,  // 41: infrapulse.v1.CounterMetadata.widths:type_name -> infrapulse.v1.CounterWidths
-	25,  // 42: infrapulse.v1.Interface.counters:type_name -> infrapulse.v1.InterfaceCounters
-	26,  // 43: infrapulse.v1.Interface.rates:type_name -> infrapulse.v1.InterfaceRates
-	30,  // 44: infrapulse.v1.Interface.metadata:type_name -> infrapulse.v1.InterfaceMetadata
-	29,  // 45: infrapulse.v1.Interface.counter_metadata:type_name -> infrapulse.v1.CounterMetadata
-	18,  // 46: infrapulse.v1.Metric.status:type_name -> infrapulse.v1.HardwareStatus
-	63,  // 47: infrapulse.v1.Metric.observation:type_name -> infrapulse.v1.ObservationMetadata
-	68,  // 48: infrapulse.v1.TelemetrySample.observed_at:type_name -> google.protobuf.Timestamp
-	68,  // 49: infrapulse.v1.TelemetrySample.collected_at:type_name -> google.protobuf.Timestamp
-	23,  // 50: infrapulse.v1.TelemetrySample.cpu:type_name -> infrapulse.v1.CPUStats
-	24,  // 51: infrapulse.v1.TelemetrySample.memory:type_name -> infrapulse.v1.MemoryStats
-	31,  // 52: infrapulse.v1.TelemetrySample.interfaces:type_name -> infrapulse.v1.Interface
-	32,  // 53: infrapulse.v1.TelemetrySample.metrics:type_name -> infrapulse.v1.Metric
-	21,  // 54: infrapulse.v1.TelemetrySample.hardware_health:type_name -> infrapulse.v1.ComponentHealth
-	63,  // 55: infrapulse.v1.TelemetrySample.observation:type_name -> infrapulse.v1.ObservationMetadata
-	22,  // 56: infrapulse.v1.TelemetrySample.identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
-	22,  // 57: infrapulse.v1.TelemetrySample.extended_identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
-	33,  // 58: infrapulse.v1.TelemetryBatch.samples:type_name -> infrapulse.v1.TelemetrySample
-	68,  // 59: infrapulse.v1.QueueState.oldest_pending:type_name -> google.protobuf.Timestamp
-	68,  // 60: infrapulse.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
-	10,  // 61: infrapulse.v1.Heartbeat.build:type_name -> infrapulse.v1.BuildInfo
-	35,  // 62: infrapulse.v1.Heartbeat.queue:type_name -> infrapulse.v1.QueueState
-	37,  // 63: infrapulse.v1.Heartbeat.certificate:type_name -> infrapulse.v1.CertificateStatus
-	68,  // 64: infrapulse.v1.CertificateStatus.expires_at:type_name -> google.protobuf.Timestamp
-	68,  // 65: infrapulse.v1.CertificateStatus.last_successful_renewal:type_name -> google.protobuf.Timestamp
-	68,  // 66: infrapulse.v1.InventoryUpdate.observed_at:type_name -> google.protobuf.Timestamp
-	15,  // 67: infrapulse.v1.InventoryUpdate.devices:type_name -> infrapulse.v1.Device
-	1,   // 68: infrapulse.v1.InventoryUpdate.completeness:type_name -> infrapulse.v1.SnapshotCompleteness
-	63,  // 69: infrapulse.v1.InventoryUpdate.observation:type_name -> infrapulse.v1.ObservationMetadata
-	68,  // 70: infrapulse.v1.TopologyUpdate.observed_at:type_name -> google.protobuf.Timestamp
-	68,  // 71: infrapulse.v1.TopologyUpdate.collected_at:type_name -> google.protobuf.Timestamp
-	1,   // 72: infrapulse.v1.TopologyUpdate.completeness:type_name -> infrapulse.v1.SnapshotCompleteness
-	41,  // 73: infrapulse.v1.TopologyUpdate.observations:type_name -> infrapulse.v1.Neighbor
-	63,  // 74: infrapulse.v1.TopologyUpdate.observation:type_name -> infrapulse.v1.ObservationMetadata
-	2,   // 75: infrapulse.v1.Neighbor.protocol:type_name -> infrapulse.v1.DiscoveryProtocol
-	68,  // 76: infrapulse.v1.Neighbor.observed_at:type_name -> google.protobuf.Timestamp
-	68,  // 77: infrapulse.v1.Neighbor.expires_at:type_name -> google.protobuf.Timestamp
-	16,  // 78: infrapulse.v1.Neighbor.evidence:type_name -> infrapulse.v1.Evidence
-	63,  // 79: infrapulse.v1.Neighbor.observation:type_name -> infrapulse.v1.ObservationMetadata
-	22,  // 80: infrapulse.v1.Neighbor.identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
-	40,  // 81: infrapulse.v1.Neighbor.remote_management_addresses:type_name -> infrapulse.v1.ManagementAddress
-	68,  // 82: infrapulse.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
-	63,  // 83: infrapulse.v1.Event.observation:type_name -> infrapulse.v1.ObservationMetadata
-	42,  // 84: infrapulse.v1.EventBatch.events:type_name -> infrapulse.v1.Event
-	68,  // 85: infrapulse.v1.ErrorReport.timestamp:type_name -> google.protobuf.Timestamp
-	4,   // 86: infrapulse.v1.InterfaceAction.operation:type_name -> infrapulse.v1.InterfaceOperation
-	5,   // 87: infrapulse.v1.ServiceAction.operation:type_name -> infrapulse.v1.ServiceOperation
-	68,  // 88: infrapulse.v1.Command.requested_at:type_name -> google.protobuf.Timestamp
-	69,  // 89: infrapulse.v1.Command.timeout:type_name -> google.protobuf.Duration
-	3,   // 90: infrapulse.v1.Command.initiator:type_name -> infrapulse.v1.CommandInitiator
-	45,  // 91: infrapulse.v1.Command.interface:type_name -> infrapulse.v1.InterfaceAction
-	46,  // 92: infrapulse.v1.Command.service:type_name -> infrapulse.v1.ServiceAction
-	48,  // 93: infrapulse.v1.Command.rollback:type_name -> infrapulse.v1.RollbackAction
-	6,   // 94: infrapulse.v1.CommandResult.status:type_name -> infrapulse.v1.CommandStatus
-	68,  // 95: infrapulse.v1.CommandResult.started_at:type_name -> google.protobuf.Timestamp
-	68,  // 96: infrapulse.v1.CommandResult.finished_at:type_name -> google.protobuf.Timestamp
-	50,  // 97: infrapulse.v1.CommandResult.verification:type_name -> infrapulse.v1.InterfaceVerification
-	68,  // 98: infrapulse.v1.InterfaceVerification.observed_at:type_name -> google.protobuf.Timestamp
-	68,  // 99: infrapulse.v1.Service.observed_at:type_name -> google.protobuf.Timestamp
-	52,  // 100: infrapulse.v1.Service.instances:type_name -> infrapulse.v1.ServiceInstance
-	63,  // 101: infrapulse.v1.Service.observation:type_name -> infrapulse.v1.ObservationMetadata
-	68,  // 102: infrapulse.v1.NetworkState.observed_at:type_name -> google.protobuf.Timestamp
-	63,  // 103: infrapulse.v1.NetworkState.observation:type_name -> infrapulse.v1.ObservationMetadata
-	68,  // 104: infrapulse.v1.FirewallSnapshot.observed_at:type_name -> google.protobuf.Timestamp
-	55,  // 105: infrapulse.v1.FirewallSnapshot.zones:type_name -> infrapulse.v1.FirewallZone
-	56,  // 106: infrapulse.v1.FirewallSnapshot.forwardings:type_name -> infrapulse.v1.FirewallForwarding
-	57,  // 107: infrapulse.v1.FirewallSnapshot.rules:type_name -> infrapulse.v1.FirewallRule
-	58,  // 108: infrapulse.v1.FirewallSnapshot.redirects:type_name -> infrapulse.v1.FirewallRedirect
-	63,  // 109: infrapulse.v1.FirewallSnapshot.observation:type_name -> infrapulse.v1.ObservationMetadata
-	57,  // 110: infrapulse.v1.FirewallRedirect.rule:type_name -> infrapulse.v1.FirewallRule
-	68,  // 111: infrapulse.v1.ObservationTime.source_timestamp:type_name -> google.protobuf.Timestamp
-	68,  // 112: infrapulse.v1.ObservationTime.observed_at:type_name -> google.protobuf.Timestamp
-	68,  // 113: infrapulse.v1.ObservationTime.collected_at:type_name -> google.protobuf.Timestamp
-	69,  // 114: infrapulse.v1.ObservationTime.clock_offset:type_name -> google.protobuf.Duration
-	69,  // 115: infrapulse.v1.ObservationTime.uncertainty:type_name -> google.protobuf.Duration
-	61,  // 116: infrapulse.v1.ObservationMetadata.source:type_name -> infrapulse.v1.SourceRef
-	62,  // 117: infrapulse.v1.ObservationMetadata.time:type_name -> infrapulse.v1.ObservationTime
-	68,  // 118: infrapulse.v1.LogRecord.observed_at:type_name -> google.protobuf.Timestamp
-	68,  // 119: infrapulse.v1.LogRecord.original_timestamp:type_name -> google.protobuf.Timestamp
-	59,  // 120: infrapulse.v1.LogRecord.audit:type_name -> infrapulse.v1.AuditRecord
-	60,  // 121: infrapulse.v1.LogRecord.syslog:type_name -> infrapulse.v1.SyslogMetadata
-	63,  // 122: infrapulse.v1.LogRecord.observation:type_name -> infrapulse.v1.ObservationMetadata
-	68,  // 123: infrapulse.v1.LogBatch.observed_at:type_name -> google.protobuf.Timestamp
-	64,  // 124: infrapulse.v1.LogBatch.records:type_name -> infrapulse.v1.LogRecord
-	63,  // 125: infrapulse.v1.LogBatch.observation:type_name -> infrapulse.v1.ObservationMetadata
-	68,  // 126: infrapulse.v1.TelephonyHealth.observed_at:type_name -> google.protobuf.Timestamp
-	63,  // 127: infrapulse.v1.TelephonyHealth.observation:type_name -> infrapulse.v1.ObservationMetadata
-	68,  // 128: infrapulse.v1.TelephonyUpdate.observed_at:type_name -> google.protobuf.Timestamp
-	66,  // 129: infrapulse.v1.TelephonyUpdate.targets:type_name -> infrapulse.v1.TelephonyHealth
-	63,  // 130: infrapulse.v1.TelephonyUpdate.observation:type_name -> infrapulse.v1.ObservationMetadata
-	7,   // 131: infrapulse.v1.AgentService.Connect:input_type -> infrapulse.v1.AgentEnvelope
-	8,   // 132: infrapulse.v1.AgentService.Connect:output_type -> infrapulse.v1.ControllerEnvelope
-	132, // [132:133] is the sub-list for method output_type
-	131, // [131:132] is the sub-list for method input_type
-	131, // [131:131] is the sub-list for extension type_name
-	131, // [131:131] is the sub-list for extension extendee
-	0,   // [0:131] is the sub-list for field type_name
+	78,  // 0: infrapulse.v1.AgentEnvelope.sent_at:type_name -> google.protobuf.Timestamp
+	12,  // 1: infrapulse.v1.AgentEnvelope.hello:type_name -> infrapulse.v1.AgentHello
+	46,  // 2: infrapulse.v1.AgentEnvelope.heartbeat:type_name -> infrapulse.v1.Heartbeat
+	44,  // 3: infrapulse.v1.AgentEnvelope.telemetry:type_name -> infrapulse.v1.TelemetryBatch
+	48,  // 4: infrapulse.v1.AgentEnvelope.inventory:type_name -> infrapulse.v1.InventoryUpdate
+	49,  // 5: infrapulse.v1.AgentEnvelope.topology:type_name -> infrapulse.v1.TopologyUpdate
+	75,  // 6: infrapulse.v1.AgentEnvelope.logs:type_name -> infrapulse.v1.LogBatch
+	53,  // 7: infrapulse.v1.AgentEnvelope.events:type_name -> infrapulse.v1.EventBatch
+	77,  // 8: infrapulse.v1.AgentEnvelope.telephony:type_name -> infrapulse.v1.TelephonyUpdate
+	59,  // 9: infrapulse.v1.AgentEnvelope.command_result:type_name -> infrapulse.v1.CommandResult
+	54,  // 10: infrapulse.v1.AgentEnvelope.error:type_name -> infrapulse.v1.ErrorReport
+	22,  // 11: infrapulse.v1.AgentEnvelope.config_status:type_name -> infrapulse.v1.ConfigApplyStatus
+	13,  // 12: infrapulse.v1.ControllerEnvelope.hello_ack:type_name -> infrapulse.v1.HelloAck
+	57,  // 13: infrapulse.v1.ControllerEnvelope.command:type_name -> infrapulse.v1.Command
+	10,  // 14: infrapulse.v1.ControllerEnvelope.message_ack:type_name -> infrapulse.v1.MessageACK
+	14,  // 15: infrapulse.v1.ControllerEnvelope.desired_config:type_name -> infrapulse.v1.DesiredConfigSnapshot
+	11,  // 16: infrapulse.v1.AgentHello.build:type_name -> infrapulse.v1.BuildInfo
+	78,  // 17: infrapulse.v1.AgentHello.started_at:type_name -> google.protobuf.Timestamp
+	25,  // 18: infrapulse.v1.AgentHello.device:type_name -> infrapulse.v1.Device
+	21,  // 19: infrapulse.v1.AgentHello.applied_config:type_name -> infrapulse.v1.AppliedConfigState
+	78,  // 20: infrapulse.v1.DesiredConfigSnapshot.issued_at:type_name -> google.protobuf.Timestamp
+	16,  // 21: infrapulse.v1.DesiredConfigSnapshot.targets:type_name -> infrapulse.v1.ManagedTargetSpec
+	79,  // 22: infrapulse.v1.ManagedTargetPolling.fast_interval:type_name -> google.protobuf.Duration
+	79,  // 23: infrapulse.v1.ManagedTargetPolling.medium_interval:type_name -> google.protobuf.Duration
+	79,  // 24: infrapulse.v1.ManagedTargetPolling.inventory_interval:type_name -> google.protobuf.Duration
+	79,  // 25: infrapulse.v1.ManagedTargetPolling.topology_interval:type_name -> google.protobuf.Duration
+	79,  // 26: infrapulse.v1.ManagedTargetPolling.timeout:type_name -> google.protobuf.Duration
+	24,  // 27: infrapulse.v1.ManagedTargetSpec.location:type_name -> infrapulse.v1.PhysicalLocation
+	15,  // 28: infrapulse.v1.ManagedTargetSpec.polling:type_name -> infrapulse.v1.ManagedTargetPolling
+	17,  // 29: infrapulse.v1.ManagedTargetSpec.snmp:type_name -> infrapulse.v1.ManagedSNMPOptions
+	18,  // 30: infrapulse.v1.ManagedTargetSpec.sip:type_name -> infrapulse.v1.ManagedSIPOptions
+	19,  // 31: infrapulse.v1.ManagedTargetSpec.redfish:type_name -> infrapulse.v1.ManagedRedfishOptions
+	20,  // 32: infrapulse.v1.ManagedTargetSpec.ipmi:type_name -> infrapulse.v1.ManagedIPMIOptions
+	79,  // 33: infrapulse.v1.ManagedSIPOptions.latency_threshold:type_name -> google.protobuf.Duration
+	79,  // 34: infrapulse.v1.ManagedRedfishOptions.request_timeout:type_name -> google.protobuf.Duration
+	79,  // 35: infrapulse.v1.ManagedIPMIOptions.request_timeout:type_name -> google.protobuf.Duration
+	79,  // 36: infrapulse.v1.ManagedIPMIOptions.max_session_duration:type_name -> google.protobuf.Duration
+	79,  // 37: infrapulse.v1.ManagedIPMIOptions.sdr_cache_ttl:type_name -> google.protobuf.Duration
+	0,   // 38: infrapulse.v1.AppliedConfigState.status:type_name -> infrapulse.v1.ConfigStatus
+	78,  // 39: infrapulse.v1.AppliedConfigState.applied_at:type_name -> google.protobuf.Timestamp
+	0,   // 40: infrapulse.v1.ConfigApplyStatus.status:type_name -> infrapulse.v1.ConfigStatus
+	78,  // 41: infrapulse.v1.ConfigApplyStatus.applied_at:type_name -> google.protobuf.Timestamp
+	1,   // 42: infrapulse.v1.Device.type:type_name -> infrapulse.v1.DeviceType
+	78,  // 43: infrapulse.v1.Device.last_seen:type_name -> google.protobuf.Timestamp
+	24,  // 44: infrapulse.v1.Device.location:type_name -> infrapulse.v1.PhysicalLocation
+	23,  // 45: infrapulse.v1.Device.capabilities:type_name -> infrapulse.v1.Capability
+	26,  // 46: infrapulse.v1.Device.vendor_evidence:type_name -> infrapulse.v1.Evidence
+	27,  // 47: infrapulse.v1.Device.components:type_name -> infrapulse.v1.InventoryComponent
+	26,  // 48: infrapulse.v1.Device.platform_evidence:type_name -> infrapulse.v1.Evidence
+	61,  // 49: infrapulse.v1.Device.services:type_name -> infrapulse.v1.Service
+	64,  // 50: infrapulse.v1.Device.firewall:type_name -> infrapulse.v1.FirewallSnapshot
+	63,  // 51: infrapulse.v1.Device.networks:type_name -> infrapulse.v1.NetworkState
+	30,  // 52: infrapulse.v1.Device.hardware:type_name -> infrapulse.v1.HardwareInventory
+	73,  // 53: infrapulse.v1.Device.observation:type_name -> infrapulse.v1.ObservationMetadata
+	32,  // 54: infrapulse.v1.Device.identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
+	32,  // 55: infrapulse.v1.Device.extended_identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
+	30,  // 56: infrapulse.v1.InventoryComponent.hardware:type_name -> infrapulse.v1.HardwareInventory
+	73,  // 57: infrapulse.v1.InventoryComponent.observation:type_name -> infrapulse.v1.ObservationMetadata
+	28,  // 58: infrapulse.v1.HardwareInventory.status:type_name -> infrapulse.v1.HardwareStatus
+	29,  // 59: infrapulse.v1.HardwareInventory.relations:type_name -> infrapulse.v1.ResourceRelationship
+	28,  // 60: infrapulse.v1.ComponentHealth.status:type_name -> infrapulse.v1.HardwareStatus
+	73,  // 61: infrapulse.v1.ComponentHealth.observation:type_name -> infrapulse.v1.ObservationMetadata
+	71,  // 62: infrapulse.v1.IdentityEvidence.source:type_name -> infrapulse.v1.SourceRef
+	72,  // 63: infrapulse.v1.IdentityEvidence.time:type_name -> infrapulse.v1.ObservationTime
+	37,  // 64: infrapulse.v1.InterfaceRates.available:type_name -> infrapulse.v1.CounterAvailability
+	37,  // 65: infrapulse.v1.CounterMetadata.available:type_name -> infrapulse.v1.CounterAvailability
+	38,  // 66: infrapulse.v1.CounterMetadata.widths:type_name -> infrapulse.v1.CounterWidths
+	35,  // 67: infrapulse.v1.Interface.counters:type_name -> infrapulse.v1.InterfaceCounters
+	36,  // 68: infrapulse.v1.Interface.rates:type_name -> infrapulse.v1.InterfaceRates
+	40,  // 69: infrapulse.v1.Interface.metadata:type_name -> infrapulse.v1.InterfaceMetadata
+	39,  // 70: infrapulse.v1.Interface.counter_metadata:type_name -> infrapulse.v1.CounterMetadata
+	28,  // 71: infrapulse.v1.Metric.status:type_name -> infrapulse.v1.HardwareStatus
+	73,  // 72: infrapulse.v1.Metric.observation:type_name -> infrapulse.v1.ObservationMetadata
+	78,  // 73: infrapulse.v1.TelemetrySample.observed_at:type_name -> google.protobuf.Timestamp
+	78,  // 74: infrapulse.v1.TelemetrySample.collected_at:type_name -> google.protobuf.Timestamp
+	33,  // 75: infrapulse.v1.TelemetrySample.cpu:type_name -> infrapulse.v1.CPUStats
+	34,  // 76: infrapulse.v1.TelemetrySample.memory:type_name -> infrapulse.v1.MemoryStats
+	41,  // 77: infrapulse.v1.TelemetrySample.interfaces:type_name -> infrapulse.v1.Interface
+	42,  // 78: infrapulse.v1.TelemetrySample.metrics:type_name -> infrapulse.v1.Metric
+	31,  // 79: infrapulse.v1.TelemetrySample.hardware_health:type_name -> infrapulse.v1.ComponentHealth
+	73,  // 80: infrapulse.v1.TelemetrySample.observation:type_name -> infrapulse.v1.ObservationMetadata
+	32,  // 81: infrapulse.v1.TelemetrySample.identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
+	32,  // 82: infrapulse.v1.TelemetrySample.extended_identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
+	43,  // 83: infrapulse.v1.TelemetryBatch.samples:type_name -> infrapulse.v1.TelemetrySample
+	78,  // 84: infrapulse.v1.QueueState.oldest_pending:type_name -> google.protobuf.Timestamp
+	78,  // 85: infrapulse.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
+	11,  // 86: infrapulse.v1.Heartbeat.build:type_name -> infrapulse.v1.BuildInfo
+	45,  // 87: infrapulse.v1.Heartbeat.queue:type_name -> infrapulse.v1.QueueState
+	47,  // 88: infrapulse.v1.Heartbeat.certificate:type_name -> infrapulse.v1.CertificateStatus
+	22,  // 89: infrapulse.v1.Heartbeat.managed_config:type_name -> infrapulse.v1.ConfigApplyStatus
+	78,  // 90: infrapulse.v1.CertificateStatus.expires_at:type_name -> google.protobuf.Timestamp
+	78,  // 91: infrapulse.v1.CertificateStatus.last_successful_renewal:type_name -> google.protobuf.Timestamp
+	78,  // 92: infrapulse.v1.InventoryUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	25,  // 93: infrapulse.v1.InventoryUpdate.devices:type_name -> infrapulse.v1.Device
+	2,   // 94: infrapulse.v1.InventoryUpdate.completeness:type_name -> infrapulse.v1.SnapshotCompleteness
+	73,  // 95: infrapulse.v1.InventoryUpdate.observation:type_name -> infrapulse.v1.ObservationMetadata
+	78,  // 96: infrapulse.v1.TopologyUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	78,  // 97: infrapulse.v1.TopologyUpdate.collected_at:type_name -> google.protobuf.Timestamp
+	2,   // 98: infrapulse.v1.TopologyUpdate.completeness:type_name -> infrapulse.v1.SnapshotCompleteness
+	51,  // 99: infrapulse.v1.TopologyUpdate.observations:type_name -> infrapulse.v1.Neighbor
+	73,  // 100: infrapulse.v1.TopologyUpdate.observation:type_name -> infrapulse.v1.ObservationMetadata
+	3,   // 101: infrapulse.v1.Neighbor.protocol:type_name -> infrapulse.v1.DiscoveryProtocol
+	78,  // 102: infrapulse.v1.Neighbor.observed_at:type_name -> google.protobuf.Timestamp
+	78,  // 103: infrapulse.v1.Neighbor.expires_at:type_name -> google.protobuf.Timestamp
+	26,  // 104: infrapulse.v1.Neighbor.evidence:type_name -> infrapulse.v1.Evidence
+	73,  // 105: infrapulse.v1.Neighbor.observation:type_name -> infrapulse.v1.ObservationMetadata
+	32,  // 106: infrapulse.v1.Neighbor.identity_evidence:type_name -> infrapulse.v1.IdentityEvidence
+	50,  // 107: infrapulse.v1.Neighbor.remote_management_addresses:type_name -> infrapulse.v1.ManagementAddress
+	78,  // 108: infrapulse.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
+	73,  // 109: infrapulse.v1.Event.observation:type_name -> infrapulse.v1.ObservationMetadata
+	52,  // 110: infrapulse.v1.EventBatch.events:type_name -> infrapulse.v1.Event
+	78,  // 111: infrapulse.v1.ErrorReport.timestamp:type_name -> google.protobuf.Timestamp
+	5,   // 112: infrapulse.v1.InterfaceAction.operation:type_name -> infrapulse.v1.InterfaceOperation
+	6,   // 113: infrapulse.v1.ServiceAction.operation:type_name -> infrapulse.v1.ServiceOperation
+	78,  // 114: infrapulse.v1.Command.requested_at:type_name -> google.protobuf.Timestamp
+	79,  // 115: infrapulse.v1.Command.timeout:type_name -> google.protobuf.Duration
+	4,   // 116: infrapulse.v1.Command.initiator:type_name -> infrapulse.v1.CommandInitiator
+	55,  // 117: infrapulse.v1.Command.interface:type_name -> infrapulse.v1.InterfaceAction
+	56,  // 118: infrapulse.v1.Command.service:type_name -> infrapulse.v1.ServiceAction
+	58,  // 119: infrapulse.v1.Command.rollback:type_name -> infrapulse.v1.RollbackAction
+	7,   // 120: infrapulse.v1.CommandResult.status:type_name -> infrapulse.v1.CommandStatus
+	78,  // 121: infrapulse.v1.CommandResult.started_at:type_name -> google.protobuf.Timestamp
+	78,  // 122: infrapulse.v1.CommandResult.finished_at:type_name -> google.protobuf.Timestamp
+	60,  // 123: infrapulse.v1.CommandResult.verification:type_name -> infrapulse.v1.InterfaceVerification
+	78,  // 124: infrapulse.v1.InterfaceVerification.observed_at:type_name -> google.protobuf.Timestamp
+	78,  // 125: infrapulse.v1.Service.observed_at:type_name -> google.protobuf.Timestamp
+	62,  // 126: infrapulse.v1.Service.instances:type_name -> infrapulse.v1.ServiceInstance
+	73,  // 127: infrapulse.v1.Service.observation:type_name -> infrapulse.v1.ObservationMetadata
+	78,  // 128: infrapulse.v1.NetworkState.observed_at:type_name -> google.protobuf.Timestamp
+	73,  // 129: infrapulse.v1.NetworkState.observation:type_name -> infrapulse.v1.ObservationMetadata
+	78,  // 130: infrapulse.v1.FirewallSnapshot.observed_at:type_name -> google.protobuf.Timestamp
+	65,  // 131: infrapulse.v1.FirewallSnapshot.zones:type_name -> infrapulse.v1.FirewallZone
+	66,  // 132: infrapulse.v1.FirewallSnapshot.forwardings:type_name -> infrapulse.v1.FirewallForwarding
+	67,  // 133: infrapulse.v1.FirewallSnapshot.rules:type_name -> infrapulse.v1.FirewallRule
+	68,  // 134: infrapulse.v1.FirewallSnapshot.redirects:type_name -> infrapulse.v1.FirewallRedirect
+	73,  // 135: infrapulse.v1.FirewallSnapshot.observation:type_name -> infrapulse.v1.ObservationMetadata
+	67,  // 136: infrapulse.v1.FirewallRedirect.rule:type_name -> infrapulse.v1.FirewallRule
+	78,  // 137: infrapulse.v1.ObservationTime.source_timestamp:type_name -> google.protobuf.Timestamp
+	78,  // 138: infrapulse.v1.ObservationTime.observed_at:type_name -> google.protobuf.Timestamp
+	78,  // 139: infrapulse.v1.ObservationTime.collected_at:type_name -> google.protobuf.Timestamp
+	79,  // 140: infrapulse.v1.ObservationTime.clock_offset:type_name -> google.protobuf.Duration
+	79,  // 141: infrapulse.v1.ObservationTime.uncertainty:type_name -> google.protobuf.Duration
+	71,  // 142: infrapulse.v1.ObservationMetadata.source:type_name -> infrapulse.v1.SourceRef
+	72,  // 143: infrapulse.v1.ObservationMetadata.time:type_name -> infrapulse.v1.ObservationTime
+	78,  // 144: infrapulse.v1.LogRecord.observed_at:type_name -> google.protobuf.Timestamp
+	78,  // 145: infrapulse.v1.LogRecord.original_timestamp:type_name -> google.protobuf.Timestamp
+	69,  // 146: infrapulse.v1.LogRecord.audit:type_name -> infrapulse.v1.AuditRecord
+	70,  // 147: infrapulse.v1.LogRecord.syslog:type_name -> infrapulse.v1.SyslogMetadata
+	73,  // 148: infrapulse.v1.LogRecord.observation:type_name -> infrapulse.v1.ObservationMetadata
+	78,  // 149: infrapulse.v1.LogBatch.observed_at:type_name -> google.protobuf.Timestamp
+	74,  // 150: infrapulse.v1.LogBatch.records:type_name -> infrapulse.v1.LogRecord
+	73,  // 151: infrapulse.v1.LogBatch.observation:type_name -> infrapulse.v1.ObservationMetadata
+	78,  // 152: infrapulse.v1.TelephonyHealth.observed_at:type_name -> google.protobuf.Timestamp
+	73,  // 153: infrapulse.v1.TelephonyHealth.observation:type_name -> infrapulse.v1.ObservationMetadata
+	78,  // 154: infrapulse.v1.TelephonyUpdate.observed_at:type_name -> google.protobuf.Timestamp
+	76,  // 155: infrapulse.v1.TelephonyUpdate.targets:type_name -> infrapulse.v1.TelephonyHealth
+	73,  // 156: infrapulse.v1.TelephonyUpdate.observation:type_name -> infrapulse.v1.ObservationMetadata
+	8,   // 157: infrapulse.v1.AgentService.Connect:input_type -> infrapulse.v1.AgentEnvelope
+	9,   // 158: infrapulse.v1.AgentService.Connect:output_type -> infrapulse.v1.ControllerEnvelope
+	158, // [158:159] is the sub-list for method output_type
+	157, // [157:158] is the sub-list for method input_type
+	157, // [157:157] is the sub-list for extension type_name
+	157, // [157:157] is the sub-list for extension extendee
+	0,   // [0:157] is the sub-list for field type_name
 }
 
 func init() { file_infrapulse_v1_agent_proto_init() }
@@ -7753,45 +8978,54 @@ func file_infrapulse_v1_agent_proto_init() {
 		(*AgentEnvelope_Telephony)(nil),
 		(*AgentEnvelope_CommandResult)(nil),
 		(*AgentEnvelope_Error)(nil),
+		(*AgentEnvelope_ConfigStatus)(nil),
 	}
 	file_infrapulse_v1_agent_proto_msgTypes[1].OneofWrappers = []any{
 		(*ControllerEnvelope_HelloAck)(nil),
 		(*ControllerEnvelope_Command)(nil),
 		(*ControllerEnvelope_MessageAck)(nil),
+		(*ControllerEnvelope_DesiredConfig)(nil),
 	}
-	file_infrapulse_v1_agent_proto_msgTypes[8].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[13].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[15].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[16].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[8].OneofWrappers = []any{
+		(*ManagedTargetSpec_Snmp)(nil),
+		(*ManagedTargetSpec_Sip)(nil),
+		(*ManagedTargetSpec_Redfish)(nil),
+		(*ManagedTargetSpec_Ipmi)(nil),
+	}
+	file_infrapulse_v1_agent_proto_msgTypes[12].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[17].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[22].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[24].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[25].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[26].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[31].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[33].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[34].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[40].OneofWrappers = []any{
+	file_infrapulse_v1_agent_proto_msgTypes[35].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[42].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[43].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[49].OneofWrappers = []any{
 		(*Command_Interface)(nil),
 		(*Command_Service)(nil),
 		(*Command_Rollback)(nil),
 	}
-	file_infrapulse_v1_agent_proto_msgTypes[43].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[44].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[45].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[46].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[47].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[48].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[49].OneofWrappers = []any{}
-	file_infrapulse_v1_agent_proto_msgTypes[50].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[52].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[53].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[54].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[55].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[56].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[57].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[58].OneofWrappers = []any{}
 	file_infrapulse_v1_agent_proto_msgTypes[59].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[61].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[66].OneofWrappers = []any{}
+	file_infrapulse_v1_agent_proto_msgTypes[68].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_infrapulse_v1_agent_proto_rawDesc), len(file_infrapulse_v1_agent_proto_rawDesc)),
-			NumEnums:      7,
-			NumMessages:   61,
+			NumEnums:      8,
+			NumMessages:   70,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

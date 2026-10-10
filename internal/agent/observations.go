@@ -25,8 +25,12 @@ func (a *Agent) configuredTargets() []model.Target {
 	result := make([]model.Target, 0, 1+len(a.cfg.Devices)+len(a.cfg.Telephony.Endpoints)+len(a.cfg.Logs.Sources))
 	result = append(result, a.localTarget)
 	defaults := config.Polling{FastInterval: a.cfg.Telemetry.FastInterval, MediumInterval: a.cfg.Telemetry.MediumInterval, InventoryInterval: a.cfg.Telemetry.InventoryInterval, TopologyInterval: a.cfg.Telemetry.TopologyInterval, Timeout: a.cfg.Telemetry.CollectTimeout}
-	for _, d := range a.cfg.Devices {
-		result = append(result, d.Target(defaults))
+	if a.remote != nil {
+		result = append(result, a.remote.Targets()...)
+	} else {
+		for _, d := range a.cfg.Devices {
+			result = append(result, d.Target(defaults))
+		}
 	}
 	for _, ep := range a.cfg.Telephony.Endpoints {
 		result = append(result, ep.Target())

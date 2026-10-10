@@ -2,6 +2,7 @@ package queue
 
 import (
 	"InfraPulseAgent/internal/model"
+	"InfraPulseAgent/internal/testutil"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,7 +16,7 @@ import (
 
 func durableOptions(t *testing.T) DurableOptions {
 	t.Helper()
-	return DurableOptions{Path: filepath.Join(t.TempDir(), "outbox.db"), MaxMessages: 16, MaxBytes: 128 << 10, MaxMessageBytes: 8192, MaxStorageBytes: 2 << 20, Retention: time.Hour, BatchDelay: time.Millisecond, BatchSize: 16, MaxInflight: 4, ACKTimeout: 100 * time.Millisecond}
+	return DurableOptions{Path: filepath.Join(testutil.TempDir(t), "outbox.db"), MaxMessages: 16, MaxBytes: 128 << 10, MaxMessageBytes: 8192, MaxStorageBytes: 2 << 20, Retention: time.Hour, BatchDelay: time.Millisecond, BatchSize: 16, MaxInflight: 4, ACKTimeout: 100 * time.Millisecond}
 }
 func openDurable(t *testing.T, o DurableOptions) *Queue {
 	t.Helper()

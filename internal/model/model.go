@@ -71,14 +71,17 @@ type BuildInfo struct {
 }
 
 type AgentHello struct {
-	ApplicationACK  bool      `json:"application_ack,omitempty"`
-	AgentID         string    `json:"agent_id"`
-	SessionID       string    `json:"session_id"`
-	Name            string    `json:"name"`
-	Build           BuildInfo `json:"build"`
-	StartedAt       time.Time `json:"started_at"`
-	Device          Device    `json:"device"`
-	ProtocolVersion uint32    `json:"protocol_version"`
+	ManagedConfigV1         bool                `json:"managed_config_v1,omitempty"`
+	RemoteManagementEnabled bool                `json:"remote_management_enabled,omitempty"`
+	AppliedConfig           *AppliedConfigState `json:"applied_config,omitempty"`
+	ApplicationACK          bool                `json:"application_ack,omitempty"`
+	AgentID                 string              `json:"agent_id"`
+	SessionID               string              `json:"session_id"`
+	Name                    string              `json:"name"`
+	Build                   BuildInfo           `json:"build"`
+	StartedAt               time.Time           `json:"started_at"`
+	Device                  Device              `json:"device"`
+	ProtocolVersion         uint32              `json:"protocol_version"`
 }
 
 type CPUStats struct {
@@ -186,6 +189,7 @@ type QueueState struct {
 }
 
 type Heartbeat struct {
+	ManagedConfig     *ConfigApplyResult `json:"managed_config,omitempty"`
 	Certificate       *CertificateStatus `json:"certificate,omitempty"`
 	Timestamp         time.Time          `json:"timestamp"`
 	UptimeSeconds     float64            `json:"uptime_seconds"`
@@ -266,24 +270,30 @@ type CommandResult struct {
 
 // Envelope has one payload. Validate/mapping rejects missing or multiple payloads.
 type Envelope struct {
-	Logs          *LogBatch        `json:"logs,omitempty"`
-	Telephony     *TelephonyUpdate `json:"telephony,omitempty"`
-	MessageID     string           `json:"message_id"`
-	AgentID       string           `json:"agent_id"`
-	SessionID     string           `json:"session_id"`
-	Sequence      uint64           `json:"sequence"`
-	SentAt        time.Time        `json:"sent_at"`
-	Hello         *AgentHello      `json:"hello,omitempty"`
-	Heartbeat     *Heartbeat       `json:"heartbeat,omitempty"`
-	Telemetry     *TelemetrySample `json:"telemetry,omitempty"`
-	Inventory     *InventoryUpdate `json:"inventory,omitempty"`
-	Events        []Event          `json:"events,omitempty"`
-	CommandResult *CommandResult   `json:"command_result,omitempty"`
-	Error         *ErrorReport     `json:"error,omitempty"`
-	Topology      *TopologyUpdate  `json:"topology,omitempty"`
+	ConfigApplyResult *ConfigApplyResult `json:"config_apply_result,omitempty"`
+	Logs              *LogBatch          `json:"logs,omitempty"`
+	Telephony         *TelephonyUpdate   `json:"telephony,omitempty"`
+	MessageID         string             `json:"message_id"`
+	AgentID           string             `json:"agent_id"`
+	SessionID         string             `json:"session_id"`
+	Sequence          uint64             `json:"sequence"`
+	SentAt            time.Time          `json:"sent_at"`
+	Hello             *AgentHello        `json:"hello,omitempty"`
+	Heartbeat         *Heartbeat         `json:"heartbeat,omitempty"`
+	Telemetry         *TelemetrySample   `json:"telemetry,omitempty"`
+	Inventory         *InventoryUpdate   `json:"inventory,omitempty"`
+	Events            []Event            `json:"events,omitempty"`
+	CommandResult     *CommandResult     `json:"command_result,omitempty"`
+	Error             *ErrorReport       `json:"error,omitempty"`
+	Topology          *TopologyUpdate    `json:"topology,omitempty"`
 }
 
 type ControllerMessage struct {
+	ManagedConfigV1 bool
+	DesiredConfig   *DesiredCollectorConfig
+	// ConfigError is a fixed safe error code; invalid configuration payloads
+	// are rejected by the configuration worker without disrupting ACK/replay.
+	ConfigError     string
 	ApplicationACK  bool
 	ACKMessageID    string
 	HelloAccepted   bool

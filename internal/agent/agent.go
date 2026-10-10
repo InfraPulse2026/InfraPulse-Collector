@@ -21,6 +21,7 @@ import (
 	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/identity"
 	"InfraPulseAgent/internal/logs"
+	"InfraPulseAgent/internal/managedconfig"
 	"InfraPulseAgent/internal/model"
 	"InfraPulseAgent/internal/pki"
 	"InfraPulseAgent/internal/platform"
@@ -38,6 +39,7 @@ import (
 )
 
 type Agent struct {
+	managed      *managedconfig.Manager
 	syslog       *syslogreceiver.Receiver
 	timeSync     *timesync.Status
 	localTarget  model.Target
@@ -73,28 +75,29 @@ type Agent struct {
 type Collector = Agent
 
 type Diagnostics struct {
-	SyslogReceiver    *syslogreceiver.Stats   `json:"syslog_receiver,omitempty"`
-	TimeSync          *timesync.Status        `json:"time_sync,omitempty"`
-	Targets           []model.Target          `json:"targets,omitempty"`
-	SNMP              []SNMPSecurityStatus    `json:"snmp,omitempty"`
-	CommandState      *commands.StoreHealth   `json:"command_state,omitempty"`
-	Certificate       *pki.Status             `json:"certificate,omitempty"`
-	ACKFallback       bool                    `json:"ack_fallback,omitempty"`
-	AgentID           string                  `json:"agent_id"`
-	SessionID         string                  `json:"session_id"`
-	Build             model.BuildInfo         `json:"build"`
-	Platform          string                  `json:"platform"`
-	ControllerAddress string                  `json:"controller_address"`
-	TLSMode           string                  `json:"tls_mode"`
-	Connected         bool                    `json:"connected"`
-	ObservedAt        time.Time               `json:"observed_at"`
-	Queue             model.QueueState        `json:"queue"`
-	Collectors        []scheduler.State       `json:"collectors"`
-	Devices           []model.Device          `json:"devices"`
-	RecentErrors      []string                `json:"recent_errors"`
-	RemoteDevices     []remote.State          `json:"remote_devices,omitempty"`
-	LogSources        []logs.State            `json:"log_sources,omitempty"`
-	Telephony         []model.TelephonyHealth `json:"telephony,omitempty"`
+	ManagedConfiguration *managedconfig.Diagnostics `json:"managed_configuration,omitempty"`
+	SyslogReceiver       *syslogreceiver.Stats      `json:"syslog_receiver,omitempty"`
+	TimeSync             *timesync.Status           `json:"time_sync,omitempty"`
+	Targets              []model.Target             `json:"targets,omitempty"`
+	SNMP                 []SNMPSecurityStatus       `json:"snmp,omitempty"`
+	CommandState         *commands.StoreHealth      `json:"command_state,omitempty"`
+	Certificate          *pki.Status                `json:"certificate,omitempty"`
+	ACKFallback          bool                       `json:"ack_fallback,omitempty"`
+	AgentID              string                     `json:"agent_id"`
+	SessionID            string                     `json:"session_id"`
+	Build                model.BuildInfo            `json:"build"`
+	Platform             string                     `json:"platform"`
+	ControllerAddress    string                     `json:"controller_address"`
+	TLSMode              string                     `json:"tls_mode"`
+	Connected            bool                       `json:"connected"`
+	ObservedAt           time.Time                  `json:"observed_at"`
+	Queue                model.QueueState           `json:"queue"`
+	Collectors           []scheduler.State          `json:"collectors"`
+	Devices              []model.Device             `json:"devices"`
+	RecentErrors         []string                   `json:"recent_errors"`
+	RemoteDevices        []remote.State             `json:"remote_devices,omitempty"`
+	LogSources           []logs.State               `json:"log_sources,omitempty"`
+	Telephony            []model.TelephonyHealth    `json:"telephony,omitempty"`
 }
 
 func New(ctx context.Context, cfg config.Config, p platform.Platform, t transport.Transport, logger *slog.Logger) (*Agent, error) {
@@ -168,6 +171,12 @@ func New(ctx context.Context, cfg config.Config, p platform.Platform, t transpor
 		}
 		return nil, err
 	}
+	provider := credentials.NewEnvironment(cfg.Credentials)
+	a.managed = managedconfig.New(cfg, id.AgentID, id.SessionID, a.remote, RemoteAdapterFactory(cfg, provider, id.AgentID), provider)
+	if err = a.managed.Restore(ctx); err != nil {
+		a.recordError("managed configuration: " + err.Error())
+		a.logger.Warn("managed configuration restoration failed; local monitoring continues", "code", err.Error())
+	}
 	if err = a.initSyslog(); err != nil {
 		_ = a.remote.Close()
 		if a.logs != nil {
@@ -234,6 +243,13 @@ func (a *Agent) jobs() error {
 	}
 	return a.scheduler.Add(scheduler.Job{Name: "agent.heartbeat", Interval: a.cfg.Telemetry.HeartbeatInterval, Timeout: a.cfg.Telemetry.CollectTimeout, Collect: func(ctx context.Context) error {
 		h := model.Heartbeat{Timestamp: time.Now().UTC(), UptimeSeconds: time.Since(a.started).Seconds(), Build: version.Info(), Health: a.health(), Queue: a.queue.State(), RemoteDeviceCount: len(a.cfg.Devices)}
+		if a.managed != nil {
+			m := a.managed.Result()
+			if m.Status != "" {
+				h.ManagedConfig = &m
+			}
+			h.RemoteDeviceCount = len(a.remote.Targets())
+		}
 		if a.storageError != "" {
 			h.Queue.StorageError = a.storageError
 		}
@@ -247,6 +263,12 @@ func (a *Agent) jobs() error {
 }
 
 func (a *Agent) health() string {
+	if a.managed != nil {
+		m := a.managed.Snapshot()
+		if m.StorageDegraded || m.Enabled && m.StoredRevision > 0 && m.Applied.Revision == 0 {
+			return "degraded"
+		}
+	}
 	if a.certificates != nil {
 		s := a.certificates.Status()
 		if s.RemainingSeconds <= 0 || s.RenewalState == "failed" {
@@ -405,10 +427,17 @@ func (a *Agent) supervise(ctx context.Context) error {
 		a.queue.ResetInflight()
 		sessionCtx, cancel := context.WithCancel(ctx)
 		applicationACK := false
+		managedConfigV1 := false
 		watchdog := time.AfterFunc(a.cfg.Controller.ConnectTimeout, cancel)
 		session, err := a.transport.Connect(sessionCtx)
 		if err == nil {
 			hello := model.AgentHello{AgentID: a.id.AgentID, SessionID: a.id.SessionID, Name: a.cfg.Agent.Name, Build: version.Info(), StartedAt: a.started.UTC(), Device: a.deviceSnapshot(), ProtocolVersion: 1, ApplicationACK: true}
+			hello.ManagedConfigV1 = true
+			hello.RemoteManagementEnabled = a.cfg.RemoteManagement.Enabled
+			if a.managed != nil {
+				applied := a.managed.Applied()
+				hello.AppliedConfig = &applied
+			}
 			e, eErr := a.envelope(model.Envelope{Hello: &hello})
 			err = eErr
 			if err == nil {
@@ -418,7 +447,8 @@ func (a *Agent) supervise(ctx context.Context) error {
 				var ack model.ControllerMessage
 				ack, err = session.Receive()
 				applicationACK = ack.ApplicationACK
-				if err == nil && (!ack.HelloAccepted || ack.ProtocolVersion != 1 || ack.Command != nil) {
+				managedConfigV1 = ack.ManagedConfigV1
+				if err == nil && (!ack.HelloAccepted || ack.ProtocolVersion != 1 || ack.Command != nil || ack.DesiredConfig != nil) {
 					err = errors.New("controller rejected protocol handshake")
 				}
 			}
@@ -445,7 +475,7 @@ func (a *Agent) supervise(ctx context.Context) error {
 			if !applicationACK && a.queue.IsDurable() {
 				a.logger.Warn("application ACK unavailable; explicit best-effort send fallback active")
 			}
-			err = a.exchange(sessionCtx, cancel, session, applicationACK)
+			err = a.exchangeManaged(sessionCtx, cancel, session, applicationACK, managedConfigV1)
 		}
 		cancel()
 		if session != nil {
@@ -492,7 +522,35 @@ func (a *Agent) send(ctx context.Context, cancel context.CancelFunc, s transport
 }
 
 func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s transport.Session, applicationACK bool) error {
+	return a.exchangeManaged(ctx, cancel, s, applicationACK, false)
+}
+
+func (a *Agent) exchangeManaged(ctx context.Context, cancel context.CancelFunc, s transport.Session, applicationACK, managedConfigV1 bool) error {
 	received := make(chan error, 1)
+	configDone := make(chan error, 1)
+	configWork := make(chan model.ControllerMessage, 1)
+	authenticated := false
+	if auth, ok := s.(transport.AuthenticatedSession); ok {
+		authenticated = auth.Authenticated() && a.cfg.Security.Mode == "production" && managedConfigV1
+	}
+	go func() {
+		defer func() { configDone <- ctx.Err() }()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case message := <-configWork:
+				if a.managed == nil {
+					continue
+				}
+				a.managed.Apply(ctx, *message.DesiredConfig, authenticated, message.ConfigError, func(r model.ConfigApplyResult) {
+					if err := a.push(model.Envelope{ConfigApplyResult: &r}); err != nil {
+						a.logger.Warn("configuration status admission failed", "status", r.Status)
+					}
+				})
+			}
+		}
+	}()
 	commandsDone := make(chan error, 1)
 	commandWork := make(chan model.Command, 1)
 	go func() {
@@ -517,6 +575,21 @@ func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s trans
 				received <- err
 				cancel()
 				return
+			}
+			if message.DesiredConfig != nil {
+				select {
+				case configWork <- message:
+				case <-ctx.Done():
+					received <- ctx.Err()
+					return
+				default:
+					// Reconnect permits retry; neither accepted revisions nor outbox
+					// records are discarded by a configuration burst.
+					received <- errors.New("managed configuration backlog exceeds bounded worker capacity")
+					cancel()
+					return
+				}
+				continue
 			}
 			if message.Command == nil {
 				if applicationACK && message.ACKMessageID != "" {
@@ -586,7 +659,8 @@ func (a *Agent) exchange(ctx context.Context, cancel context.CancelFunc, s trans
 	_ = s.Close()
 	receiveErr := <-received
 	commandErr := <-commandsDone
-	return errors.Join(sendErr, receiveErr, commandErr)
+	configErr := <-configDone
+	return errors.Join(sendErr, receiveErr, commandErr, configErr)
 }
 
 func (a *Agent) Snapshot() Diagnostics {
@@ -597,6 +671,10 @@ func (a *Agent) Snapshot() Diagnostics {
 		d.TimeSync = &s
 	}
 	a.mu.Unlock()
+	if a.managed != nil {
+		m := a.managed.Snapshot()
+		d.ManagedConfiguration = &m
+	}
 	d.Queue = a.queue.State()
 	d.Targets = a.configuredTargets()
 	d.SNMP = a.snmpSecurityStatus()
@@ -637,6 +715,7 @@ func (a *Agent) Snapshot() Diagnostics {
 	for _, c := range a.sip {
 		d.Telephony = append(d.Telephony, c.State())
 	}
+	d.Telephony = append(d.Telephony, a.remote.Telephony()...)
 	return d
 }
 

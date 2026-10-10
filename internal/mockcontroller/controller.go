@@ -18,6 +18,17 @@ import (
 )
 
 type Controller struct {
+	// DesiredConfigs is an immutable development scenario, configured before
+	// Serve. Terminal apply statuses advance snapshots; reconnect rebinds the
+	// current snapshot to the new process session.
+	DesiredConfigs              []model.DesiredCollectorConfig
+	RepeatConfig                bool
+	DisconnectAfterConfigStatus int
+	configSessions              map[string]*configSession
+	configProgress              map[string]int
+	configRepeats               map[string]bool
+	configDisconnects           map[string]bool
+	configStatusCounts          map[string]int
 	// DisableACK exercises explicit legacy-controller fallback in fixtures.
 	DisableACK bool
 	pb.UnimplementedAgentServiceServer
@@ -53,11 +64,13 @@ func (c *Controller) Connect(stream grpc.BidiStreamingServer[pb.AgentEnvelope, p
 	if err = transportgrpc.VerifyPeerIdentity(stream.Context(), e.AgentID); err != nil {
 		return status.Error(codes.Unauthenticated, "certificate identity does not match agent identity")
 	}
+	configSession := c.openConfigSession(e.Hello)
+	defer c.closeConfigSession(configSession)
 	if err = c.observe(e); err != nil {
 		return err
 	}
 	applicationACK := e.Hello.ApplicationACK && !c.DisableACK
-	if err = stream.Send(&pb.ControllerEnvelope{Payload: &pb.ControllerEnvelope_HelloAck{HelloAck: &pb.HelloAck{Accepted: true, ProtocolVersion: 1, ApplicationAck: applicationACK}}}); err != nil {
+	if err = stream.Send(&pb.ControllerEnvelope{Payload: &pb.ControllerEnvelope_HelloAck{HelloAck: &pb.HelloAck{Accepted: true, ProtocolVersion: 1, ApplicationAck: applicationACK, ManagedConfigV1: e.Hello.ManagedConfigV1}}}); err != nil {
 		return err
 	}
 	if c.Command != nil {
@@ -80,6 +93,9 @@ func (c *Controller) Connect(stream grpc.BidiStreamingServer[pb.AgentEnvelope, p
 		if err = stream.Send(&pb.ControllerEnvelope{Payload: &pb.ControllerEnvelope_Command{Command: wire}}); err != nil {
 			return err
 		}
+	}
+	if err = c.sendInitialConfig(stream, configSession); err != nil {
+		return err
 	}
 	sequence := e.Sequence
 	for {
@@ -108,6 +124,12 @@ func (c *Controller) Connect(stream grpc.BidiStreamingServer[pb.AgentEnvelope, p
 			if err = stream.Send(&pb.ControllerEnvelope{Payload: &pb.ControllerEnvelope_MessageAck{MessageAck: &pb.MessageACK{MessageId: next.MessageID}}}); err != nil {
 				return err
 			}
+		}
+		if err = c.handleConfigStatus(stream, configSession, next.ConfigApplyResult); err != nil {
+			return err
+		}
+		if err = c.sendPendingConfigs(stream, configSession); err != nil {
+			return err
 		}
 	}
 }

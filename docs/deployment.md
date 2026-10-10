@@ -6,6 +6,32 @@ Linux installation с отдельным service user и существующи�
 remote Syslog без установки InfraPulse Agent на каждый source server.
 Production Backend/CA services остаются отдельными компонентами.
 
+## Managed Targets Phase 7
+
+Администратор включает `remote_management` в production local YAML и задаёт
+protocol/credential/CA/CIDR limits; default disabled. Backend использует
+существующее outbound mTLS соединение, дополнительных inbound ports не нужно.
+Local PKI/trust/endpoint, NTP, Syslog listener/private keys, outbox/state paths,
+system service и command policies не становятся remotely editable. Пример —
+[config.managed.example.yaml](../configs/config.managed.example.yaml).
+
+Сервису нужен private writable `state_dir/managed-config.json`; сохраняйте файл
+при package/container updates вместе с identity/outbox/journal. Current local
+policy и credential availability повторно проверяются offline при startup.
+Disabled/denied restore не активирует старый managed набор, local monitoring
+продолжается; diagnostics различает stored LKG и active applied revision.
+Policy/CA/reference/deployment changes требуют local setup/restart; managed
+Target changes получают bounded hot reload без process restart.
+
+Для recovery остановите Collector, сохраните копию managed state и согласуйте
+Backend revision baseline. Не удаляйте весь state directory и не сбрасывайте
+Collector identity ради stale revision. Local state archive/reset — только
+явное operator action; remote reset/history rollback API отсутствует.
+Atomic file publication и bounded runtime recovery не являются power-loss
+validation или OS transaction. Production Backend B9 integration остаётся
+отдельной задачей. [Operational guide](managed-configuration.md),
+[Backend handoff](backend-managed-config-contract.md).
+
 ## State и права
 
 Используйте persistent writable `agent.state_dir` с private permissions

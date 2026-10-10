@@ -9,6 +9,11 @@ import (
 // IDs or introducing a second configuration model. Existing entries are enabled.
 // A Target ID identifies the connection; it is not an observed Device ID.
 func (d Device) Target(defaults Polling) model.Target {
+	if d.Driver == "sip" && d.SIP != nil {
+		target := d.SIP.Target()
+		target.ID, target.Name, target.Enabled = "remote:"+d.ID, d.Name, !d.Disabled
+		return target
+	}
 	poll := d.Polling
 	if d.Driver == "redfish" || d.Driver == "ipmi" {
 		// Hardware BMCs use their own slow polling budget. In particular, the
@@ -42,7 +47,7 @@ func (d Device) Target(defaults Polling) model.Target {
 	}
 	return model.Target{
 		ID: "remote:" + d.ID, Name: d.Name, Type: model.SourceType(d.Driver), Protocol: d.Driver,
-		Endpoint: d.Address, CredentialRef: d.CredentialRef, Enabled: true, Location: d.Location,
+		Endpoint: d.Address, CredentialRef: d.CredentialRef, Enabled: !d.Disabled, Location: d.Location,
 		Polling: model.TargetPolling{FastInterval: poll.FastInterval, MediumInterval: poll.MediumInterval,
 			InventoryInterval: poll.InventoryInterval, TopologyInterval: poll.TopologyInterval, Timeout: poll.Timeout},
 	}

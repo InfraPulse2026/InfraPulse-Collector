@@ -1,5 +1,31 @@
 # Безопасность InfraPulse Agent
 
+## Backend-managed configuration Phase 7
+
+Remote management disabled по умолчанию; opt-in требует production mTLS,
+accepted Hello и negotiated `managed_config_v1`. Snapshot bound к persistent
+Collector ID и current Session ID. Typed full snapshot управляет только отдельным
+monitoring Target namespace; local YAML, identity, PKI/Backend trust/endpoint,
+NTP, Syslog keys/listeners, state/outbox paths, deployment privileges, protected
+resources и command authorization остаются local administrator-owned.
+Нет raw YAML, arbitrary commands/API paths, mutation или insecure TLS/IPMI flags.
+
+Local protocol/credential/CA/CIDR/resource allowlists нельзя расширить snapshot.
+CredentialProvider проверяет существующие environment refs; values не входят
+в wire/state/diagnostics. CA reference — local key, не incoming path. При CIDR
+policy весь bounded DNS answer проверяется, adapter получает approved numeric
+pin без второго resolution; HTTPS/SIP TLS сохраняют hostname verification.
+Redirects/proxy и unsafe adapters запрещены. Нет Targets из discovery addresses.
+
+Unknown desired fields/oversize/malformed durations отклоняются до apply.
+Prepared adapters и изменения scheduler ограничены; одна active transition и
+один pending snapshot. Revision/digest предотвращают stale overwrite/reuse;
+checksum/identity/permissions защищают LKG consistency, но digest/checksum не
+заменяют mTLS/ACL. Corrupt/denied restore не запускает managed Targets и не
+останавливает local monitoring. Outbox/SourceRef/journal сохраняются при removal.
+[Policy/lifecycle/recovery](managed-configuration.md),
+[wire trust contract](backend-managed-config-contract.md).
+
 ## Identity/topology Phase 6
 
 Protocol identifiers являются недоверенными данными. Normalization проверяет
@@ -140,8 +166,9 @@ State/config/CA/private keys должны быть доступны service user
 ## Corporate NTP и права deployment
 
 `time_sync` читается только из trusted local YAML. NTP addresses не получаются
-из SNMP/LLDP/Syslog, remote Device fields или Controller commands. Backend dynamic
-configuration на этой фазе отсутствует. Серверы проходят bounded IPv4/IPv6/DNS
+из SNMP/LLDP/Syslog, remote Device fields или Controller commands. Phase 7
+Backend-managed configuration также не содержит `time_sync`: NTP остаётся
+local administrator-owned. Серверы проходят bounded IPv4/IPv6/DNS
 validation; shell fragments, URLs, ports и process arguments в этом contract
 не допускаются. Public NTP fallback не задаётся.
 

@@ -48,6 +48,10 @@ AI и историческое хранилище находятся вне эт
 - Настраиваемый интервал оперативной local/SNMP/RouterOS telemetry,
   по умолчанию 3 секунды; hardware polling использует отдельные интервалы.
 - Исходящее bidirectional gRPC-соединение, production mTLS и reconnect.
+- Opt-in Backend-managed SNMP/RouterOS/SIP/Redfish/IPMI Targets: typed full
+  snapshots, revision/digest, hot add/update/disable/remove, local policy,
+  apply statuses и persistent last-known-good/offline restore через тот же
+  gRPC/mTLS. PKI/NTP/Syslog/system settings остаются local administrator-owned.
 - Memory или bounded durable outbox со stable IDs, negotiated application ACK,
   restart/replay и diagnostics. Durable delivery — at-least-once для retained
   messages; exactly-once не заявляется.
@@ -59,6 +63,8 @@ AI и историческое хранилище находятся вне эт
   защитой management interfaces и проверкой состояния после изменения.
   По умолчанию команды отключены.
 - Development Mock Controller для наблюдения данных и проверки команд.
+- Mock Controller отправляет typed desired configuration, repeat/stale/invalid
+  snapshots и эмулирует reconnect; production Backend B9 реализуется отдельно.
 - Native OpenWrt: release/board, logical networks, procd services и read-only
   UCI firewall configuration; Linux CPU/RAM/interfaces collectors переиспользуются.
 - Cisco/Huawei/MikroTik/Juniper/Eltex/QTECH detection profiles с подтверждёнными
@@ -95,7 +101,8 @@ InfraPulse Controller / Backend
 
 ### Collector Mode
 
-Collector Mode опрашивает targets из `devices` без установки Collector на них.
+Collector Mode опрашивает local `devices` и opt-in Backend-managed Targets
+без установки Collector на них.
 `local.enabled: false` отключает сбор хоста; remote polling и heartbeat продолжают
 работать. Local Mode и Collector Mode можно использовать одновременно.
 
@@ -107,6 +114,13 @@ Backend Asset. Источник, provenance, identity evidence и время н�
 facts без локального merge; semantics и Backend handoff — в
 [identity/topology](docs/identity-topology.md) и
 [wire contract](docs/backend-identity-topology-contract.md).
+
+Phase 7 не переписывает local YAML: Backend получает отдельный managed набор
+Targets. `remote_management.enabled` по умолчанию false; enable требует
+production mTLS и local allowlists. Пример —
+[config.managed.example.yaml](configs/config.managed.example.yaml), настройка —
+[managed configuration](docs/managed-configuration.md), независимый Backend B9
+handoff — [contract](docs/backend-managed-config-contract.md).
 
 ## Требования
 
@@ -705,6 +719,12 @@ sh scripts/generate-proto.sh
 
 ## Документация
 
+- [Managed configuration Phase 7](docs/managed-configuration.md) — opt-in,
+  ownership/policy, hot reload, revisions, LKG, restart и diagnostics.
+- [Backend managed-config contract](docs/backend-managed-config-contract.md) —
+  typed protobuf, exact canonical digest/defaults и требования к Backend B9.
+- [Отчёт Phase 7](docs/phase-7-report.md) — фактические regression/E2E/resource
+  проверки и ограничения.
 - [Архитектура](docs/architecture.md) — компоненты, модели и внутренние pipelines.
 - [Identity/topology Phase 6](docs/identity-topology.md) — subjects, normalization,
   directed L2 observations, freshness, provenance и ограничения.
@@ -743,6 +763,9 @@ Memory mode и explicit Send fallback остаются best effort. Durable mode
 низких приоритетов. Pending CommandResult не вытесняются. At-least-once не даёт
 exactly-once внешней mutation; uncertain outcome требует operator review.
 Production Backend/dedup/CA authorization/revocation/CA rollover не реализованы.
+Production Backend B9 managed configuration не проверен end-to-end;
+authenticated Mock E2E не является Backend/PostgreSQL integration. Local policy
+reload требует deployment/restart; Phase 7 hot reload относится к managed Targets.
 Mock Enrollment token state хранится в RAM. Private keys защищены filesystem
 permissions, без encryption at rest/TPM/HSM.
 Remote Syslog/Audit Receiver принимает TLS/TCP через existing durable delivery;

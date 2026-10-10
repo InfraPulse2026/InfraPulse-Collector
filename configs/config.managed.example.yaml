@@ -1,0 +1,48 @@
+# Phase 7 opt-in example. validate-config checks schema; run requires actual
+# production PKI files and environment credentials provisioned by the operator.
+agent:
+  name: managed-collector
+  state_dir: ../state
+controller:
+  address: backend.example.net:9443
+security:
+  mode: production
+  ca_file: ../pki/backend-ca.pem
+  cert_file: ../pki/collector.pem
+  key_file: ../pki/collector-key.pem
+  server_name: backend.example.net
+local:
+  enabled: false
+queue:
+  mode: durable
+  max_messages: 256
+  max_bytes: 8388608
+  max_message_bytes: 1048576
+  max_storage_bytes: 67108864
+  retention: 24h
+  batch_delay: 50ms
+  batch_size: 64
+  max_inflight: 16
+  ack_timeout: 30s
+  ack_fallback: reject
+commands:
+  enabled: false
+credentials:
+  switch-read:
+    community_env: INFRAPULSE_SNMP_COMMUNITY
+  bmc-read:
+    username_env: INFRAPULSE_BMC_USER
+    password_env: INFRAPULSE_BMC_PASSWORD
+remote_management:
+  enabled: true
+  allowed_protocols: [snmp, routeros, sip, redfish, ipmi]
+  allowed_credential_refs: [switch-read, bmc-read]
+  allowed_destinations: [192.0.2.0/24, 2001:db8:10::/64]
+  tls_ca_refs:
+    bmc-ca: ../pki/bmc-ca.pem
+  max_managed_targets: 128
+  max_config_bytes: 262144
+  min_polling_interval: 1s
+  min_hardware_interval: 10s
+  apply_timeout: 10s
+devices: []

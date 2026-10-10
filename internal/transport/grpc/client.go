@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	pb "InfraPulseAgent/api/gen/infrapulse/v1"
 	"InfraPulseAgent/internal/model"
@@ -82,12 +83,14 @@ func (c *client) ValidateEnvelope(envelope model.Envelope) error {
 
 func (c *client) Connect(ctx context.Context) (transport.Session, error) {
 	creds := c.creds
+	verifiedHandshake := &atomic.Bool{}
 	if c.options.Mode == "production" {
 		config, err := clientTLSConfig(c.options)
 		if err != nil {
 			return nil, err
 		}
 		creds = credentials.NewTLS(config)
+		creds = &verifiedCredentials{TransportCredentials: creds, verified: verifiedHandshake}
 	}
 	conn, err := grpcgo.NewClient(c.options.Address,
 		grpcgo.WithTransportCredentials(creds),
@@ -106,7 +109,29 @@ func (c *client) Connect(ctx context.Context) (transport.Session, error) {
 		_ = conn.Close()
 		return nil, fmt.Errorf("open controller stream: %w", err)
 	}
-	return &session{conn: conn, stream: stream, cancel: cancel}, nil
+	return &session{conn: conn, stream: stream, cancel: cancel, verifiedHandshake: verifiedHandshake}, nil
+}
+
+// Stream call Peer metadata is finalized too late for bidirectional sessions.
+// Attest the completed standard TLS handshake instead, without replacing any
+// certificate verification or exposing transport credentials to the core.
+type verifiedCredentials struct {
+	credentials.TransportCredentials
+	verified *atomic.Bool
+}
+
+func (c *verifiedCredentials) ClientHandshake(ctx context.Context, authority string, raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	conn, info, err := c.TransportCredentials.ClientHandshake(ctx, authority, raw)
+	if err == nil {
+		if tlsInfo, ok := info.(credentials.TLSInfo); ok && len(tlsInfo.State.VerifiedChains) > 0 && len(tlsInfo.State.PeerCertificates) > 0 {
+			c.verified.Store(true)
+		}
+	}
+	return conn, info, err
+}
+
+func (c *verifiedCredentials) Clone() credentials.TransportCredentials {
+	return &verifiedCredentials{TransportCredentials: c.TransportCredentials.Clone(), verified: c.verified}
 }
 
 func clientTLSConfig(options Options) (*tls.Config, error) {
@@ -126,12 +151,16 @@ func clientTLSConfig(options Options) (*tls.Config, error) {
 // A session supports one sender and one receiver concurrently, as gRPC does.
 // The core serializes sends and owns the single receive loop.
 type session struct {
-	conn      *grpcgo.ClientConn
-	stream    grpcgo.BidiStreamingClient[pb.AgentEnvelope, pb.ControllerEnvelope]
-	cancel    context.CancelFunc
-	closeOnce sync.Once
-	closeErr  error
+	verifiedHandshake *atomic.Bool
+	authenticated     atomic.Bool
+	conn              *grpcgo.ClientConn
+	stream            grpcgo.BidiStreamingClient[pb.AgentEnvelope, pb.ControllerEnvelope]
+	cancel            context.CancelFunc
+	closeOnce         sync.Once
+	closeErr          error
 }
+
+func (s *session) Authenticated() bool { return s.authenticated.Load() }
 
 func (s *session) Send(envelope model.Envelope) error {
 	message, err := Encode(envelope)
@@ -149,6 +178,9 @@ func (s *session) Receive() (model.ControllerMessage, error) {
 	if err != nil {
 		return model.ControllerMessage{}, fmt.Errorf("receive controller message: %w", err)
 	}
+	if s.verifiedHandshake != nil && s.verifiedHandshake.Load() {
+		s.authenticated.Store(true)
+	}
 	if message == nil {
 		return model.ControllerMessage{}, errors.New("controller message is nil")
 	}
@@ -160,7 +192,21 @@ func (s *session) Receive() (model.ControllerMessage, error) {
 		if payload.HelloAck.ProtocolVersion == 0 {
 			return model.ControllerMessage{}, errors.New("hello acknowledgement has no protocol version")
 		}
-		return model.ControllerMessage{HelloAccepted: payload.HelloAck.Accepted, ProtocolVersion: payload.HelloAck.ProtocolVersion, ApplicationACK: payload.HelloAck.ApplicationAck}, nil
+		return model.ControllerMessage{HelloAccepted: payload.HelloAck.Accepted, ProtocolVersion: payload.HelloAck.ProtocolVersion, ApplicationACK: payload.HelloAck.ApplicationAck, ManagedConfigV1: payload.HelloAck.ManagedConfigV1}, nil
+	case *pb.ControllerEnvelope_DesiredConfig:
+		if payload == nil {
+			return model.ControllerMessage{DesiredConfig: &model.DesiredCollectorConfig{}, ConfigError: "invalid_config_wire"}, nil
+		}
+		if len(message.ProtoReflect().GetUnknown()) > 0 {
+			correlation := desiredConfigCorrelation(payload.DesiredConfig)
+			return model.ControllerMessage{DesiredConfig: &correlation, ConfigError: "invalid_config_wire"}, nil
+		}
+		config, decodeErr := DecodeDesiredConfig(payload.DesiredConfig)
+		if decodeErr != nil {
+			correlation := desiredConfigCorrelation(payload.DesiredConfig)
+			return model.ControllerMessage{DesiredConfig: &correlation, ConfigError: "invalid_config_wire"}, nil
+		}
+		return model.ControllerMessage{DesiredConfig: &config}, nil
 	case *pb.ControllerEnvelope_MessageAck:
 		if payload == nil || payload.MessageAck == nil || payload.MessageAck.MessageId == "" || len(payload.MessageAck.MessageId) > 128 {
 			return model.ControllerMessage{}, errors.New("invalid message acknowledgement")

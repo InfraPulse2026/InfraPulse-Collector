@@ -1479,3 +1479,128 @@ Backend/PostgreSQL E2E, реальные устройства/vendor firmware, l
 runtime не проверены. Phase 7 не начиналась.
 Read-only environment check нашёл local listener5432, но configured Backend
 endpoint/credentials не подтверждены; DB connection/записи не выполнялись.
+
+## Collector Phase 7 — Backend-managed configuration
+
+Работа и проверки:2026-10-10–11; финальная проверка2026-10-11.
+База — clean main `61f4783`, Phase6 уже сохранена и включена
+в main; рабочая ветка `feat/phase-7-managed-config`. Phase0–6 сохранены.
+Commit/push/merge/rebase/reset/clean/stash не выполнялись. Production Backend B9,
+UI/API/PostgreSQL не реализованы в этой фазе; Phase8 не начиналась.
+Полный [отчёт](phase-7-report.md) содержит architecture, ownership/security,
+contract/revisions/digest, lifecycle/recovery/persistence, commands/results,
+исходные failures, cross matrix, measurements и список changed files.
+
+### Baseline и финальный regression
+
+Baseline до tracked edits: build/vet/uncached tests/race/mod verify,
+Windows integration, 18Linux suites, cross-build и 11examples PASS.
+Raw gofmt показал49CRLF files; LF scratch262files PASS. Raw protobuf hash mismatch
+обусловлен CRLF generated file, LF-normalized comparison PASS. Phase6 fixture E2E
+первоначально запущен с ошибочно оставленным GOOS=linux; с Windows env повтор PASS.
+
+| Реальная команда / проверка | Финальный результат |
+|---|---|
+| `gofmt -w` / `gofmt -l` всех Go sources | PASS,295files, raw и LF scratch |
+| `go build ./...` | PASS,2,296s |
+| `go vet ./...` | PASS,0,676s |
+| `go test -count=1 ./...` | PASS,17,065s |
+| `go test -race -count=1 ./...` | PASS,45,352s; CGO1/portable LLVM-MinGW |
+| `go mod verify` | PASS,0,412s; go.mod/go.sum unchanged |
+| `go test -count=1 -p=1 -tags=integration ./...` | PASS,78,221s,Windows |
+| `go test -count=3 -run '^TestManagedConfiguration' -v ./internal/agent` | PASS,6,383s,3tests×3 |
+| `go test -race -count=3 -run '^TestManagedConfiguration' -v ./internal/agent` | PASS,11,396s,3tests×3 |
+| `scripts/build.ps1 -GoPath C:\Users\kiril\sdk\go1.27.1\bin\go.exe` | PASS,2,933s |
+| `scripts/build.ps1 -Cross -GoPath C:\Users\kiril\sdk\go1.27.1\bin\go.exe` | PASS,11,461s,CGO0 |
+| `scripts/generate-proto.ps1 -Go C:\Users\kiril\sdk\go1.27.1\bin\go.exe` и pinned scratch generation | PASS, exact raw SHA256 обеих generated sources |
+| `bin/infrapulse-agent.exe validate-config --config <каждый configs/*.yaml>` | PASS,12examples |
+| `go test -count=1 -run '^TestPhase6AdaptersIdentityTopologyDurableReplayACK$' -v ./internal/agent` | PASS,2,196s,13retained/restarted/replayed/ACKed observations |
+| 23compiled Linux integration suites через WSL | PASS,см. matrix ниже |
+| Frozen SHA256 source check | PASS,295files/0mismatches |
+| `git diff --check` | PASS |
+
+Final documentation check:11documents/186local links/0broken; frozen sources
+повторно295files/0mismatches после documentation edits. Independent guide/contract
+review без blockers; индекс пуст,73content changes unstaged, go.mod/go.sum unchanged.
+
+Первый full normal FAIL: новый remote replay test забыл ACK первого reserved
+replay, ожидая его повторной выдачи до context deadline. Исправлен test, repeat PASS.
+Первый full race FAIL: тот же test и NTFS ERROR_DIR_NOT_EMPTY cleanup в
+managedconfig/queue/remote, без race warnings. Второй normal FAIL только на
+existing PKI renewal TempDir cleanup. Existing Agent narrow cleanup helper
+вынесен в internal/testutil и переиспользован; real locked-handle negative test
+сохранён, sharing/access errors не маскируются. Production PKI/outbox/cleanup
+ради test environment не менялись. Final full normal/race PASS.
+
+Первоначальный managed E2E race выявил overly fast fixture + ACK hold barrier:
+old retained APPLIED мог ошибочно считаться fresh duplicate result. Selective
+hold одного SNMP message ID, фильтр already observed status IDs и bounded fixture
+cadence исправили test; count3 normal/race и Windows/Linux full suites PASS.
+Windows symlink assertion явно SKIP при privilege1314; Linux symlink и permission
+assertions действительно выполнены и PASS. External live endpoint tests без
+environment остаются SKIP, fixture PASS не объявляется live equipment validation.
+
+Review fixes: duplicate stored APPLIED после denied restore теперь сообщает
+FAILED/applied_state_inactive; CA preflight отвергает special/oversized files до
+чтения. Administrator CA symlink с regular конечным файлом сохранён для совместимости
+статических adapters при remote management disabled. Linux
+`TestLocalTrustSymlinksPreserveStaticAndManagedAdapters` PASS без SKIP;
+persistent state symlinks по-прежнему отвергаются. После этих исправлений
+повторены полные mandatory и extra suites, source hash295/0mismatches.
+
+### Фактический managed Mock E2E
+
+Основные20шагов прошли на real authenticated mTLS stream: capability/identity;
+SNMP revision1/persist/collection/durableACK; revision2 interval+Redfish hot reload;
+invalid3 rejection с работающей2; restart/offline restore2; reconnect Hello2/digest;
+fresh duplicate2 без duplicate instance/job; remove4 с retained конкретным message
+ID; force reconnect/replay этого original SourceRef и receiptACK.
+Redfish login/logout balanced/writes0; secrets отсутствуют в diagnostics.
+
+Отдельные fixtures проверяют RouterOS/SIP/LANplus ADD/UPDATE/DISABLE/REMOVE,
+unanswered SIP in-flight cancellation, stable SourceRef/equipment identity,
+отсутствие stale schedules/BMC sessions и RouterOS writes0. Two-Collector test
+с отдельными certificates отвергает wrong collector_id и session_id; matching
+snapshot применяется только предназначенному Collector. Mock result не
+приравнивается к production Backend/PostgreSQL E2E.
+
+### Linux/cross-build и ресурсы
+
+Для каждого package выполнены `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c
+-tags=integration -o <binary> ./internal/<package>` и запуск через
+`wsl.exe -d docker-desktop --cd <package directory> -- <binary>
+-test.v=true -test.count=1 -test.timeout=120s`; exact paths/times в полном отчёте.
+Все23PASS: platform/linux, logs, queue, commands, protocol/snmp, driver/snmp,
+driver/routeros, driver/redfish, driver/ipmi, pki, platform/openwrt, agent,
+simulator, telephony, transport/grpc, config, platform, syslogreceiver,
+managedconfig, scheduler, remote, driver/telephony, protocol/routeros.
+Real Linux proc/sys/file I/O проверен, network/hardware используют fixtures.
+NTP CLI exit0/available=false, systemctl отсутствует; live sync не проверялась.
+
+Collector cross-build CGO0 PASS: linux/amd64, arm64, arm GOARM7, mips/mipsle
+hardfloat; Mock/Simulator/Enrollment linux/amd64/arm64 также PASS.
+Matched `-trimpath -buildvcs=false -ldflags='-s -w'` amd64 binary:
+26 108 064→26 366 112bytes, +258 048/+0,9884%; unstripped
+38 463 748→38 809 254. Runtime OpenWrt/других architectures/RAM/flash не проверен.
+
+Windows benchmark200×: validation8,844µs/4516B/46allocs; stateful apply988,112µs/
+17326B/145allocs; prepare32targets40,731µs; live add/remove32pair57,284µs без file
+persistence. Windows50revisions50,33ms/1 044 632totalalloc, goroutines2→2;
+20×32lifecycle640opened/640closed, goroutines2→7→2, queue32/18 560bytes.
+Linux manager50revisions142,231ms/1 003 152totalalloc, goroutines2→2,
+restore135,101µs/state1323bytes. Real adapter fixture Agent offline restore1,208ms,
+remove3protocols43,293ms. Это isolated samples, не production sizing/SLA.
+
+Full Windows process offline production sample после5s без Targets:
+Phase6 working set20 930 560/private53 710 848bytes/10threads;
+Phase7 enabled working set21 225 472/private53 764 096bytes/10threads.
+Private accounting не равен Go heap/RSS; OpenWrt memory из этого не выводится.
+Detailed heap/resource probes и ограничения находятся в полном отчёте.
+
+Typed full snapshots, local policy/credential refs, monotonic revision/digest,
+paused hot reload/compensating recovery, checksummed LKG/revalidation/restart,
+status/capability/diagnostics и [Backend B9 contract](backend-managed-config-contract.md)
+реализованы. OS transaction, arbitrary execution, secret delivery, remote PKI/NTP/
+Syslog/outbox ownership, patch/failover engine не добавлены. Production Backend B9,
+настоящее оборудование/vendor firmware и OpenWrt deployment требуют отдельных
+проверок. Collector готов к следующей отдельной Phase8; она не выполнялась.

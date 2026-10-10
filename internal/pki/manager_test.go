@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"InfraPulseAgent/internal/testutil"
+
 	"github.com/google/uuid"
 )
 
@@ -88,7 +90,7 @@ func newFixture(t *testing.T, tokenExpiry time.Time, wrap func(http.Handler) htt
 	s.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: serverKey}}, ClientAuth: tls.VerifyClientCertIfGiven, ClientCAs: roots}
 	s.StartTLS()
 	t.Cleanup(s.Close)
-	dir := t.TempDir()
+	dir := testutil.TempDir(t)
 	caPath := filepath.Join(dir, "ca.pem")
 	if err = os.WriteFile(caPath, ca, 0600); err != nil {
 		t.Fatal(err)
@@ -178,7 +180,7 @@ func TestEnrollmentTokenFailures(t *testing.T) {
 				if _, err := New(context.Background(), f.options); err != nil {
 					t.Fatal(err)
 				}
-				f.options.StateDir = t.TempDir()
+				f.options.StateDir = testutil.TempDir(t)
 			}
 			_, err := New(context.Background(), f.options)
 			if err == nil {

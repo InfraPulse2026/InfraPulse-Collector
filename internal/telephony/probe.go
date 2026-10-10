@@ -50,7 +50,11 @@ func Probe(parent context.Context, endpoint Endpoint) model.TelephonyHealth {
 			return h
 		}
 	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, transport, h.Address)
+	dialAddress := h.Address
+	if e.DialAddress != "" {
+		dialAddress = net.JoinHostPort(e.DialAddress, strconv.Itoa(int(e.Port)))
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, transport, dialAddress)
 	if err != nil {
 		h.ErrorCategory = category(parent, ctx, err)
 		return h

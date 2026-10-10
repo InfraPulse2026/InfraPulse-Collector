@@ -11,6 +11,15 @@ models, не переименовывает RPC/messages и не изменяе�
 
 ## Соединение и handshake
 
+Phase 7 сохраняет RPC/version 1 и добавляет opt-in managed configuration.
+`AgentHello.managed_config_v1=9`, `remote_management_enabled=10`,
+`applied_config=11` и `HelloAck.managed_config_v1=4` явно согласуют поддержку
+и сообщают active applied state. Updates принимаются только после accepted
+handshake на authenticated production mTLS session с exact Collector/Session
+binding. Отсутствующее capability поле означает unsupported. Точный B9 contract,
+fixed defaults/canonical digest и revision semantics —
+[managed config contract](backend-managed-config-contract.md).
+
 Agent инициирует исходящий HTTP/2 gRPC stream:
 
 ```protobuf
@@ -61,6 +70,7 @@ accepted HelloAck Agent не отправляет сообщения из outbox
 | telephony | 17 | TelephonyUpdate, oneof payload |
 | command_result | 18 | CommandResult, oneof payload |
 | error | 20 | ErrorReport, oneof payload |
+| config_status | 21 | ConfigApplyStatus, oneof payload, Phase 7 |
 
 В одном envelope ровно один payload. Нормализованная Go-модель дополнительно
 проверяется перед encoding: отсутствие и несколько payload являются ошибкой.
@@ -77,6 +87,15 @@ P2 использует ранее незанятые 15 и 17 для logs и te
 занятый номер никогда не используется для другого смысла.
 
 ## Payloads
+
+Phase 7 `ControllerEnvelope.desired_config=4` содержит typed full
+`DesiredConfigSnapshot`, не Command и не raw YAML. `AgentEnvelope.config_status`
+передаёт RECEIVED/VALIDATING/APPLIED/REJECTED/FAILED; `Heartbeat.managed_config=8`
+сохраняет последний result. APPLIED подтверждает activation/persistence,
+MessageACK — только acceptance конкретного status/observation envelope.
+Unknown desired v1 fields отклоняются рекурсивно. Local administrative settings
+и resolved credentials не входят в message. Phase 0–6 field numbers/RPC
+сохраняются; frozen full Phase 6 descriptor проверяется compatibility test.
 
 `AgentHello`: agent/session ID, name, build metadata, время запуска, локальный
 `Device`, версия протокола. `Device` содержит identity/inventory, uptime,

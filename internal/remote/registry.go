@@ -34,6 +34,10 @@ type State struct {
 	LastError                       string         `json:"last_error,omitempty"`
 }
 type entry struct {
+	spec                                              config.Device
+	managed, retired                                  bool
+	closeOnce                                         sync.Once
+	closeErr                                          error
 	cfg                                               config.Device
 	target                                            model.Target
 	driver                                            driver.Adapter
@@ -59,6 +63,9 @@ type Registry struct {
 	scheduler   *scheduler.Scheduler
 	emit        func(model.Envelope) error
 	collectorID string
+	cfg         config.Config
+	pending     *PreparedManaged
+	closed      bool
 }
 
 // New is the compatibility bridge for existing full SNMP/RouterOS drivers.
@@ -75,7 +82,7 @@ func NewAdapters(cfg config.Config, factory AdapterFactory, emit func(model.Enve
 	if factory == nil || emit == nil {
 		return nil, errors.New("remote adapter factory and observation sink are required")
 	}
-	r := &Registry{entries: make(map[string]*entry), emit: emit}
+	r := &Registry{entries: make(map[string]*entry), emit: emit, cfg: cfg}
 	for _, option := range options {
 		if option != nil {
 			option(r)
@@ -87,43 +94,17 @@ func NewAdapters(cfg config.Config, factory AdapterFactory, emit func(model.Enve
 			_ = r.Close()
 			return nil, errors.New("duplicate remote target ID")
 		}
-		d, err := factory(dc)
+		e, job, err := r.prepareEntry(dc, factory, false)
 		if err != nil {
 			_ = r.Close()
 			return nil, err
 		}
-		if d == nil {
-			_ = r.Close()
-			return nil, errors.New("remote adapter factory returned no adapter")
-		}
-		defaults := config.Polling{FastInterval: cfg.Telemetry.FastInterval, MediumInterval: cfg.Telemetry.MediumInterval, InventoryInterval: cfg.Telemetry.InventoryInterval, TopologyInterval: cfg.Telemetry.TopologyInterval, Timeout: cfg.Telemetry.CollectTimeout}
-		target := dc.Target(defaults)
-		poll := config.Polling{FastInterval: target.Polling.FastInterval, MediumInterval: target.Polling.MediumInterval, InventoryInterval: target.Polling.InventoryInterval, TopologyInterval: target.Polling.TopologyInterval, Timeout: target.Polling.Timeout}
-		dc.Polling = poll
-		e := &entry{cfg: dc, target: target, driver: d, gate: make(chan struct{}, 1), rates: telemetry.NewRateTracker(), interfaces: make(map[string]string), links: make(map[string]model.Neighbor), maxLinks: cfg.Remote.MaxRows, state: State{Target: target, Device: model.Device{ID: dc.ID, Name: dc.Name, ManagementAddress: dc.Address, Driver: dc.Driver, Type: "unknown", Location: dc.Location, VendorHint: dc.VendorHint}}}
-		_, inventoryBatch := d.(driver.InventoryBatchReader)
-		_, hardwareBatch := d.(driver.HardwareReader)
-		e.batch = inventoryBatch || hardwareBatch
-		e.maxDevices = cfg.Remote.MaxRows
-		if dc.Driver == "redfish" {
-			e.maxDevices = min(e.maxDevices, dc.Redfish.WithDefaults().MaxResources)
-		}
-		// A resource can contribute several typed metrics plus health. This
-		// separate normalized-item budget covers adapter metric (8x) and
-		// resource/health bounds while the outbox enforces payload bytes.
-		e.maxBatchItems = 16 * e.maxDevices
 		r.entries[dc.ID] = e
-		e.linkOrder = list.New()
-		e.linkPositions = make(map[string]*list.Element)
-		e.state.ConnectivityState = "unknown"
 		r.order = append(r.order, dc.ID)
-		interval := min(poll.FastInterval, poll.MediumInterval, poll.InventoryInterval, poll.TopologyInterval)
-		jobTimeout := 4 * poll.Timeout
-		if e.batch {
-			interval = batchInterval(d, poll)
-			jobTimeout = poll.Timeout
+		if job != nil {
+			err = r.scheduler.Add(*job)
 		}
-		if err = r.scheduler.Add(scheduler.Job{Name: "remote:" + dc.ID, Interval: interval, Timeout: jobTimeout, Collect: func(ctx context.Context) error { return r.poll(ctx, e, time.Now()) }}); err != nil {
+		if err != nil {
 			_ = r.Close()
 			return nil, err
 		}
@@ -132,9 +113,28 @@ func NewAdapters(cfg config.Config, factory AdapterFactory, emit func(model.Enve
 }
 func (r *Registry) Run(ctx context.Context) error { return r.scheduler.Run(ctx) }
 func (r *Registry) Close() error {
-	var errs []error
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil
+	}
+	r.closed = true
+	pending := r.pending
+	r.mu.Unlock()
+	if pending != nil {
+		_ = pending.Close()
+	}
+	r.mu.Lock()
+	entries := make([]*entry, 0, len(r.order))
 	for _, id := range r.order {
-		errs = append(errs, r.entries[id].driver.Close())
+		e := r.entries[id]
+		e.retired = true
+		entries = append(entries, e)
+	}
+	r.mu.Unlock()
+	var errs []error
+	for _, e := range entries {
+		errs = append(errs, e.close())
 	}
 	return errors.Join(errs...)
 }
@@ -153,19 +153,28 @@ func (r *Registry) Snapshot() []State {
 	return states
 }
 func (r *Registry) Devices() []model.Device {
-	states := r.Snapshot()
-	devices := make([]model.Device, 0, len(states))
-	for i, s := range states {
-		if r.entries[r.order[i]].batch {
-			devices = append(devices, s.Devices...)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	devices := make([]model.Device, 0, len(r.order))
+	for _, id := range r.order {
+		e := r.entries[id]
+		if e.cfg.Driver == "sip" {
+			continue
+		}
+		if e.batch {
+			for _, d := range e.state.Devices {
+				devices = append(devices, model.CloneDevice(d))
+			}
 		} else {
-			devices = append(devices, s.Device)
+			devices = append(devices, model.CloneDevice(e.state.Device))
 		}
 	}
 	return devices
 }
 
 func (r *Registry) Targets() []model.Target {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	targets := make([]model.Target, 0, len(r.order))
 	for _, id := range r.order {
 		targets = append(targets, r.entries[id].target)
@@ -205,7 +214,7 @@ func (r *Registry) commandEntry(id string) (*entry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, exists := r.entries[id]
-	if !exists || e.batch || e.state.Device.ID != id {
+	if r.closed || !exists || e.retired || !e.target.Enabled || e.batch || e.cfg.Driver == "sip" || e.state.Device.ID != id {
 		return nil, errors.New("remote command target identity does not match")
 	}
 	for _, other := range r.entries {
@@ -232,7 +241,10 @@ func (r *Registry) WithDevice(ctx context.Context, id string, fn func(driver.Ada
 	if err := ctx.Err(); err != nil {
 		return model.CommandResult{}, err
 	}
-	if _, err := r.commandEntry(id); err != nil {
+	if current, err := r.commandEntry(id); err != nil || current != e {
+		if err == nil {
+			err = errors.New("remote command target was replaced")
+		}
 		return model.CommandResult{}, err
 	}
 	return fn(e.driver), nil
@@ -243,6 +255,25 @@ func (r *Registry) poll(ctx context.Context, e *entry, now time.Time) error {
 		defer func() { <-e.gate }()
 	default:
 		return nil
+	}
+	r.mu.Lock()
+	active := !r.closed && !e.retired && e.target.Enabled
+	r.mu.Unlock()
+	if !active {
+		return nil
+	}
+	if reader, ok := e.driver.(driver.TelephonyReader); ok {
+		update, events, err := reader.CollectTelephony(ctx)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err == nil {
+			err = r.observation(e, model.Envelope{Telephony: &update})
+		}
+		if len(events) != 0 {
+			err = errors.Join(err, r.observation(e, model.Envelope{Events: events}))
+		}
+		return r.collectionResult(e, err, now)
 	}
 	if e.batch {
 		return r.pollBatch(ctx, e, now)

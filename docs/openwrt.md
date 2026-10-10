@@ -1,5 +1,21 @@
 # Native OpenWrt
 
+Phase 7 hot reload remote monitoring Targets работает в существующем portable
+Collector core и не добавляет обязательный CGO, новый database server или
+management listener. Для OpenWrt remote management остаётся disabled by default;
+enable требует production mTLS, private persistent `state_dir`, credential refs
+и local budgets. LKG хранится в bounded atomic `managed-config.json` рядом с
+identity/outbox; не размещайте этот state на volatile `/tmp`, если нужен offline
+restart restore. Частые revision writes требуют оценки flash wear и места;
+уменьшайте managed target/payload budgets для конкретного edge hardware.
+
+Backend не получает управление UCI/procd, NTP, PKI, service privileges или
+Syslog listener. Hardware default health30s/inventory5m сохраняется отдельно
+от network telemetry3s. Cross-build и Linux WSL fixtures не подтверждают
+OpenWrt firmware runtime/RAM/flash/power-loss recovery. Настройка и limitations —
+[managed configuration](managed-configuration.md),
+[deployment](deployment.md), [validation](validation.md).
+
 Native OpenWrt — LocalPlatform того же InfraPulse Agent. CPU, memory, uptime,
 kernel, interface counters, sysfs metadata и IP-адреса собираются существующим
 Linux collector. OpenWrt-specific inventory обновляется в inventory job,

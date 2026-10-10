@@ -19,6 +19,8 @@ var (
 // Optional readers below let a new protocol expose the observations it supports.
 type Adapter interface {
 	Capabilities() []model.Capability
+	// Close is idempotent and cancels resources without waiting for a peer or
+	// an active poll. The lifecycle owner drains its bounded polling context.
 	Close() error
 }
 type ProbeReader interface {
@@ -45,6 +47,12 @@ type HardwareReader interface {
 }
 type TopologyReader interface {
 	Topology(context.Context) (model.TopologyUpdate, error)
+}
+
+// TelephonyReader lets fixed SIP OPTIONS probes share the remote registry's
+// existing scheduler without requiring network/hardware readers.
+type TelephonyReader interface {
+	CollectTelephony(context.Context) (model.TelephonyUpdate, []model.Event, error)
 }
 
 // Driver preserves the existing SNMP/RouterOS contract. Collector orchestration

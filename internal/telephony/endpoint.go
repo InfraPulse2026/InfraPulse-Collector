@@ -5,11 +5,15 @@ package telephony
 import (
 	"errors"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 )
 
 type Endpoint struct {
+	// DialAddress is internal, policy-checked destination pinning. It cannot
+	// be set by YAML and never replaces SIP headers or source address metadata.
+	DialAddress      string        `yaml:"-" json:"-"`
 	ID               string        `yaml:"id"`
 	Address          string        `yaml:"address"`
 	Port             uint16        `yaml:"port"`
@@ -59,6 +63,12 @@ func (e Endpoint) WithDefaults() Endpoint {
 
 func (e Endpoint) Validate() error {
 	e = e.WithDefaults()
+	if e.DialAddress != "" {
+		ip, err := netip.ParseAddr(e.DialAddress)
+		if err != nil || ip.Zone() != "" {
+			return errors.New("SIP dial address must be a numeric IP without a zone")
+		}
+	}
 	if !token(e.ID, 128) || !host(e.Address) || e.Transport != "udp" && e.Transport != "tcp" && e.Transport != "tls" || e.Timeout < 10*time.Millisecond || e.Timeout > time.Minute || e.Interval < 10*time.Millisecond || e.Interval > 24*time.Hour || e.FailureThreshold > 100 || e.LatencyThreshold < time.Millisecond || e.LatencyThreshold > time.Minute || !token(e.FromUser, 128) || e.ToUser != "" && !token(e.ToUser, 128) || e.Domain != "" && !host(e.Domain) {
 		return errors.New("invalid SIP endpoint: bounded ID, host, udp/tcp/tls transport and typed settings are required")
 	}

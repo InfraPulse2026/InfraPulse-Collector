@@ -102,6 +102,18 @@ func literalMarker(values []string) string {
 
 func (k KnownSecrets) Sanitize(e model.Envelope) model.Envelope {
 	text := func(s string) string { return TextWithSecrets(s, k.Values) }
+	if e.ConfigApplyResult != nil {
+		v := *e.ConfigApplyResult
+		v.ErrorMessage = text(v.ErrorMessage)
+		e.ConfigApplyResult = &v
+	}
+	if e.Heartbeat != nil && e.Heartbeat.ManagedConfig != nil {
+		h := *e.Heartbeat
+		v := *h.ManagedConfig
+		v.ErrorMessage = text(v.ErrorMessage)
+		h.ManagedConfig = &v
+		e.Heartbeat = &h
+	}
 	e = sanitizeHardware(e, text)
 	if e.Error != nil {
 		v := *e.Error

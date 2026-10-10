@@ -8,6 +8,7 @@ import (
 	driverredfish "InfraPulseAgent/internal/driver/redfish"
 	driverrouteros "InfraPulseAgent/internal/driver/routeros"
 	driversnmp "InfraPulseAgent/internal/driver/snmp"
+	driversip "InfraPulseAgent/internal/driver/telephony"
 	"InfraPulseAgent/internal/model"
 	protocolrouteros "InfraPulseAgent/internal/protocol/routeros"
 	protocolsnmp "InfraPulseAgent/internal/protocol/snmp"
@@ -25,7 +26,7 @@ import (
 
 // RemoteAdapterFactory is the compile-time protocol registration point. New
 // adapters implement only their supported readers and return normalized models.
-func RemoteAdapterFactory(cfg config.Config, provider credentials.Provider) remote.AdapterFactory {
+func RemoteAdapterFactory(cfg config.Config, provider credentials.Provider, collectorIDs ...string) remote.AdapterFactory {
 	registry := driver.NewRegistry[config.Device]()
 	options := func(dc config.Device) (driver.Options, time.Duration) {
 		hint := dc.VendorHint
@@ -45,30 +46,26 @@ func RemoteAdapterFactory(cfg config.Config, provider credentials.Provider) remo
 		if port == 0 {
 			port = 161
 		}
-		return driversnmp.New(opts, provider, dc.CredentialRef, protocolsnmp.Options{Security: dc.SNMP.Security, Address: net.JoinHostPort(dc.Address, strconv.Itoa(int(port))), Timeout: timeout, Retries: dc.SNMP.Retries, MaxRows: opts.MaxRows, MaxResponseBytes: opts.MaxResponseBytes})
+		host := dc.Address
+		if dc.DialAddress != "" {
+			host = dc.DialAddress
+		}
+		return driversnmp.New(opts, provider, dc.CredentialRef, protocolsnmp.Options{Security: dc.SNMP.Security, Address: net.JoinHostPort(host, strconv.Itoa(int(port))), Timeout: timeout, Retries: dc.SNMP.Retries, MaxRows: opts.MaxRows, MaxResponseBytes: opts.MaxResponseBytes})
 	})
 	routerosRegistration := registry.Register("routeros", func(dc config.Device) (driver.Adapter, error) {
 		opts, timeout := options(dc)
 		tc := &tls.Config{MinVersion: tls.VersionTLS12}
 		if dc.TLS.CAFile != "" {
-			file, err := os.Open(dc.TLS.CAFile)
+			data, err := readRemoteCA(dc.TLS.CAFile)
 			if err != nil {
-				return nil, errors.New("remote CA file unavailable")
-			}
-			data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
-			_ = file.Close()
-			if err != nil {
-				return nil, errors.New("remote CA file unavailable")
-			}
-			if len(data) > 1<<20 {
-				return nil, errors.New("remote CA file exceeds limit")
+				return nil, err
 			}
 			tc.RootCAs = x509.NewCertPool()
 			if !tc.RootCAs.AppendCertsFromPEM(data) {
 				return nil, errors.New("remote CA file has no certificates")
 			}
 		}
-		return driverrouteros.New(opts, provider, dc.CredentialRef, protocolrouteros.Options{Address: dc.Address, TLSConfig: tc, Timeout: timeout, MaxResponseBytes: opts.MaxResponseBytes, MaxRecords: opts.MaxRows})
+		return driverrouteros.New(opts, provider, dc.CredentialRef, protocolrouteros.Options{Address: dc.Address, DialAddress: dc.DialAddress, TLSConfig: tc, Timeout: timeout, MaxResponseBytes: opts.MaxResponseBytes, MaxRecords: opts.MaxRows})
 	})
 	redfishRegistration := registry.Register("redfish", func(dc config.Device) (driver.Adapter, error) {
 		opts, _ := options(dc)
@@ -79,7 +76,8 @@ func RemoteAdapterFactory(cfg config.Config, provider credentials.Provider) remo
 		}
 		rf := dc.Redfish.WithDefaults()
 		return driverredfish.New(opts, provider, dc.CredentialRef, driverredfish.Options{
-			TLSConfig: tc, Timeout: target.Polling.Timeout, RequestTimeout: rf.RequestTimeout,
+			DialAddress: dc.DialAddress,
+			TLSConfig:   tc, Timeout: target.Polling.Timeout, RequestTimeout: rf.RequestTimeout,
 			Auth: rf.Auth, MaxResources: rf.MaxResources, MaxPages: rf.MaxPages, MaxRequests: rf.MaxRequests,
 			MaxResponseBytes: opts.MaxResponseBytes, Provenance: model.Provenance(rf.Provenance),
 		})
@@ -89,7 +87,8 @@ func RemoteAdapterFactory(cfg config.Config, provider credentials.Provider) remo
 		target := dc.Target(config.Polling{})
 		i := dc.IPMI.WithDefaults()
 		return driveripmi.New(opts, provider, dc.CredentialRef, driveripmi.Options{
-			Port: *i.Port, CipherSuite: *i.CipherSuite, Privilege: i.Privilege, Retries: i.Retries,
+			DialAddress: dc.DialAddress,
+			Port:        *i.Port, CipherSuite: *i.CipherSuite, Privilege: i.Privilege, Retries: i.Retries,
 			Timeout: target.Polling.Timeout, RequestTimeout: i.RequestTimeout,
 			MaxSessionDuration: i.MaxSessionDuration, MaxOperations: i.MaxOperations,
 			MaxSDRRecords: i.MaxSDRRecords, MaxSDRBytes: i.MaxSDRBytes,
@@ -98,7 +97,19 @@ func RemoteAdapterFactory(cfg config.Config, provider credentials.Provider) remo
 			MaxResponseBytes: min(opts.MaxResponseBytes, 4096), Provenance: model.Provenance(i.Provenance),
 		})
 	})
-	registrationErr := errors.Join(snmpRegistration, routerosRegistration, redfishRegistration, ipmiRegistration)
+	sipRegistration := registry.Register("sip", func(dc config.Device) (driver.Adapter, error) {
+		if dc.SIP == nil {
+			return nil, errors.New("SIP settings required")
+		}
+		ep := *dc.SIP
+		ep.DialAddress = dc.DialAddress
+		ref := model.SourceRef{Type: model.SourceSIP, TargetID: "remote:" + dc.ID, Protocol: "sip", InstanceID: dc.ID, Provenance: model.ProvenanceReal}
+		if len(collectorIDs) > 0 {
+			ref.CollectorID = collectorIDs[0]
+		}
+		return driversip.New(ep, ref)
+	})
+	registrationErr := errors.Join(snmpRegistration, routerosRegistration, redfishRegistration, ipmiRegistration, sipRegistration)
 	return func(dc config.Device) (driver.Adapter, error) {
 		if registrationErr != nil {
 			return nil, registrationErr
@@ -112,17 +123,9 @@ func redfishTLS(caFile string) (*tls.Config, error) {
 	if caFile == "" {
 		return tc, nil
 	}
-	file, err := os.Open(caFile)
+	data, err := readRemoteCA(caFile)
 	if err != nil {
-		return nil, errors.New("Redfish CA file unavailable")
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
-	if err != nil {
-		return nil, errors.New("Redfish CA file unavailable")
-	}
-	if len(data) > 1<<20 {
-		return nil, errors.New("Redfish CA file exceeds limit")
+		return nil, err
 	}
 	pool, err := x509.SystemCertPool()
 	if err != nil || pool == nil {
@@ -133,6 +136,31 @@ func redfishTLS(caFile string) (*tls.Config, error) {
 	}
 	tc.RootCAs = pool
 	return tc, nil
+}
+
+// Trust files are local administrator-owned regular files. Reject pipes and
+// devices before opening them so preparation cannot wait for a FIFO writer.
+func readRemoteCA(path string) ([]byte, error) {
+	// Administrator trust paths may be symlinks used by certificate rotation.
+	// Inspect their final target, preserving existing static-target behavior.
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
+		return nil, errors.New("remote CA file must be regular and bounded")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, errors.New("remote CA file unavailable")
+	}
+	defer f.Close()
+	info, err = f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
+		return nil, errors.New("remote CA file must be regular and bounded")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
+	if err != nil || len(data) > 1<<20 {
+		return nil, errors.New("remote CA file unavailable or exceeds limit")
+	}
+	return data, nil
 }
 
 // RemoteFactory keeps the historical full-driver API for bounded probe callers.

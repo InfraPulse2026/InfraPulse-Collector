@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -31,7 +33,10 @@ var (
 )
 
 type Options struct {
-	TLSConfig                                             *tls.Config
+	TLSConfig *tls.Config
+	// DialAddress is an approved numeric destination; the HTTPS origin and
+	// certificate identity remain the configured hostname.
+	DialAddress                                           string
 	Timeout, RequestTimeout                               time.Duration
 	Auth                                                  string
 	MaxResources, MaxPages, MaxRequests, MaxResponseBytes int
@@ -114,6 +119,25 @@ func New(opts driver.Options, provider credentials.Provider, ref string, limits 
 	base.MaxResponseHeaderBytes = 64 << 10
 	base.MaxIdleConnsPerHost = 1
 	base.IdleConnTimeout = 30 * time.Second
+	if limits.DialAddress != "" {
+		ip, parseErr := netip.ParseAddr(limits.DialAddress)
+		if parseErr != nil || ip.Zone() != "" {
+			return nil, errors.New("Redfish dial address must be a numeric IP without a zone")
+		}
+		port := u.Port()
+		if port == "" {
+			port = "443"
+		}
+		pinned := net.JoinHostPort(ip.String(), port)
+		dialer := &net.Dialer{Timeout: limits.RequestTimeout, KeepAlive: 30 * time.Second}
+		base.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			host, requestedPort, splitErr := net.SplitHostPort(address)
+			if splitErr != nil || !strings.EqualFold(host, u.Hostname()) || requestedPort != port {
+				return nil, driver.ErrUnavailable
+			}
+			return dialer.DialContext(ctx, network, pinned)
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &Adapter{opts: opts, limits: limits, provider: provider, ref: ref, origin: u, gate: make(chan struct{}, 1), lifecycle: ctx, cancel: cancel}
 	a.transport = &safeTransport{base: base, adapter: a}

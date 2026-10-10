@@ -26,9 +26,14 @@ type State struct {
 }
 
 type scheduledJob struct {
-	job   Job
-	state State
-	next  time.Time
+	job          Job
+	state        State
+	next         time.Time
+	paused       bool
+	resumeOnDone bool
+	cancel       context.CancelFunc
+	done         chan struct{}
+	ctx          context.Context
 }
 
 type Scheduler struct {
@@ -37,6 +42,8 @@ type Scheduler struct {
 	concurrency int
 	onError     func(string, error)
 	running     bool
+	changed     chan struct{}
+	change      *Change
 }
 
 // New uses at least one worker. Add validates each job before Run starts.
@@ -44,7 +51,7 @@ func New(concurrency int, onError func(string, error)) *Scheduler {
 	if concurrency < 1 {
 		concurrency = 1
 	}
-	return &Scheduler{concurrency: concurrency, onError: onError}
+	return &Scheduler{concurrency: concurrency, onError: onError, changed: make(chan struct{}, 1)}
 }
 
 func (s *Scheduler) Add(job Job) error {
@@ -53,7 +60,7 @@ func (s *Scheduler) Add(job Job) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.running {
+	if s.running || s.change != nil {
 		return errors.New("cannot add collector while scheduler is running")
 	}
 	for _, existing := range s.jobs {
@@ -77,8 +84,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	}
 	s.running = true
 	now := time.Now()
-	jobs := append([]*scheduledJob(nil), s.jobs...)
-	for _, job := range jobs {
+	for _, job := range s.jobs {
 		job.next = now
 	}
 	s.mu.Unlock()
@@ -92,27 +98,27 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		workers.Wait()
 		s.mu.Lock()
 		s.running = false
-		for _, job := range jobs {
-			job.state.Running = false
+		for _, job := range s.jobs {
+			s.completeLocked(job)
 		}
 		s.mu.Unlock()
 	}()
-	if len(jobs) == 0 {
-		<-ctx.Done()
-		return nil
-	}
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-s.changed:
 		case <-timer.C:
 		}
 		now = time.Now()
 		s.mu.Lock()
 		var next time.Time
-		for _, job := range jobs {
+		for _, job := range s.jobs {
+			if job.paused {
+				continue
+			}
 			if !job.next.After(now) {
 				periods := uint64(now.Sub(job.next)/job.job.Interval) + 1
 				job.next = job.next.Add(time.Duration(periods) * job.job.Interval)
@@ -121,10 +127,12 @@ func (s *Scheduler) Run(ctx context.Context) error {
 				} else {
 					job.state.Skipped += periods - 1
 					job.state.Running = true
+					job.ctx, job.cancel = context.WithCancel(ctx)
+					job.done = make(chan struct{})
 					select {
 					case work <- job:
 					default:
-						job.state.Running = false
+						s.completeLocked(job)
 						job.state.Skipped++
 					}
 				}
@@ -134,6 +142,15 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			}
 		}
 		s.mu.Unlock()
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		if next.IsZero() {
+			continue
+		}
 		delay := time.Until(next)
 		if delay < 0 {
 			delay = 0
@@ -157,7 +174,15 @@ func (s *Scheduler) worker(ctx context.Context, work <-chan *scheduledJob) {
 			if ctx.Err() != nil {
 				return
 			}
-			jobCtx, cancel := context.WithTimeout(ctx, job.job.Timeout)
+			s.mu.Lock()
+			if job.paused || job.ctx.Err() != nil {
+				s.completeLocked(job)
+				s.mu.Unlock()
+				continue
+			}
+			base := job.ctx
+			s.mu.Unlock()
+			jobCtx, cancel := context.WithTimeout(base, job.job.Timeout)
 			err := collect(jobCtx, job.job.Collect)
 			if jobCtx.Err() != nil {
 				err = errors.Join(err, jobCtx.Err())
@@ -165,8 +190,9 @@ func (s *Scheduler) worker(ctx context.Context, work <-chan *scheduledJob) {
 			cancel()
 			s.mu.Lock()
 			job.state.Runs++
-			job.state.Running = false
-			if err != nil {
+			transitionCancelled := job.paused || job.resumeOnDone
+			s.completeLocked(job)
+			if err != nil && !transitionCancelled {
 				message := err.Error()
 				if len(message) > 1024 {
 					// Clone releases the potentially large source error buffer; slicing
@@ -174,11 +200,11 @@ func (s *Scheduler) worker(ctx context.Context, work <-chan *scheduledJob) {
 					message = strings.Clone(message[:1024])
 				}
 				job.state.LastError = message
-			} else {
+			} else if !transitionCancelled {
 				job.state.LastError = ""
 			}
 			s.mu.Unlock()
-			if err != nil && ctx.Err() == nil && s.onError != nil {
+			if err != nil && ctx.Err() == nil && !transitionCancelled && s.onError != nil {
 				s.onError(job.job.Name, err)
 			}
 		}

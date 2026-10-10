@@ -49,6 +49,8 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 		SentAt: timestamp(envelope.SentAt),
 	}
 	switch {
+	case envelope.ConfigApplyResult != nil:
+		message.Payload = &pb.AgentEnvelope_ConfigStatus{ConfigStatus: configResultToProto(envelope.ConfigApplyResult)}
 	case envelope.Logs != nil:
 		message.Payload = &pb.AgentEnvelope_Logs{Logs: logsToProto(*envelope.Logs)}
 	case envelope.Telephony != nil:
@@ -59,6 +61,7 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 			AgentId: h.AgentID, SessionId: h.SessionID, Name: h.Name,
 			Build: buildToProto(h.Build), StartedAt: timestamp(h.StartedAt),
 			Device: deviceToProto(h.Device), ProtocolVersion: h.ProtocolVersion, ApplicationAck: h.ApplicationACK,
+			ManagedConfigV1: h.ManagedConfigV1, RemoteManagementEnabled: h.RemoteManagementEnabled, AppliedConfig: appliedConfigToProto(h.AppliedConfig),
 		}}
 	case envelope.Heartbeat != nil:
 		h := envelope.Heartbeat
@@ -66,6 +69,7 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 			Timestamp: timestamp(h.Timestamp), UptimeSeconds: h.UptimeSeconds,
 			Build: buildToProto(h.Build), Health: h.Health,
 			Certificate:       certificateToProto(h.Certificate),
+			ManagedConfig:     configResultToProto(h.ManagedConfig),
 			RemoteDeviceCount: uint32(h.RemoteDeviceCount), Queue: &pb.QueueState{
 				Messages: uint64(h.Queue.Messages), Bytes: uint64(h.Queue.Bytes),
 				DroppedTelemetry: h.Queue.DroppedTelemetry, DroppedOther: h.Queue.DroppedOther, DroppedLogs: h.Queue.DroppedLogs,
@@ -129,6 +133,14 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 		SessionID: message.SessionId, Sequence: message.Sequence, SentAt: sentAt,
 	}
 	switch payload := message.Payload.(type) {
+	case *pb.AgentEnvelope_ConfigStatus:
+		if payload == nil || payload.ConfigStatus == nil {
+			return e, errors.New("nil configuration status")
+		}
+		e.ConfigApplyResult, err = configResultFromProto(payload.ConfigStatus)
+		if err != nil {
+			return e, err
+		}
 	case *pb.AgentEnvelope_Logs:
 		if payload == nil {
 			return e, errors.New("nil logs payload")
@@ -160,10 +172,15 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 		if err != nil {
 			return e, err
 		}
+		applied, err := appliedConfigFromProto(h.AppliedConfig)
+		if err != nil {
+			return e, err
+		}
 		e.Hello = &model.AgentHello{
 			AgentID: h.AgentId, SessionID: h.SessionId, Name: h.Name,
 			Build: buildFromProto(h.Build), StartedAt: startedAt,
 			Device: device, ProtocolVersion: h.ProtocolVersion, ApplicationACK: h.ApplicationAck,
+			ManagedConfigV1: h.ManagedConfigV1, RemoteManagementEnabled: h.RemoteManagementEnabled, AppliedConfig: applied,
 		}
 	case *pb.AgentEnvelope_Heartbeat:
 		if payload == nil || payload.Heartbeat == nil || payload.Heartbeat.Queue == nil {
@@ -185,10 +202,15 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 		if err != nil {
 			return e, err
 		}
+		managed, err := configResultFromProto(h.ManagedConfig)
+		if err != nil {
+			return e, err
+		}
 		e.Heartbeat = &model.Heartbeat{
 			Timestamp: at, UptimeSeconds: h.UptimeSeconds, Build: buildFromProto(h.Build),
 			Health: h.Health, RemoteDeviceCount: int(h.RemoteDeviceCount),
 			Queue: queue, Certificate: certificate,
+			ManagedConfig: managed,
 		}
 	case *pb.AgentEnvelope_Telemetry:
 		if payload == nil || payload.Telemetry == nil || len(payload.Telemetry.Samples) != 1 {
@@ -430,7 +452,7 @@ func validateEnvelope(e model.Envelope) error {
 		return err
 	}
 	payloads := 0
-	for _, present := range []bool{e.Hello != nil, e.Heartbeat != nil, e.Telemetry != nil, e.Inventory != nil, e.Topology != nil, len(e.Events) > 0, e.CommandResult != nil, e.Error != nil, e.Logs != nil, e.Telephony != nil} {
+	for _, present := range []bool{e.Hello != nil, e.Heartbeat != nil, e.Telemetry != nil, e.Inventory != nil, e.Topology != nil, len(e.Events) > 0, e.CommandResult != nil, e.Error != nil, e.Logs != nil, e.Telephony != nil, e.ConfigApplyResult != nil} {
 		if present {
 			payloads++
 		}
@@ -439,6 +461,11 @@ func validateEnvelope(e model.Envelope) error {
 		return errors.New("envelope requires exactly one payload")
 	}
 	switch {
+	case e.ConfigApplyResult != nil:
+		if e.ConfigApplyResult.CollectorID != e.AgentID {
+			return errors.New("configuration status identity does not match envelope")
+		}
+		return validateConfigResult(*e.ConfigApplyResult)
 	case e.Logs != nil:
 		return validateLogs(*e.Logs)
 	case e.Telephony != nil:
@@ -453,9 +480,20 @@ func validateEnvelope(e model.Envelope) error {
 		if err := validateTime(e.Hello.StartedAt, "hello.started_at"); err != nil {
 			return err
 		}
+		if err := validateAppliedConfig(e.Hello.AppliedConfig); err != nil {
+			return err
+		}
 		return validateDevice(e.Hello.Device)
 	case e.Heartbeat != nil:
 		h := e.Heartbeat
+		if h.ManagedConfig != nil {
+			if h.ManagedConfig.CollectorID != e.AgentID {
+				return errors.New("heartbeat configuration identity mismatch")
+			}
+			if err := validateConfigResult(*h.ManagedConfig); err != nil {
+				return err
+			}
+		}
 		if err := validateTime(h.Timestamp, "heartbeat.timestamp"); err != nil {
 			return err
 		}

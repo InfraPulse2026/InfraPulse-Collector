@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +25,9 @@ import (
 // Options bounds both protocol operations and retained SDR metadata. Network
 // sessions live for one poll; sensor requests reuse that session sequentially.
 type Options struct {
+	// DialAddress pins the connection destination without changing target
+	// address metadata or source-scoped hardware identifiers.
+	DialAddress                                            string
 	Port, CipherSuite, Retries                             int
 	Privilege                                              string
 	Timeout, RequestTimeout, MaxSessionDuration            time.Duration
@@ -49,12 +53,28 @@ type Adapter struct {
 
 // New validates configuration without contacting the BMC.
 func New(opts driver.Options, provider credentials.Provider, ref string, limits Options) (*Adapter, error) {
-	return NewWithFactory(opts, provider, ref, limits, newClient)
+	factory := Factory(newClient)
+	if limits.DialAddress != "" {
+		ip, err := netip.ParseAddr(limits.DialAddress)
+		if err != nil || ip.Zone() != "" {
+			return nil, errors.New("IPMI dial address must be a numeric IP without a zone")
+		}
+		factory = func(ctx context.Context, _ string, port int, credential credentials.Credential, session SessionOptions) (Client, error) {
+			return newClient(ctx, ip.String(), port, credential, session)
+		}
+	}
+	return NewWithFactory(opts, provider, ref, limits, factory)
 }
 
 // NewWithFactory supplies the same typed read-only boundary to deterministic
 // protocol fixtures. Production registration always uses New.
 func NewWithFactory(opts driver.Options, provider credentials.Provider, ref string, limits Options, factory Factory) (*Adapter, error) {
+	if limits.DialAddress != "" {
+		ip, err := netip.ParseAddr(limits.DialAddress)
+		if err != nil || ip.Zone() != "" {
+			return nil, errors.New("IPMI dial address must be a numeric IP without a zone")
+		}
+	}
 	if opts.ID == "" || len(opts.ID) > 256 || provider == nil || ref == "" || factory == nil || opts.EnableMutations ||
 		opts.Address == "" || len(opts.Address) > 253 || strings.ContainsAny(opts.Address, "/\\@?#\r\n\x00") {
 		return nil, errors.New("IPMI requires a host, target ID, credential reference and read-only options")

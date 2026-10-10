@@ -30,6 +30,7 @@ message AgentEnvelope {
     TelephonyUpdate telephony = 17;
     CommandResult command_result = 18;
     ErrorReport error = 20;
+    ConfigApplyStatus config_status = 21;
   }
 }
 
@@ -38,6 +39,7 @@ message ControllerEnvelope {
     HelloAck hello_ack = 1;
     Command command = 2;
     MessageACK message_ack = 3;
+    DesiredConfigSnapshot desired_config = 4;
   }
 }
 
@@ -59,12 +61,125 @@ message AgentHello {
   Device device = 6;
   uint32 protocol_version = 7;
   bool application_ack = 8;
+  bool managed_config_v1 = 9;
+  bool remote_management_enabled = 10;
+  AppliedConfigState applied_config = 11;
 }
 
 message HelloAck {
   bool accepted = 1;
   uint32 protocol_version = 2;
   bool application_ack = 3;
+  bool managed_config_v1 = 4;
+}
+
+// A complete Backend-owned monitoring namespace. No local administrative
+// settings or credential values are allowed. Configuration v1 is closed: unknown
+// fields are rejected, so extensions require explicit capability negotiation.
+message DesiredConfigSnapshot {
+  string collector_id = 1;
+  string session_id = 2;
+  uint64 revision = 3;
+  string configuration_digest = 4;
+  google.protobuf.Timestamp issued_at = 5;
+  repeated ManagedTargetSpec targets = 6;
+}
+
+message ManagedTargetPolling {
+  google.protobuf.Duration fast_interval = 1;
+  google.protobuf.Duration medium_interval = 2;
+  google.protobuf.Duration inventory_interval = 3;
+  google.protobuf.Duration topology_interval = 4;
+  google.protobuf.Duration timeout = 5;
+}
+
+message ManagedTargetSpec {
+  string target_id = 1;
+  string protocol = 2;
+  bool enabled = 3;
+  string endpoint = 4;
+  string credential_ref = 5;
+  string name = 6;
+  string vendor_hint = 7;
+  PhysicalLocation location = 8;
+  ManagedTargetPolling polling = 9;
+  // A local administrator-defined key, never a filesystem path.
+  string ca_ref = 10;
+  oneof options {
+    ManagedSNMPOptions snmp = 20;
+    ManagedSIPOptions sip = 21;
+    ManagedRedfishOptions redfish = 22;
+    ManagedIPMIOptions ipmi = 23;
+  }
+}
+message ManagedSNMPOptions {
+  string version = 1;
+  string security_level = 2;
+  string auth_protocol = 3;
+  string privacy_protocol = 4;
+  string context_name = 5;
+  uint32 port = 6;
+  int32 retries = 7;
+}
+message ManagedSIPOptions {
+  uint32 port = 1;
+  string transport = 2;
+  string from_user = 3;
+  string to_user = 4;
+  string domain = 5;
+  string server_name = 6;
+  uint32 failure_threshold = 7;
+  google.protobuf.Duration latency_threshold = 8;
+}
+message ManagedRedfishOptions {
+  string auth = 1;
+  google.protobuf.Duration request_timeout = 2;
+  int32 max_resources = 3;
+  int32 max_pages = 4;
+  int32 max_requests = 5;
+}
+message ManagedIPMIOptions {
+  optional uint32 port = 1;
+  optional uint32 cipher_suite = 2;
+  string privilege = 3;
+  int32 retries = 4;
+  google.protobuf.Duration request_timeout = 5;
+  google.protobuf.Duration max_session_duration = 6;
+  int32 max_operations = 7;
+  int32 max_sdr_records = 8;
+  int32 max_sdr_bytes = 9;
+  int32 max_fru_records = 10;
+  int32 max_fru_bytes = 11;
+  int32 max_poll_bytes = 12;
+  google.protobuf.Duration sdr_cache_ttl = 13;
+}
+enum ConfigStatus {
+  CONFIG_STATUS_UNSPECIFIED = 0;
+  CONFIG_STATUS_RECEIVED = 1;
+  CONFIG_STATUS_VALIDATING = 2;
+  CONFIG_STATUS_APPLIED = 3;
+  CONFIG_STATUS_REJECTED = 4;
+  CONFIG_STATUS_FAILED = 5;
+}
+message AppliedConfigState {
+  uint64 revision = 1;
+  string configuration_digest = 2;
+  ConfigStatus status = 3;
+  google.protobuf.Timestamp applied_at = 4;
+  uint32 target_count = 5;
+}
+// APPLIED means runtime activation and last-known-good persistence succeeded.
+// A MessageACK acknowledges this envelope's receipt, not configuration apply.
+message ConfigApplyStatus {
+  string collector_id = 1;
+  uint64 revision = 2;
+  string configuration_digest = 3;
+  ConfigStatus status = 4;
+  google.protobuf.Timestamp applied_at = 5;
+  string error_code = 6;
+  string sanitized_error_message = 7;
+  uint64 applied_revision = 8;
+  string applied_digest = 9;
 }
 
 message Capability {
@@ -385,6 +500,7 @@ message Heartbeat {
   uint32 remote_device_count = 5;
   QueueState queue = 6;
   CertificateStatus certificate = 7;
+  ConfigApplyStatus managed_config = 8;
 }
 
 message CertificateStatus {
