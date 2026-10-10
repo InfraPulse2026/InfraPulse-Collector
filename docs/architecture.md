@@ -115,6 +115,22 @@ Redfish/IPMI targets не вызывает merge. Глобальный Entity Re
 telemetry не меняется. Нормализованные results проходят `Agent.push`/Sanitizer,
 тот же durable outbox и gRPC/application ACK. [IPMI mapping и gaps](ipmi.md).
 
+Phase 6 переиспользует `IdentityEvidence`, `SourceRef`, `ObservationMetadata`,
+`ObservationTime` и существующий topology pipeline. Protocol adapters сохраняют
+facts на собственных subjects: System, Chassis, BMC, component и interface не
+сливаются по общему Target/IP/serial. Общие helpers выполняют безопасную bounded
+normalization; source-scoped resource IDs остаются детерминированными. Enrichment
+не запускает второй inventory poll, ingestion path, Asset Registry или topology
+database. Global resolution и confidence-based merge остаются Backend.
+
+Typed source/time metadata теперь проходит gRPC также для SNMP/RouterOS/local,
+Events, topology и SIP/OpenWrt payloads. Device/Telemetry legacy identity lists
+содержат только пригодные Phase 5 types; новые types и normalization diagnostics
+передаются в additive `extended_identity_evidence`. Decoder объединяет оба списка
+в прежнюю domain model. Sanitizer и wire admission проверяют enriched envelope
+до durable queue; ACK/replay и message IDs не меняются.
+[Phase 6 model](identity-topology.md), [Backend contract](backend-identity-topology-contract.md).
+
 ## Configuration и registry
 
 `devices` содержит stable ID, name, driver (`snmp`/`routeros`/`redfish`/`ipmi`), address,
@@ -229,6 +245,13 @@ LLDP local port number не приравнивается ifIndex: использ
 по ifName/ifAlias/MAC или weaker ifDescr evidence. Неуверенный port остаётся
 unresolved. ARP/ND/FDB не собираются как physical links.
 
+`Neighbor.Kind=observed_l2_neighbor` задаёт направление от local device/interface
+к advertised remote endpoint. Reciprocal observations остаются независимыми;
+unresolved neighbor и отсутствующий remote port допустимы. Phase 6 сохраняет
+local ifIndex/name/MAC, optional management addresses/capabilities/age и отдельные
+protocol markers. Stable observation ID учитывает Collector/Target/source,
+local interface и remote identifiers/subtypes, но не current timestamp.
+
 RouterOS neighbor discovery сохраняет LLDP/CDP/MNDP/unknown. Neighbor MAC не
 объявляется LLDP chassis subtype=MAC, а CDP interface-name не переносится
 автоматически на LLDP/MNDP. Наблюдение на общем bridged segment не подтверждает
@@ -303,7 +326,10 @@ observation clocks и Backend не меняются. Phase 3 добавляет 
 network source и additive logs metadata на gRPC. Phase 4 добавляет read-only
 Redfish inventory/health/telemetry в тот же runtime/outbox. Phase 5 добавляет
 explicit IPMI LANplus targets через те же hardware contracts; Collector ↔
-Backend clock offset estimation отсутствует. [Architecture freeze](collector-core.md).
+Backend clock offset estimation отсутствует. Phase 6 завершает scoped identity
+и directed topology evidence с additive wire metadata и Backend handoff,
+сохраняя тот же runtime/outbox. [Architecture freeze](collector-core.md),
+[identity/topology](identity-topology.md).
 Windows LocalPlatform относится к post-MVP/backlog. NETCONF/gNMI deferred:
 без подтверждённого typed use case новый protocol не добавляется.
 Фактически выполненные проверки находятся в [validation](validation.md).

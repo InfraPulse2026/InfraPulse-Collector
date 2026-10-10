@@ -1359,3 +1359,123 @@ detailed CPU/RAM/storage parity и hardware writes отсутствуют. Auto 
 fallback и global Asset Resolution не добавлены. RAKP offline guessing и
 server-side expiry при недоступном logout сохраняются. Delivery остаётся
 retained at-least-once; exactly-once и production Backend persistence не заявляются.
+
+## 2026-10-10 — Phase 6: identity и topology enrichment
+
+База — чистый `main`, `14abc4e` (завершённая и закоммиченная Phase 5).
+Рабочая ветка `feat/phase-6-identity-topology`, HEAD тот же; Phase 6 остаётся
+unstaged. Commit/push/merge/rebase/reset/clean/stash не выполнялись.
+Полный отчёт, field mapping, changed files и prepared commit text —
+[Phase 6 report](phase-6-report.md), [Backend contract](backend-identity-topology-contract.md).
+SDK `go1.27.1 windows/amd64`; production CGO0, race CGO1 с portable LLVM-MinGW.
+Exact logs — ignored `.cache/phase6-baseline/` и `.cache/phase6-final/`.
+Final documentation QA:10documents/219local Markdown links/0broken, `git diff --check`
+PASS. Индекс пуст, HEAD14abc4e, go.mod/go.sum не изменены; compiler/cache/build
+artifacts не входят в tracked files.
+
+### Baseline и финальные проверки
+
+| Выполненная проверка | Phase 5 baseline | Phase 6 final |
+|---|---|---|
+| `gofmt -l` api/cmd/internal | Raw список24 CRLF files; LF scratch PASS242files | PASS262files, пустой список |
+| `go build ./...` | PASS4,886s | PASS2,702s |
+| `go vet ./...` | PASS1,243s | PASS0,898s |
+| `go test -count=1 ./...` | PASS14,207s | PASS15,558s |
+| `go test -race -count=1 ./...` | PASS43,950s | PASS41,488s |
+| `go mod verify` | PASS | PASS |
+| `go test -count=1 -p=1 -tags=integration ./...` | PASS67,883s | PASS68,747s |
+| Native/cross `scripts/build.ps1` | PASS | PASS |
+| Pinned protobuf scratch generation/SHA256 | PASS | PASS |
+| `validate-config` по YAML examples | PASS11 | PASS11 |
+| Integration-tagged Linux suites в WSL | PASS18 | PASS18 |
+
+Baseline raw formatting difference относилась к line endings Phase 5; LF scratch
+не показал других gaps. Финальный gofmt нормализовал line endings. Новых dependencies
+и mandatory CGO нет. Final source hashes:262files/0mismatches до/после suites.
+Initial final run также прошёл, затем review выявил mapped IPv6 IPMI fact и
+percent-encoded resource URI secret gaps; они исправлены, regression tests добавлены.
+Таблица final относится к полному повтору после этих fixes, не к прежнему run.
+
+Pinned tools: protoc33.5, protoc-gen-go1.36.12, protoc-gen-go-grpc1.6.0.
+Scratch SHA256 совпал с generated sources: agent.pb.go
+`D56D84B8E0A65EDE91185D9EC78C3A1433243325E66F85BE3824260E16C15857`,
+agent_grpc.pb.go
+`AC213C387B28E787A7793438C46341276EF6F6E6CB1B05CFCF18A8F667348FA2`.
+Phase 5 descriptor regression сохранила все старые field numbers/types,
+oneofs/enums и RPC. Dynamic old peer игнорирует additions; frozen Phase 5 identity
+validation принимает legacy lists без новых types/diagnostic placeholders.
+Device42/Telemetry16 optional extensions вместе с legacy41/15 проверяются общими
+limits и объединяются в существующий domain IdentityEvidence.
+
+### Fixture E2E и regression coverage
+
+`go test -count=1 -run '^TestPhase6AdaptersIdentityTopologyDurableReplayACK$' -v ./internal/agent`
+— PASS: SNMP UDP, verified RouterOS/Redfish HTTPS и IPMI LANplus reference BMC
+передали13source observations через emitTarget/Agent.push/durable outbox.
+Offline/noACK records сохранены, после restart replay сохранил исходные message IDs,
+source/evidence/time/provenance, local interface, raw chassis/port/subtypes и
+mixed LLDP/CDP/MNDP protocol markers. Mock application ACK удалил accepted records.
+E2E также включён в full обычные/race/integration/Linux suites.
+
+Unit/fixture tests: missing serial/UUID, leading-zero serial, invalid UUID/MAC/IP,
+duplicate MAC/hostname/IP разных targets/resources, Redfish System/Chassis/Manager,
+IPMI BMC/FRU subjects, matched/conflicting cross-protocol serials без merge,
+stable resource/observation IDs, deep ownership и temporal metadata.
+Topology tests: subtype preservation, management AF, local interface evidence,
+unknown/missing port, direction/protocol distinctions, unsafe cached IF isolation,
+bounded list/facts и simultaneous total/per-subject limits. Registry partial/failed
+expiry protection остаётся существующей regression, explicit withdrawal не добавлен.
+Admission tests отвергают invalid source, invalid UTF-8/oversized facts/messages и
+secret-bearing raw/percent-decoded resource/relationship URI; valid следующий
+envelope принимается, retained queue не блокируется.
+
+Full suites включают SNMP v2c/v3, RouterOS/rollback, SIP OPTIONS, Linux/OpenWrt,
+Syslog TLS/TCP/audit и local/remote log coexistence, corporate NTP fixtures,
+Redfish multi-resource, IPMI secure RMCP+, credentials/PKI, scheduler, Simulator,
+commands/journal и durable ACK/replay. Реальные remote устройства не участвовали.
+
+### Linux и cross-build matrix
+
+Linux packages собраны `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -tags=integration`
+и запущены в WSL `docker-desktop` с `-test.v=true -test.count=1 -test.timeout=120s`.
+Все18PASS: platform/linux, logs, queue, commands, protocol/snmp, driver/snmp,
+driver/routeros, driver/redfish, driver/ipmi, pki, platform/openwrt, agent,
+simulator, telephony, transport/grpc, config, platform, syslogreceiver.
+Linux proc/sys/file I/O — real runtime; remote hardware/network and OpenWrt schemas
+— fixtures. External Redfish service test skipped без endpoint environment.
+`time-sync-status` exit0/unavailable, systemctl отсутствует; live sync не проверена.
+
+Cross-build CGO0 PASS: Collector linux/amd64, arm64, arm GOARM=7, mips/mipsle
+hardfloat; Mock Controller, Simulator и Mock Enrollment linux/amd64 и arm64.
+Runtime других architectures и OpenWrt firmware/RAM/flash этим не подтверждены.
+
+### Ресурсы и ограничения
+
+Matched Linux amd64 `-trimpath -buildvcs=false` stripped binary с `-s -w`:
+25 948 320→26 108 064 bytes, +159 744/+0,62%; unstripped
+38 257 990→38 463 748, +205 758/+0,54%.
+ObserveTelemetry benchmark:433,8ns/1152B/8allocs→6832ns/8494B/38allocs;
+enrichment имеет измеренную дополнительную стоимость.
+Topology Enrich1024neighbors:2,014ms/1 672 777B/13 315allocs.
+Wire64enriched:0,982ms/432 373B/4055allocs, JSON218 624/proto102 511bytes.
+Wire1024enriched:9,305ms, JSON3 490 274/proto1 639 388bytes: default1MiB JSON
+outbox limit превышен; это size probe, не admission PASS этого большого snapshot.
+Automatic topology splitting отсутствует; безопасное admission rejection сохранено.
+
+Admission resource probe100cycles×64neighbors:910,333ms, TotalAlloc339 278 296bytes,
+heap with outbox+1 537 408, afterClose+1 489 104, goroutine delta0, peak5messages/
+951 005bytes при budget32messages/1MiB, priority eviction95. Closed Agent/queue
+остаётся referenced; full object reclamation/isolated Collector RSS не измерялись.
+Synthetic32target/4worker registry probe:activepeak4, goroutines1→7→1,
+queuepeak32/41 400bytes, heap354 520→648 368, TotalAlloc4 842 000bytes.
+Redfish50poll:273,7534ms, heap+136 632, goroutine0/requestpeak1, JSONinventory23 856/
+sample11 768bytes. IPMI50poll:80,1469ms, heap+183 040, TotalAlloc25 071 112,
+goroutine0/socketpeak1,51opened/51closed/0activeBMC, JSONinventory14 338/sample6511.
+Reference server входит в тот же process; это single-host samples, не production sizing.
+
+Global Entity Resolution/Assets/physical cable confirmation остаются Backend.
+LLDP TTL остаётся assumption, direct CDP Device-ID/TTL и withdrawal отсутствуют.
+Backend/PostgreSQL E2E, реальные устройства/vendor firmware, live NTP и OpenWrt
+runtime не проверены. Phase 7 не начиналась.
+Read-only environment check нашёл local listener5432, но configured Backend
+endpoint/credentials не подтверждены; DB connection/записи не выполнялись.

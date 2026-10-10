@@ -66,26 +66,51 @@ type TopologyUpdate struct {
 	Observations     []Neighbor           `json:"observations"`
 }
 type Neighbor struct {
-	Observation           *ObservationMetadata `json:"observation,omitempty"`
-	IdentityEvidence      []IdentityEvidence   `json:"identity_evidence,omitempty"`
-	LocalDeviceID         string               `json:"local_device_id"`
-	LocalInterfaceID      string               `json:"local_interface_id,omitempty"`
-	LocalInterfaceName    string               `json:"local_interface_name,omitempty"`
-	LocalPortNumber       uint32               `json:"local_port_number,omitempty"`
-	LocalPortID           []byte               `json:"local_port_id,omitempty"`
-	LocalPortSubtype      uint32               `json:"local_port_subtype"`
-	RemoteChassisID       []byte               `json:"remote_chassis_id,omitempty"`
-	RemoteChassisSubtype  uint32               `json:"remote_chassis_subtype"`
-	RemotePortID          []byte               `json:"remote_port_id,omitempty"`
-	RemotePortSubtype     uint32               `json:"remote_port_subtype"`
-	RemoteSystemName      string               `json:"remote_system_name,omitempty"`
-	RemotePortDescription string               `json:"remote_port_description,omitempty"`
-	Protocol              string               `json:"protocol"` // lldp, cdp, mndp, unknown
-	Source                string               `json:"source"`
-	ObservedAt            time.Time            `json:"observed_at"`
-	ExpiresAt             time.Time            `json:"expires_at"`
-	Evidence              []Evidence           `json:"evidence"`
-	Confidence            string               `json:"confidence"` // high, medium, low, unresolved
+	ObservationID               string               `json:"observation_id,omitempty"`
+	Kind                        string               `json:"kind,omitempty"` // observed_l2_neighbor, never a verified physical cable
+	Observation                 *ObservationMetadata `json:"observation,omitempty"`
+	IdentityEvidence            []IdentityEvidence   `json:"identity_evidence,omitempty"`
+	LocalDeviceID               string               `json:"local_device_id"`
+	LocalInterfaceID            string               `json:"local_interface_id,omitempty"`
+	LocalInterfaceName          string               `json:"local_interface_name,omitempty"`
+	LocalInterfaceIndex         *uint32              `json:"local_interface_index,omitempty"`
+	LocalInterfaceMAC           string               `json:"local_interface_mac,omitempty"`
+	LocalInterfaceDescription   string               `json:"local_interface_description,omitempty"`
+	LocalInterfaceAlias         string               `json:"local_interface_alias,omitempty"`
+	LocalPortNumber             uint32               `json:"local_port_number,omitempty"`
+	LocalPortID                 []byte               `json:"local_port_id,omitempty"`
+	LocalPortSubtype            uint32               `json:"local_port_subtype"`
+	RemoteChassisID             []byte               `json:"remote_chassis_id,omitempty"`
+	RemoteChassisSubtype        uint32               `json:"remote_chassis_subtype"`
+	RemotePortID                []byte               `json:"remote_port_id,omitempty"`
+	RemotePortSubtype           uint32               `json:"remote_port_subtype"`
+	RemoteSystemName            string               `json:"remote_system_name,omitempty"`
+	RemotePortDescription       string               `json:"remote_port_description,omitempty"`
+	RemoteManagementAddresses   []ManagementAddress  `json:"remote_management_addresses,omitempty"`
+	RemoteSystemDescription     string               `json:"remote_system_description,omitempty"`
+	RemotePlatform              string               `json:"remote_platform,omitempty"`
+	RemoteModel                 string               `json:"remote_model,omitempty"`
+	RemoteSoftwareVersion       string               `json:"remote_software_version,omitempty"`
+	RemoteCapabilitiesSupported []string             `json:"remote_capabilities_supported,omitempty"`
+	RemoteCapabilitiesEnabled   []string             `json:"remote_capabilities_enabled,omitempty"`
+	AgeSeconds                  *uint32              `json:"age_seconds,omitempty"` // reported age since last discovery packet, not TTL
+	Protocol                    string               `json:"protocol"`              // lldp, cdp, mndp, unknown
+	Source                      string               `json:"source"`
+	ObservedAt                  time.Time            `json:"observed_at"`
+	ExpiresAt                   time.Time            `json:"expires_at"`
+	Evidence                    []Evidence           `json:"evidence"`
+	Confidence                  string               `json:"confidence"` // high, medium, low, unresolved
+}
+
+// ManagementAddress retains the advertised IANA AddressFamilyNumbers encoding.
+// Address is canonical IP only for IPv4(1)/IPv6(2); other families retain raw
+// bytes. An advertised address is evidence, never an automatically created target.
+type ManagementAddress struct {
+	AddressFamily    uint32  `json:"address_family"`
+	Address          string  `json:"address,omitempty"`
+	RawAddress       []byte  `json:"raw_address"`
+	InterfaceSubtype *uint32 `json:"interface_subtype,omitempty"`
+	InterfaceID      *uint32 `json:"interface_id,omitempty"`
 }
 type InterfaceVerification struct {
 	InterfaceID     string    `json:"interface_id"`

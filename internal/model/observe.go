@@ -12,14 +12,22 @@ import (
 func ObserveDevice(d Device, ref SourceRef, observed, collected time.Time) Device {
 	d = CloneDevice(d)
 	d.Observation = observationFor(d.Observation, ref, d.Source, observed, collected, nil)
-	if len(d.IdentityEvidence) == 0 {
-		d.IdentityEvidence = DeviceIdentityEvidence(d, d.Observation.Source)
-	} else {
-		d.IdentityEvidence = bindIdentityEvidence(d.IdentityEvidence, ref.CollectorID, d.Source)
-	}
 	for i := range d.Components {
 		c := &d.Components[i]
 		c.Observation = observationFor(c.Observation, ref, d.Source, observed, collected, nil)
+	}
+	d.IdentityEvidence = MergeIdentityEvidence(bindIdentityEvidence(d.IdentityEvidence, ref.CollectorID, d.Source), DeviceIdentityEvidence(d, d.Observation.Source))
+	for i := range d.IdentityEvidence {
+		ev := &d.IdentityEvidence[i]
+		if ev.Time == nil {
+			ev.Time = CloneObservationTime(&d.Observation.Time)
+		}
+		if ev.SubjectKind == "" {
+			ev.SubjectKind = IdentitySubjectKind(d.Hardware, "network_device")
+			if ev.SubjectID != "" && ev.SubjectID != d.ID {
+				ev.SubjectKind = "component"
+			}
+		}
 	}
 	for i := range d.Services {
 		s := &d.Services[i]
@@ -79,10 +87,11 @@ func ObserveEnvelope(e Envelope, ref SourceRef, collected time.Time) Envelope {
 			healthRef.ResourceID = h.ResourceID
 			h.Observation = observationFor(h.Observation, healthRef, s.Source, s.ObservedAt, finished, nil)
 		}
-		if len(s.IdentityEvidence) == 0 {
-			s.IdentityEvidence = interfaceIdentityEvidence(s.Interfaces, s.Observation.Source)
-		} else {
-			s.IdentityEvidence = bindIdentityEvidence(s.IdentityEvidence, ref.CollectorID, s.Source)
+		s.IdentityEvidence = MergeIdentityEvidence(bindIdentityEvidence(s.IdentityEvidence, ref.CollectorID, s.Source), interfaceIdentityEvidence(s.Interfaces, s.Observation.Source))
+		for i := range s.IdentityEvidence {
+			if s.IdentityEvidence[i].Time == nil {
+				s.IdentityEvidence[i].Time = CloneObservationTime(&s.Observation.Time)
+			}
 		}
 		e.Telemetry = &s
 	}
@@ -110,11 +119,20 @@ func ObserveEnvelope(e Envelope, ref SourceRef, collected time.Time) Envelope {
 				neighborRef.Type = SourceMNDP
 			}
 			n.Observation = observationFor(n.Observation, neighborRef, n.Source, n.ObservedAt, finished, nil)
-			if len(n.IdentityEvidence) == 0 {
-				n.IdentityEvidence = neighborIdentityEvidence(*n, n.Observation.Source)
-			} else {
-				n.IdentityEvidence = bindIdentityEvidence(n.IdentityEvidence, ref.CollectorID, n.Source)
+			previousID := n.ObservationID
+			*n = EnrichNeighbor(*n)
+			if previousID != "" && previousID != n.ObservationID {
+				for j := range n.IdentityEvidence {
+					v := &n.IdentityEvidence[j]
+					if v.SubjectKind == "remote_neighbor" && v.SubjectID == "neighbor:"+previousID {
+						v.SubjectID = "neighbor:" + n.ObservationID
+					}
+					if v.Source.ResourceID == "/topology/"+previousID {
+						v.Source.ResourceID = "/topology/" + n.ObservationID
+					}
+				}
 			}
+			n.IdentityEvidence = MergeIdentityEvidence(bindIdentityEvidence(n.IdentityEvidence, ref.CollectorID, n.Source), neighborIdentityEvidence(*n, n.Observation.Source))
 		}
 		e.Topology = &t
 	}

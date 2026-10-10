@@ -222,7 +222,7 @@ func TestFullOutboxRejectsCommandBeforeWrite(t *testing.T) {
 	a := newTestAgent(t, c, newFixturePlatform())
 	defer a.remote.Close()
 	for i := 0; i < c.Queue.MaxMessages; i++ {
-		if err := a.push(model.Envelope{CommandResult: &model.CommandResult{CommandID: strconv.Itoa(i)}}); err != nil {
+		if err := a.push(model.Envelope{CommandResult: &model.CommandResult{CommandID: strconv.Itoa(i), Status: "accepted"}}); err != nil {
 			t.Fatal(err)
 		}
 	}

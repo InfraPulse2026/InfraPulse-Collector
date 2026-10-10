@@ -13,9 +13,6 @@ func sanitizeHardware(e model.Envelope, text func(string) string) model.Envelope
 		inventory := *e.Inventory
 		inventory.Devices = slices.Clone(inventory.Devices)
 		for i, original := range inventory.Devices {
-			if original.Hardware == nil {
-				continue
-			}
 			d := model.CloneDevice(original)
 			for _, field := range []*string{&d.Name, &d.Hostname, &d.Vendor, &d.Model, &d.FirmwareVersion, &d.SystemDescription} {
 				*field = text(*field)
@@ -34,18 +31,18 @@ func sanitizeHardware(e model.Envelope, text func(string) string) model.Envelope
 				}
 				cleanHardware(c.Hardware, text)
 			}
-			var evidence []model.IdentityEvidence
-			for _, value := range d.IdentityEvidence {
-				if text(value.Value) == value.Value {
-					evidence = append(evidence, value)
-				}
-			}
-			d.IdentityEvidence = evidence
+			d.IdentityEvidence = cleanIdentity(d.IdentityEvidence, text)
 			inventory.Devices[i] = d
 		}
 		e.Inventory = &inventory
 	}
-	if e.Telemetry != nil && (len(e.Telemetry.HardwareHealth) > 0 || e.Telemetry.Observation != nil && e.Telemetry.Observation.Source.Type == model.SourceRedfish) {
+	if e.Hello != nil {
+		h := *e.Hello
+		clean := sanitizeHardware(model.Envelope{Inventory: &model.InventoryUpdate{Devices: []model.Device{h.Device}}}, text)
+		h.Device = clean.Inventory.Devices[0]
+		e.Hello = &h
+	}
+	if e.Telemetry != nil {
 		s := *e.Telemetry
 		s.Metrics = slices.Clone(s.Metrics)
 		for i := range s.Metrics {
@@ -61,16 +58,37 @@ func sanitizeHardware(e model.Envelope, text func(string) string) model.Envelope
 			s.HardwareHealth[i].Name = text(s.HardwareHealth[i].Name)
 			cleanStatus(&s.HardwareHealth[i].Status, text)
 		}
-		var evidence []model.IdentityEvidence
-		for _, value := range s.IdentityEvidence {
-			if text(value.Value) == value.Value {
-				evidence = append(evidence, value)
-			}
-		}
-		s.IdentityEvidence = evidence
+		s.IdentityEvidence = cleanIdentity(s.IdentityEvidence, text)
 		e.Telemetry = &s
 	}
+	if e.Topology != nil {
+		t := *e.Topology
+		t.Observations = slices.Clone(t.Observations)
+		for i := range t.Observations {
+			n := model.CloneNeighbor(t.Observations[i])
+			n.IdentityEvidence = cleanIdentity(n.IdentityEvidence, text)
+			for _, field := range []*string{&n.RemoteSystemName, &n.RemotePortDescription, &n.RemoteSystemDescription, &n.RemotePlatform, &n.RemoteModel, &n.RemoteSoftwareVersion} {
+				*field = text(*field)
+			}
+			for j := range n.Evidence {
+				n.Evidence[j].Value = text(n.Evidence[j].Value)
+			}
+			t.Observations[i] = n
+		}
+		e.Topology = &t
+	}
 	return e
+}
+
+func cleanIdentity(values []model.IdentityEvidence, text func(string) string) []model.IdentityEvidence {
+	result := slices.Clone(values)
+	for i := range result {
+		v := &result[i]
+		if text(v.Value) != v.Value || text(v.OriginalValue) != v.OriginalValue || text(string(v.RawValue)) != string(v.RawValue) {
+			v.Value, v.OriginalValue, v.RawValue, v.Subtype, v.Normalization = "[rejected identifier]", "", nil, nil, "rejected"
+		}
+	}
+	return result
 }
 
 func cleanHardware(h *model.HardwareInventory, text func(string) string) {

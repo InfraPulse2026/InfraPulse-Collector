@@ -5,15 +5,21 @@ import (
 	"errors"
 	"math"
 	"net"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"InfraPulseAgent/internal/driver"
 	"InfraPulseAgent/internal/model"
 	protocol "InfraPulseAgent/internal/protocol/snmp"
 )
+
+// IEEE LLDP-MIB lldpRemManAddrEntry; optional data on the existing slow job.
+const remoteManagementRoot = ".1.0.8802.1.1.2.1.4.2.1"
 
 type localPort struct {
 	number, subtype uint32
@@ -27,6 +33,7 @@ func (d *Driver) Topology(ctx context.Context) (model.TopologyUpdate, error) {
 	before, beforeOK, beforeErr := d.lastChange(ctx)
 	local, localErr := d.client.BulkWalk(ctx, localPortRoot)
 	remote, remoteErr := d.client.BulkWalk(ctx, remoteRoot)
+	management, managementErr := d.client.BulkWalk(ctx, remoteManagementRoot)
 	after, afterOK, afterErr := d.lastChange(ctx)
 	ports, parseLocalErr := d.localPorts(local)
 	d.mu.RLock()
@@ -40,7 +47,8 @@ func (d *Driver) Topology(ctx context.Context) (model.TopologyUpdate, error) {
 			d.mu.Unlock()
 		}
 	}
-	observations, parseRemoteErr := d.neighbors(remote, ports, interfaces, now)
+	addresses, parseManagementErr := d.managementAddresses(management)
+	observations, parseRemoteErr := d.neighbors(remote, ports, interfaces, addresses, now)
 	update.Observations = observations
 	update.CollectedAt = time.Now().UTC()
 	var err error
@@ -54,7 +62,12 @@ func (d *Driver) Topology(ctx context.Context) (model.TopologyUpdate, error) {
 			err = errors.Join(err, translate(e))
 		}
 	}
-	err = errors.Join(err, parseLocalErr, parseRemoteErr)
+	// Lack of the optional table means unknown management addresses, not a
+	// confirmed empty address set. Transport/parsing failures make this partial.
+	if managementErr != nil && !errors.Is(managementErr, protocol.ErrUnavailable) {
+		err = errors.Join(err, translate(managementErr))
+	}
+	err = errors.Join(err, parseLocalErr, parseRemoteErr, parseManagementErr)
 	supportedEvidence := len(ports) > 0 || beforeOK && afterOK
 	if len(observations) > 0 || supportedEvidence {
 		update.Completeness = "partial"
@@ -138,7 +151,7 @@ func (d *Driver) localPorts(values []protocol.Value) (map[uint32]localPort, erro
 		}
 		if v, ok := r[4]; ok {
 			s, valid := textValue(v)
-			if !valid {
+			if !valid || !safeTopologyText(s, 255) {
 				err = driver.ErrMalformed
 			} else {
 				p.description = s
@@ -149,7 +162,7 @@ func (d *Driver) localPorts(values []protocol.Value) (map[uint32]localPort, erro
 	return ports, err
 }
 
-func (d *Driver) neighbors(values []protocol.Value, ports map[uint32]localPort, interfaces []model.Interface, now time.Time) ([]model.Neighbor, error) {
+func (d *Driver) neighbors(values []protocol.Value, ports map[uint32]localPort, interfaces []model.Interface, addresses map[string][]model.ManagementAddress, now time.Time) ([]model.Neighbor, error) {
 	type row struct {
 		timeMark, local, index uint32
 		fields                 map[uint32]protocol.Value
@@ -180,6 +193,9 @@ func (d *Driver) neighbors(values []protocol.Value, ports map[uint32]localPort, 
 			err = driver.ErrMalformed
 			continue
 		}
+		if n[0] < 4 || n[0] > 12 {
+			continue
+		}
 		key := strings.Join(p[1:], ".")
 		if rows[key] == nil {
 			if len(rows) >= d.opts.MaxRows {
@@ -198,7 +214,7 @@ func (d *Driver) neighbors(values []protocol.Value, ports map[uint32]localPort, 
 	for _, key := range keys {
 		r := rows[key]
 		p := ports[r.local]
-		neighbor := model.Neighbor{LocalDeviceID: d.opts.ID, LocalPortNumber: r.local, LocalPortSubtype: p.subtype, LocalPortID: append([]byte(nil), p.id...), Protocol: "lldp", Source: "snmp.lldp", ObservedAt: now, ExpiresAt: now.Add(time.Duration(d.opts.TopologyTTLSeconds) * time.Second), Confidence: "unresolved", Evidence: []model.Evidence{{Source: "snmp.lldpRemTable.index", Value: key, Confidence: "high"}}}
+		neighbor := model.Neighbor{LocalDeviceID: d.opts.ID, LocalPortNumber: r.local, LocalPortSubtype: p.subtype, LocalPortID: append([]byte(nil), p.id...), Protocol: "lldp", Source: "snmp.lldp", ObservedAt: now, ExpiresAt: now.Add(time.Duration(d.opts.TopologyTTLSeconds) * time.Second), Confidence: "unresolved", RemoteManagementAddresses: addresses[key], Evidence: []model.Evidence{{Source: "snmp.lldpRemTable.index", Value: key, Confidence: "high"}}}
 		number := func(c uint32) uint32 {
 			v, ok := r.fields[c]
 			if !ok {
@@ -229,27 +245,196 @@ func (d *Driver) neighbors(values []protocol.Value, ports map[uint32]localPort, 
 		neighbor.RemoteChassisID = identifier(5)
 		neighbor.RemotePortSubtype = number(6)
 		neighbor.RemotePortID = identifier(7)
-		for c, target := range map[uint32]*string{8: &neighbor.RemotePortDescription, 9: &neighbor.RemoteSystemName} {
+		for c, target := range map[uint32]*string{8: &neighbor.RemotePortDescription, 9: &neighbor.RemoteSystemName, 10: &neighbor.RemoteSystemDescription} {
 			if v, ok := r.fields[c]; ok {
 				s, valid := textValue(v)
-				if !valid {
+				if !valid || !safeTopologyText(s, 255) {
 					err = driver.ErrMalformed
 				} else {
 					*target = s
 				}
 			}
 		}
+		for c, target := range map[uint32]*[]string{11: &neighbor.RemoteCapabilitiesSupported, 12: &neighbor.RemoteCapabilitiesEnabled} {
+			if v, ok := r.fields[c]; ok {
+				caps, e := lldpCapabilities(v)
+				if e != nil {
+					err = errors.Join(err, e)
+				} else {
+					*target = caps
+				}
+			}
+		}
 		if iface, evidence, confidence, ok := resolveLocalPort(p, interfaces); ok {
+			if !safeTopologyText(iface.ID, 256) || !safeTopologyText(iface.Name, 255) {
+				err = errors.Join(err, driver.ErrMalformed)
+				neighbor.Evidence = append(neighbor.Evidence, model.Evidence{Source: "local_port.mapping", Value: "interface identity rejected by text validation", Confidence: "unresolved"})
+				out = append(out, neighbor)
+				continue
+			}
 			neighbor.LocalInterfaceID = iface.ID
 			neighbor.LocalInterfaceName = iface.Name
 			neighbor.Evidence = append(neighbor.Evidence, evidence)
 			neighbor.Confidence = confidence
+			if iface.Metadata == nil || iface.Metadata.Index {
+				if iface.Index > 0 && uint64(iface.Index) <= math.MaxUint32 {
+					index := uint32(iface.Index)
+					neighbor.LocalInterfaceIndex = &index
+				}
+			}
+			if mac, e := model.NormalizeMAC(iface.MAC); e == nil {
+				neighbor.LocalInterfaceMAC = mac
+			}
+			if safeTopologyText(iface.Description, 4096) {
+				neighbor.LocalInterfaceDescription = iface.Description
+			} else {
+				err = errors.Join(err, driver.ErrMalformed)
+			}
+			if safeTopologyText(iface.Alias, 255) {
+				neighbor.LocalInterfaceAlias = iface.Alias
+			} else {
+				err = errors.Join(err, driver.ErrMalformed)
+			}
 		} else {
 			neighbor.Evidence = append(neighbor.Evidence, model.Evidence{Source: "local_port.mapping", Value: "no unique interface evidence", Confidence: "unresolved"})
 		}
 		out = append(out, neighbor)
 	}
 	return out, err
+}
+
+func safeTopologyText(value string, max int) bool {
+	if len(value) > max || !utf8.ValidString(value) {
+		return false
+	}
+	for _, ch := range value {
+		if unicode.IsControl(ch) {
+			return false
+		}
+	}
+	return true
+}
+
+func lldpCapabilities(value protocol.Value) ([]string, error) {
+	raw, valid := bytesValue(value)
+	if !valid {
+		return nil, driver.ErrMalformed
+	}
+	if len(raw) > 2 {
+		return nil, driver.ErrLimit
+	}
+	names := []string{"other", "repeater", "bridge", "wlan_access_point", "router", "telephone", "docsis_cable_device", "station_only"}
+	capabilities := []string{}
+	for octet, value := range raw {
+		for bit := 0; bit < 8; bit++ {
+			if value&(0x80>>bit) == 0 {
+				continue
+			}
+			position := octet*8 + bit
+			name := "bit_" + strconv.Itoa(position)
+			if position < len(names) {
+				name = names[position]
+			}
+			capabilities = append(capabilities, name)
+		}
+	}
+	sort.Strings(capabilities)
+	return capabilities, nil
+}
+
+// managementAddresses joins rows by the full LLDP remote index, preserving
+// multiple IPv4/IPv6/unknown-family advertisements without network requests.
+func (d *Driver) managementAddresses(values []protocol.Value) (map[string][]model.ManagementAddress, error) {
+	rows := make(map[string]model.ManagementAddress)
+	owners := make(map[string]string)
+	counts := make(map[string]int)
+	var err error
+	for _, value := range values {
+		if absent(value) {
+			continue
+		}
+		suffix, ok := strings.CutPrefix(canonical(value.OID), remoteManagementRoot+".")
+		parts := strings.Split(suffix, ".")
+		if !ok || len(parts) < 7 || len(parts) > 37 {
+			err = errors.Join(err, driver.ErrMalformed)
+			continue
+		}
+		numbers := make([]uint32, len(parts))
+		valid := true
+		for i, part := range parts {
+			parsed, e := strconv.ParseUint(part, 10, 32)
+			if e != nil {
+				valid = false
+				break
+			}
+			numbers[i] = uint32(parsed)
+		}
+		if !valid || numbers[2] == 0 || numbers[3] == 0 || numbers[4] == 0 || numbers[5] == 0 || numbers[5] > 31 || int(numbers[5]) != len(parts)-6 {
+			err = errors.Join(err, driver.ErrMalformed)
+			continue
+		}
+		if numbers[0] < 3 || numbers[0] > 5 {
+			continue
+		}
+		owner := strings.Join(parts[1:4], ".")
+		key := strings.Join(parts[1:], ".")
+		address, exists := rows[key]
+		if !exists {
+			if len(rows) >= d.opts.MaxRows || counts[owner] >= 16 {
+				err = errors.Join(err, driver.ErrLimit)
+				continue
+			}
+			raw := make([]byte, len(parts)-6)
+			for i, number := range numbers[6:] {
+				if number > 255 {
+					valid = false
+					break
+				}
+				raw[i] = byte(number)
+			}
+			if !valid {
+				err = errors.Join(err, driver.ErrMalformed)
+				continue
+			}
+			address = model.ManagementAddress{AddressFamily: numbers[4], RawAddress: raw}
+			if address.AddressFamily == 1 || address.AddressFamily == 2 {
+				if ip, valid := netip.AddrFromSlice(raw); valid {
+					address.Address = ip.String()
+				}
+			}
+			if address.Validate() != nil {
+				err = errors.Join(err, driver.ErrMalformed)
+				continue
+			}
+			counts[owner]++
+			owners[key] = owner
+		}
+		if numbers[0] == 3 || numbers[0] == 4 {
+			number, valid := unsigned(value)
+			if !valid || value.Type != protocol.Integer || number > math.MaxUint32 || numbers[0] == 3 && (number < 1 || number > 3) {
+				err = errors.Join(err, driver.ErrMalformed)
+			} else {
+				converted := uint32(number)
+				if numbers[0] == 3 {
+					address.InterfaceSubtype = &converted
+				} else {
+					address.InterfaceID = &converted
+				}
+			}
+		}
+		rows[key] = address
+	}
+	keys := make([]string, 0, len(rows))
+	for key := range rows {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make(map[string][]model.ManagementAddress)
+	for _, key := range keys {
+		owner := owners[key]
+		result[owner] = append(result[owner], rows[key])
+	}
+	return result, err
 }
 
 func resolveLocalPort(p localPort, interfaces []model.Interface) (model.Interface, model.Evidence, string, bool) {

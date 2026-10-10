@@ -65,6 +65,27 @@ func TestFixedRequestsAuthenticationAndRecordID(t *testing.T) {
 		t.Fatal("invalid ID caused network operation")
 	}
 }
+
+func TestNeighborEnrichmentUsesOneFixedReadOnlyRequest(t *testing.T) {
+	var requests atomic.Int32
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Method != http.MethodGet || r.URL.Path != "/rest/ip/neighbor" {
+			t.Error("neighbor enrichment changed operation")
+		}
+		requested := "," + r.URL.Query().Get(".proplist") + ","
+		for _, field := range []string{"discovered-by", "age", "address4", "address6", "platform", "board", "version", "system-description", "system-caps", "system-caps-enabled"} {
+			if !strings.Contains(requested, ","+field+",") {
+				t.Errorf("neighbor field %s was not requested", field)
+			}
+		}
+		fmt.Fprint(w, `[{"interface":"ether1","identity":"neighbor","address6":"2001:db8::1","discovered-by":"lldp"}]`)
+	}, Options{})
+	rows, err := c.Neighbors(context.Background())
+	if err != nil || len(rows) != 1 || rows[0]["address6"] != "2001:db8::1" || requests.Load() != 1 {
+		t.Fatal("enrichment lost fields or added network operations", rows, err, requests.Load())
+	}
+}
 func TestBodyRecordLimitsAndMalformed(t *testing.T) {
 	for _, tc := range []struct {
 		name, body string

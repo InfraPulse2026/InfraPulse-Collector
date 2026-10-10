@@ -347,18 +347,24 @@ func retryDelay(value string) time.Duration {
 }
 
 type poll struct {
-	a               *Adapter
-	ctx             context.Context
-	client          *gofish.APIClient
-	session         *gofish.Session
-	budget          *pollBudget
-	reauthenticated bool
-	visited         map[string]bool
-	cache           map[string]json.RawMessage
-	resources       int
-	emitted         int
-	metrics         int
-	partial         bool
+	a                *Adapter
+	ctx              context.Context
+	client           *gofish.APIClient
+	session          *gofish.Session
+	budget           *pollBudget
+	reauthenticated  bool
+	visited          map[string]bool
+	cache            map[string]json.RawMessage
+	resources        int
+	emitted          int
+	metrics          int
+	partial          bool
+	rejectedIdentity map[string][]identityRejection
+}
+
+type identityRejection struct {
+	kind   model.IdentityEvidenceType
+	origin string
 }
 
 func (a *Adapter) start(ctx context.Context) (*poll, func(), error) {
@@ -539,7 +545,7 @@ func (p *poll) get(link string) (json.RawMessage, string, error) {
 	if decoder.Decode(&value) != nil {
 		return nil, uri, driver.ErrMalformed
 	}
-	if p.scrub(value) {
+	if p.scrub(value, uri, "") {
 		return nil, uri, driver.ErrUnavailable
 	}
 	body, err = json.Marshal(value)
@@ -550,7 +556,7 @@ func (p *poll) get(link string) (json.RawMessage, string, error) {
 	return body, uri, nil
 }
 
-func (p *poll) scrub(value any) bool {
+func (p *poll) scrub(value any, resource, prefix string) bool {
 	unsafeLink := false
 	clean := func(s string) string {
 		if len(s) > 4096 {
@@ -580,11 +586,14 @@ func (p *poll) scrub(value any) bool {
 			if s, ok := item.(string); ok {
 				cleaned := clean(s)
 				v[key] = cleaned
+				if cleaned != s && prefix == "" {
+					p.rejectIdentityProperty(resource, key)
+				}
 				if cleaned != s && (key == "@odata.id" || key == "Members@odata.nextLink") {
 					unsafeLink = true
 				}
 			} else {
-				unsafeLink = p.scrub(item) || unsafeLink
+				unsafeLink = p.scrub(item, resource, prefix+key+".") || unsafeLink
 			}
 		}
 	case []any:
@@ -592,11 +601,43 @@ func (p *poll) scrub(value any) bool {
 			if s, ok := item.(string); ok {
 				v[i] = clean(s)
 			} else {
-				unsafeLink = p.scrub(item) || unsafeLink
+				unsafeLink = p.scrub(item, resource, prefix) || unsafeLink
 			}
 		}
 	}
 	return unsafeLink
+}
+
+// Scrubbing removes hostile strings and secrets before typed schema decoding.
+// Remember only a known property name/type, never the rejected value itself.
+// The map lives for one bounded poll and has no persistent identity state.
+func (p *poll) rejectIdentityProperty(resource, property string) {
+	var kind model.IdentityEvidenceType
+	switch property {
+	case "UUID":
+		kind = model.IdentityHardwareUUID
+	case "SerialNumber":
+		kind = model.IdentitySerial
+	case "Manufacturer":
+		kind = model.IdentityManufacturer
+	case "Model":
+		kind = model.IdentityModel
+	case "MACAddress", "PermanentMACAddress":
+		kind = model.IdentityMAC
+	default:
+		return
+	}
+	if p.rejectedIdentity == nil {
+		p.rejectedIdentity = make(map[string][]identityRejection)
+	}
+	if len(p.rejectedIdentity) >= p.a.limits.MaxResources && p.rejectedIdentity[resource] == nil {
+		return
+	}
+	rejections := p.rejectedIdentity[resource]
+	if len(rejections) >= model.MaxIdentityPerSubject {
+		return
+	}
+	p.rejectedIdentity[resource] = append(rejections, identityRejection{kind: kind, origin: "redfish." + property})
 }
 
 type linkRef struct {

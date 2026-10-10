@@ -144,10 +144,11 @@ SNMP `sysUpTime` относится к management subsystem, не обязате
 
 `model.ObservationMetadata` содержит SourceRef и ObservationTime; payloads
 сохраняют существующие `source` и timestamp fields. Дополнительная metadata
-хранится во внутренней модели и JSON outbox/diagnostics. Phase 3 добавляет
-optional observation на LogRecord/LogBatch для source/time attribution
-network logs; остальные payloads сохраняют прежние wire fields. Decoding старого peer
-не может восстановить неизвестный Target ID, clock offset или provenance
+сохраняется во внутренней модели, JSON outbox/diagnostics и typed optional wire
+fields. Phase 3 ввела observation для LogRecord/LogBatch, Phase 4 — equipment
+metadata. Phase 6 закрывает оставшиеся gaps inventory/telemetry, topology,
+Events, local OpenWrt и SIP через существующие messages. Decoder старого peer
+не восстанавливает неизвестный Target ID, clock offset или provenance
 manual/external и не выдаёт guessed значения за измерения.
 
 | Domain information | Действующий wire contract |
@@ -160,21 +161,31 @@ manual/external и не выдаёт guessed значения за измере�
 | Observation/collection time | Оба поля у telemetry/topology; один observed timestamp у inventory/telephony, timestamps событий/log records |
 | Source-reported log time | Optional `LogRecord.original_timestamp` |
 | Raw topology identity | Chassis/port bytes/subtypes, protocol и evidence в `Neighbor` |
-| Full SourceRef | Phase 3: LogRecord.observation и LogBatch.observation; для остальных payloads общего поля нет |
-| Normalized IdentityEvidence | Нет repeated typed/scoped evidence; доступны отдельные inventory fields и topology evidence |
-| Clock model | Phase 3: optional source/observed/collected time, offset/uncertainty presence и quality только в logs observation |
+| Full SourceRef | Optional observation у InventoryUpdate, Device, InventoryComponent, TelemetrySample, Metric, ComponentHealth, Event, TopologyUpdate/Neighbor, LogRecord/LogBatch, Service, NetworkState, FirewallSnapshot, TelephonyUpdate/Health |
+| Normalized IdentityEvidence | Typed Device/Telemetry identity lists и Neighbor.identity_evidence; subject/source/origin/time/normalization сохраняются |
+| Clock model | ObservationTime source/observed/collected timestamps, optional offset/uncertainty с presence и clock quality; факт хранит собственное время |
 
 `source_timestamp` означает время, сообщённое source, и не заменяет автоматически
 `observed_at`. Unknown offset/uncertainty — absence, не 0. `received_at`
 принадлежит Backend и отсутствует в модели Collector. `sent_at` относится к
 попытке отправки, не к observation или Backend receipt.
 
-Для остальных payloads будущие additive changes должны отдельно передать
-observation metadata, typed/scoped IdentityEvidence и clock fields при необходимости.
-Существующие field numbers должны сохраняться, Duration/Timestamp presence —
-различать unknown и measured zero. Clock offset estimation потребует отдельно
-согласованного Collector ↔ Backend exchange; в Phase 1 его нет. Точные temporal
-semantics и знак offset — в [Collector Core](collector-core.md).
+Legacy `Device.identity_evidence=41` и `TelemetrySample.identity_evidence=15`
+содержат только usable Phase 5 types с normalization absent/canonical. Additive
+`Device.extended_identity_evidence=42` и
+`TelemetrySample.extended_identity_evidence=16` содержат новые `ip`/
+`interface_name` types и `invalid`/`rejected` diagnostics. Это защищает old strict
+decoder от unknown types и от matching diagnostic placeholders, когда peer
+игнорирует новый normalization field. Backend Phase 6 сохраняет оба списка;
+domain decoder соединяет legacy, затем extended без merge conflicting facts.
+`Neighbor.identity_evidence=20` целиком additive Phase 6, partition ему не нужен.
+
+Существующие field numbers сохранены; Duration/Timestamp presence различает
+unknown и measured zero. Clock offset estimation требует отдельно согласованного
+Collector ↔ Backend exchange и не реализован этой фазой. Точные temporal
+semantics и знак offset — в [Collector Core](collector-core.md), полный field
+mapping и optional/required rules — в
+[Backend identity/topology contract](backend-identity-topology-contract.md).
 
 ## TopologyUpdate
 
@@ -189,6 +200,7 @@ semantics и знак offset — в [Collector Core](collector-core.md).
 | ttl_seconds | 6 | Collector expiry assumption, не advertised LLDP TTL |
 | expiry_assumption | 7 | Описание предположения срока актуальности |
 | observations | 8 | Repeated Neighbor |
+| observation | 9 | Optional SourceRef/ObservationTime snapshot |
 
 Complete empty snapshot допустим и отличается от failed snapshot. Partial/failed
 не означает удаления прежних links. Backend выполняет reconciliation; Agent
@@ -203,6 +215,25 @@ unknown, LLDP subtypes 1–7 сохраняют исходный смысл. Loc
 Отсутствующий LocalInterfaceID остаётся unresolved. RouterOS neighbor MAC имеет
 unknown chassis subtype, поскольку API не гарантирует, что это LLDP chassis ID.
 ARP/ND/FDB не кодируются как physical discovery protocol.
+
+Phase 6 additive `Neighbor` fields:
+
+| Поля | Номера | Смысл |
+|---|---|---|
+| observation / identity_evidence | 19 / 20 | Scoped source/time и remote identity facts |
+| observation_id / kind | 21 / 22 | Stable source-scoped ID; `observed_l2_neighbor` direction |
+| local_interface_index / mac / description / alias | 23 / 24 / 25 / 26 | Optional actual interface evidence; ifIndex не глобальный hardware key |
+| remote_management_addresses | 27 | Bounded family/address/raw octets + optional interface numbering |
+| remote_system_description / platform / model / software_version | 28 / 29 / 30 / 31 | Advertised optional properties с protocol origin |
+| remote_capabilities_supported / enabled | 32 / 33 | Bounded LLDP capability names |
+| age_seconds | 34 | Optional reported age, не protocol TTL |
+
+Направление — `Local Interface -> Advertised Remote Endpoint`; отсутствующие
+remote Asset/port допустимы. Две стороны дают две independent observations,
+не verified bidirectional cable. Observation ID не включает current timestamp
+и не меняет durable message ID. Received TTL/explicit withdrawal текущие readers
+не предоставляют; expiry остаётся указанной Collector assumption. Полные bounds
+и protocol mappings — [identity/topology](identity-topology.md).
 
 Mapping проверяет enums, timestamps, размер raw IDs/evidence/observation lists
 и наличие metadata masks; unknown width numbers отклоняются до integer
@@ -352,7 +383,8 @@ contract и application ACK/replay не меняются. Backend gaps для с
 hardware metadata Phase 4 остаются актуальными. [Exact IPMI mapping](ipmi.md).
 Connectivity/error events для configured simulated IPMI/Redfish сохраняют
 legacy `Event.Source=simulated`. Полная event Observation/SourceRef metadata
-остаётся normalized/JSON-only; Phase 5 не добавляет её в Event protobuf.
+в Phase 5 оставалась normalized/JSON-only; Phase 6 передаёт её в additive
+`Event.observation=8`, сохраняя legacy timestamp/source.
 
 Redfish использует existing InventoryUpdate/TelemetrySample/Device/Metric,
 без sensor-specific Redfish protobuf messages или нового delivery service.
@@ -377,9 +409,11 @@ optional timestamps. Health, HealthRollup, State и PowerState различаю�
 resource path:
 System/Chassis/Manager не объединяются внутри Collector. Их wire DeviceType
 использует существующий UNKNOWN; role задаёт HardwareInventory.resource_type.
-Новые DeviceType enums не нужны старому strict decoder. Optional metadata
-добавляется для hardware payloads; legacy SNMP/RouterOS/Local payload bytes
-сохранены при отсутствии additions. Existing field numbers/RPC/version1,
+Новые DeviceType enums не нужны старому strict decoder. Phase 6 использует
+существующую metadata также для SNMP/RouterOS/Local payloads; при отсутствии
+optional additions legacy bytes сохраняются. Новые identity types/diagnostics
+размещены в Device42/Telemetry16 согласно compatibility rules выше.
+Existing field numbers/RPC/version1,
 stable message IDs, retained at-least-once durable replay и ACK не меняются.
 
 Old peer может принять прежние fields и игнорировать additions. Это не
@@ -400,7 +434,10 @@ consecutive failures, state и safe error category. Matching valid response
 malformed различаются. Latency threshold создаёт degraded, failure threshold —
 down. Это отдельная telephony state, не device/interface offline.
 Transitions `telephony.up/down/degraded` передаются EventBatch. Cancellation
-сохраняет предыдущую state. Подробности — [telephony](telephony.md).
+сохраняет предыдущую state. Phase 6 сохраняет SourceRef/ObservationTime через
+optional `TelephonyUpdate.observation=4`, `TelephonyHealth.observation=12` и
+`Event.observation=8`; это не физические topology links.
+Подробности — [telephony](telephony.md).
 
 ## Read-only OpenWrt inventory и Simulator
 
@@ -410,6 +447,9 @@ Services сохраняют instances, running/unknown и optional enabled. Fire
 сохраняет zones/networks/forwardings/rules/redirects и configuration source,
 completeness; это UCI snapshot, не доказательство активных runtime rules.
 Unknown enabled/up/pending/PID остаются absent, а не false/zero.
+Phase 6 добавляет source/time `Service.observation=7`,
+`NetworkState.observation=9`, `FirewallSnapshot.observation=9` без изменения
+read-only OpenWrt business semantics.
 
 Simulator использует этот же wire contract, protocol version1 и HelloAck.
 Все synthetic nested samples, devices, neighbors, log records, health и events

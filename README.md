@@ -39,6 +39,10 @@ AI и историческое хранилище находятся вне эт
   status через те же hardware models и delivery. UDP/623, cipher 17 либо явно 3.
 - RouterOS HTTPS REST: identity/resource/routerboard, interfaces и IP-адреса,
   neighbor discovery с фактическим LLDP/CDP/MNDP source.
+- Identity/topology enrichment: scoped evidence для Device/Interface/System/
+  Chassis/BMC/Component, stable directed L2 observations, raw subtypes,
+  management addresses и source/time/provenance через существующий outbox.
+  Глобальное сопоставление Assets и построение topology выполняет Backend.
 - Ограниченный remote polling, offline после трёх последовательных ошибок связи
   и события переходов состояния.
 - Настраиваемый интервал оперативной local/SNMP/RouterOS telemetry,
@@ -99,7 +103,10 @@ Configured Target идентифицирует подключение/опрос
 Backend Asset. Источник, provenance, identity evidence и время наблюдения
 нормализуются до delivery layer. Границы компонентов описаны в
 [архитектуре](docs/architecture.md), модель Collector Core — в
-[collector-core](docs/collector-core.md).
+[collector-core](docs/collector-core.md). Phase 6 сохраняет исходные protocol
+facts без локального merge; semantics и Backend handoff — в
+[identity/topology](docs/identity-topology.md) и
+[wire contract](docs/backend-identity-topology-contract.md).
 
 ## Требования
 
@@ -699,6 +706,12 @@ sh scripts/generate-proto.sh
 ## Документация
 
 - [Архитектура](docs/architecture.md) — компоненты, модели и внутренние pipelines.
+- [Identity/topology Phase 6](docs/identity-topology.md) — subjects, normalization,
+  directed L2 observations, freshness, provenance и ограничения.
+- [Backend identity/topology contract](docs/backend-identity-topology-contract.md)
+  — field mapping, legacy compatibility и требования к SourceBindings/TopologyEdge.
+- [Отчёт Phase 6](docs/phase-6-report.md) — baseline, wire compatibility,
+  fixture E2E, regression и измерения ресурсов.
 - [IPMI fallback](docs/ipmi.md) — LANplus, cipher policy, FRU/SDR и hardware
   mapping, ограничения legacy BMC и результаты проверки Phase 5.
 - [Phase 5 report](docs/phase-5-report.md) — baseline, protocol/security fixtures,
@@ -716,7 +729,7 @@ sh scripts/generate-proto.sh
 - [Durable delivery](docs/delivery.md), [journal/snapshots/rollback](docs/commands.md),
   [enrollment/PKI](docs/enrollment.md), [SNMPv3](docs/snmpv3.md).
 - [Безопасность](docs/security.md) — mTLS, команды, секреты и ограничения.
-- [Topology discovery](docs/topology.md) — физические связи и источники evidence.
+- [Topology discovery](docs/topology.md) — наблюдаемые L2 соседства и evidence.
 - [Матрица поддержки](docs/vendor-support.md) — платформы, vendors и capabilities.
 - [Результаты проверок](docs/validation.md) — проведённые validation и cross-build.
 - [OpenWrt](docs/openwrt.md), [vendor profiles](docs/vendor-profiles.md),
@@ -739,6 +752,11 @@ UDP/RELP и Backend log storage/search отсутствуют. Redfish hardware 
 IPMI Phase 5 использует общий hardware pipeline; автоматического перехода с
 Redfish, IPMI v1.5, IPMB bridging, OEM conversion и power control нет.
 Реальные BMC и OpenWrt RAM/flash пока не проверены; [границы](docs/ipmi.md).
+LLDP/CDP/MNDP наблюдения не доказывают прямой физический кабель. Received protocol
+TTL и explicit withdrawal текущие readers не предоставляют; expiry использует
+явную Collector assumption, failed/partial poll не означает removal. Native Cisco
+CDP reader и automatic topology batch splitting отсутствуют; oversized envelopes
+отклоняются до durable admission. Подробнее — [Phase 6](docs/identity-topology.md).
 Collector ↔ Backend clock offset estimation также отложен; unknown offset
 не считается нулём. Phase 2 передаёт corporate servers стандартной службе ОС
 через отдельный deployment helper. Collector использует системное время,

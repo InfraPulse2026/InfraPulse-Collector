@@ -143,6 +143,16 @@ failed snapshots. LLDP/CDP/MNDP observation и общий bridge segment не г
 один физический кабель. LLDP expiry содержит явную collector assumption;
 ARP не используется как physical topology evidence. Подробнее — [topology](topology.md).
 
+Phase 6 сохраняет `observed_l2_neighbor` direction, stable source-scoped
+observation ID, local interface identity, LLDP management addresses/capabilities
+и доступный RouterOS age. Один RouterOS neighbor с несколькими discovered-by
+protocols даёт отдельные observations; native Cisco CDP reader отсутствует.
+Unknown endpoint/port допустим. Source/time/real-or-simulated provenance проходят
+общую durable delivery; subjects Redfish System/Chassis/Manager и IPMI BMC/FRU
+не объединяются по IP/serial. Received TTL/explicit withdrawal не подтверждены
+текущими readers. [Semantics и ограничения](identity-topology.md),
+[Backend handoff](backend-identity-topology-contract.md).
+
 Persistent log cursor advances после admission `LogBatch`, независимо от
 Controller ACK. В memory mode admission остаётся volatile; в durable mode
 batch сохранена synced transaction и переживает restart. Retention/eviction
@@ -168,7 +178,8 @@ Production Backend/CA service, Web UI, LLM/AI analysis, historical database
 | Remote Syslog/Audit receiver | Реализован opt-in в Phase 3 через existing logs/durable pipeline; sender setup и границы — [syslog-receiver](syslog-receiver.md) |
 | Redfish | Реализован read-only в Phase 4; standard schema fixtures и официальные DMTF tools проверены. Hardware/vendor support требует отдельных live результатов; [Redfish](redfish.md) |
 | IPMI | Phase 5: explicit v2.0 LANplus read-only targets, Device ID/FRU/SDR/sensors/chassis через hardware contracts Phase 4. Reference BMC и protocol fixtures не доказывают работу настоящего hardware; [contract и проверки](ipmi.md) |
-| Collector ↔ Backend time exchange | Отложен. Optional offset/uncertainty и clock quality существуют во внутренней модели; измерения и additive wire fields не входят в corporate NTP Phase 2 |
+| Identity/topology | Phase 6: scoped evidence и directed observations через существующие models/outbox; global Asset matching/topology остаются Backend. [Модель](identity-topology.md), [wire contract](backend-identity-topology-contract.md); фактические проверки — [validation](validation.md) |
+| Collector ↔ Backend time exchange | Отложен. Optional offset/uncertainty и clock quality передаются в observation metadata, но наличие wire fields не означает измеренный offset. Corporate NTP Phase 2 использует службу ОС и не добавляет clock exchange |
 
 Zabbix, Prometheus, Ansible, Grafana, TSDB и global Asset/entity resolution
 относятся к Backend/Control Plane и не являются adapters Collector.

@@ -283,10 +283,10 @@ func (p *poll) bmc(info DeviceInfo) model.Device {
 	d.VendorEvidence = append(d.VendorEvidence, model.Evidence{Source: "ipmi.get-device-id.ipmi_version", Value: fmt.Sprintf("%d.%d", info.IPMIVersion&15, info.IPMIVersion>>4), Confidence: "high"})
 	// Numeric IANA ownership is BMC evidence; it is not a verified vendor name.
 	if info.ManufacturerID != 0 && info.ManufacturerID != 0xfffff {
-		d.IdentityEvidence = append(d.IdentityEvidence, model.IdentityEvidence{Type: model.IdentityManufacturer, Value: "iana:" + strconv.FormatUint(uint64(info.ManufacturerID), 10), Source: d.Observation.Source, Confidence: "medium", SubjectID: d.ID})
+		p.identity(&d.IdentityEvidence, model.IdentityManufacturer, "iana:"+strconv.FormatUint(uint64(info.ManufacturerID), 10), d.ID, "manager", "ipmi.get-device-id.manufacturer_id", d.Observation)
 	}
-	if ip := net.ParseIP(p.a.opts.Address); ip != nil {
-		d.IdentityEvidence = append(d.IdentityEvidence, model.IdentityEvidence{Type: model.IdentityManagementIP, Value: ip.String(), Source: d.Observation.Source, Confidence: "low", SubjectID: d.ID})
+	if _, _, err := model.NormalizeIP(p.a.opts.Address); err == nil {
+		p.identity(&d.IdentityEvidence, model.IdentityManagementIP, p.a.opts.Address, d.ID, "manager", "configured.ipmi.endpoint", d.Observation)
 	}
 	return d
 }
@@ -344,7 +344,7 @@ func (a *Adapter) InventoryBatch(ctx context.Context) (model.InventoryUpdate, er
 	for _, sensor := range cache.sensors {
 		bmc.Components = append(bmc.Components, p.sensorComponent(sensor, bmc.ID))
 	}
-	bmc.IdentityEvidence = append(bmc.IdentityEvidence, componentEvidence(bmc)...)
+	p.componentEvidence(&bmc)
 	result := model.InventoryUpdate{Devices: []model.Device{bmc}, ObservedAt: time.Now().UTC(), Completeness: "complete"}
 	if chassis.ID != "" {
 		bmc.Hardware.Relations = []model.ResourceRelationship{{Type: "BMC_MANAGES_CHASSIS", TargetResourceID: "/ipmi/chassis"}}
@@ -454,21 +454,41 @@ func (p *poll) chassis() (model.Device, model.ComponentHealth, error) {
 	return d, model.ComponentHealth{ID: id, ResourceID: uri, Status: status, Observation: model.CloneObservation(obs)}, nil
 }
 
-func componentEvidence(d model.Device) []model.IdentityEvidence {
-	var evidence []model.IdentityEvidence
+func (p *poll) identity(values *[]model.IdentityEvidence, kind model.IdentityEvidenceType, value, subject, subjectKind, origin string, observation *model.ObservationMetadata) {
+	if value == "" {
+		return
+	}
+	confidence := "medium"
+	if kind == model.IdentitySerial {
+		confidence = "high"
+	} else if kind == model.IdentityManagementIP {
+		confidence = "low"
+	}
+	fact, err := model.NewIdentityFact(kind, value, observation.Source, confidence, subject, subjectKind, origin, &observation.Time)
+	if err != nil {
+		fact.Confidence = "unresolved"
+		p.record(driver.ErrMalformed)
+	}
+	if fact.Validate() == nil {
+		if len(*values) >= 4096 {
+			p.record(driver.ErrLimit)
+			return
+		}
+		*values = append(*values, fact)
+	}
+}
+
+func (p *poll) componentEvidence(d *model.Device) {
 	for _, c := range d.Components {
+		subjectKind := "component"
+		if c.Class == "Chassis" {
+			subjectKind = "chassis"
+		}
 		for _, entry := range []struct {
-			kind  model.IdentityEvidenceType
-			value string
-		}{{model.IdentitySerial, c.SerialNumber}, {model.IdentityManufacturer, c.Manufacturer}, {model.IdentityModel, c.Model}} {
-			if entry.value != "" {
-				confidence := "medium"
-				if entry.kind == model.IdentitySerial {
-					confidence = "high"
-				}
-				evidence = append(evidence, model.IdentityEvidence{Type: entry.kind, Value: entry.value, Source: c.Observation.Source, SubjectID: c.ID, Confidence: confidence})
-			}
+			kind         model.IdentityEvidenceType
+			value, field string
+		}{{model.IdentitySerial, c.SerialNumber, "serial_number"}, {model.IdentityManufacturer, c.Manufacturer, "manufacturer"}, {model.IdentityModel, c.Model, "model"}} {
+			p.identity(&d.IdentityEvidence, entry.kind, entry.value, c.ID, subjectKind, "ipmi.fru."+strings.ToLower(c.Class)+"."+entry.field, c.Observation)
 		}
 	}
-	return evidence
 }

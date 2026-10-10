@@ -142,6 +142,10 @@ message Device {
   HardwareInventory hardware = 39;
   ObservationMetadata observation = 40;
   repeated IdentityEvidence identity_evidence = 41;
+  // Phase6-only types and normalization diagnostics remain invisible to legacy
+  // peers, which may reject unknown identifier types or mistake diagnostics for
+  // identifiers. New peers consume both lists as one bounded evidence set.
+  repeated IdentityEvidence extended_identity_evidence = 42;
 }
 
 message Evidence {
@@ -215,6 +219,13 @@ message IdentityEvidence {
   SourceRef source = 5;
   string confidence = 6;
   string subject_id = 7;
+  // Subject scope is local to SourceRef, never a globally resolved Asset ID.
+  string subject_kind = 8;
+  string original_value = 9;
+  string origin = 10;
+  ObservationTime time = 11;
+  // Invalid/rejected facts are diagnostics and cannot be used for matching.
+  string normalization = 12;
 }
 
 message CPUStats {
@@ -343,6 +354,7 @@ message TelemetrySample {
   repeated ComponentHealth hardware_health = 13;
   ObservationMetadata observation = 14;
   repeated IdentityEvidence identity_evidence = 15;
+  repeated IdentityEvidence extended_identity_evidence = 16;
 }
 
 // P0 emits a single sample in each batch. The wire contract can batch multiple
@@ -418,6 +430,18 @@ message TopologyUpdate {
   uint32 ttl_seconds = 6;
   string expiry_assumption = 7;
   repeated Neighbor observations = 8;
+  ObservationMetadata observation = 9;
+}
+
+// IANA address family and raw octets preserve advertised address distinctions.
+// Address is canonical IP text when that family is understood; unknown families
+// retain raw_address without triggering a connection or target discovery.
+message ManagementAddress {
+  uint32 address_family = 1;
+  string address = 2;
+  bytes raw_address = 3;
+  optional uint32 interface_subtype = 4;
+  optional uint32 interface_id = 5;
 }
 
 message Neighbor {
@@ -439,6 +463,24 @@ message Neighbor {
   google.protobuf.Timestamp expires_at = 16;
   repeated Evidence evidence = 17;
   string confidence = 18;
+  ObservationMetadata observation = 19;
+  repeated IdentityEvidence identity_evidence = 20;
+  string observation_id = 21;
+  // Directed L2 observation, not confirmation of a physical cable.
+  string kind = 22;
+  optional uint32 local_interface_index = 23;
+  string local_interface_mac = 24;
+  string local_interface_description = 25;
+  string local_interface_alias = 26;
+  repeated ManagementAddress remote_management_addresses = 27;
+  string remote_system_description = 28;
+  string remote_platform = 29;
+  string remote_model = 30;
+  string remote_software_version = 31;
+  repeated string remote_capabilities_supported = 32;
+  repeated string remote_capabilities_enabled = 33;
+  // Reported source age; missing differs from measured zero.
+  optional uint32 age_seconds = 34;
 }
 
 message Event {
@@ -449,6 +491,7 @@ message Event {
   string severity = 5;
   string message = 6;
   string source = 7;
+  ObservationMetadata observation = 8;
 }
 
 message EventBatch {
@@ -554,6 +597,7 @@ message Service {
   google.protobuf.Timestamp observed_at = 4;
   string source = 5;
   repeated ServiceInstance instances = 6;
+  ObservationMetadata observation = 7;
 }
 message ServiceInstance {
   string name = 1;
@@ -569,6 +613,7 @@ message NetworkState {
   repeated string addresses = 6;
   string source = 7;
   google.protobuf.Timestamp observed_at = 8;
+  ObservationMetadata observation = 9;
 }
 message FirewallSnapshot {
   google.protobuf.Timestamp observed_at = 1;
@@ -579,6 +624,7 @@ message FirewallSnapshot {
   repeated FirewallForwarding forwardings = 6;
   repeated FirewallRule rules = 7;
   repeated FirewallRedirect redirects = 8;
+  ObservationMetadata observation = 9;
 }
 message FirewallZone {
   string id = 1;
@@ -708,9 +754,11 @@ message TelephonyHealth {
   string state = 9;
   string error_category = 10;
   string source = 11;
+  ObservationMetadata observation = 12;
 }
 message TelephonyUpdate {
   google.protobuf.Timestamp observed_at = 1;
   string source = 2;
   repeated TelephonyHealth targets = 3;
+  ObservationMetadata observation = 4;
 }

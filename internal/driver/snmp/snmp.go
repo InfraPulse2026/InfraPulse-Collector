@@ -234,7 +234,9 @@ func (d *Driver) Inventory(ctx context.Context) (model.Device, error) {
 	}
 	// Interface metadata and discovery use the slow inventory interval. Fast
 	// observations below query bounded batches for these discovered indexes.
-	_, interfaceErr := d.collectInterfaces(ctx)
+	interfaces, interfaceErr := d.collectInterfaces(ctx)
+	ref := model.SourceRef{Type: model.SourceSNMP, TargetID: "remote:" + d.opts.ID, Protocol: "snmp", Provenance: model.ProvenanceReal}
+	dev.IdentityEvidence = model.InterfaceIdentityEvidence(interfaces, ref, nil)
 	if interfaceErr != nil && !errors.Is(interfaceErr, driver.ErrUnavailable) {
 		err = errors.Join(err, interfaceErr)
 	}

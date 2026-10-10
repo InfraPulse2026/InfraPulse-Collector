@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
+	pb "InfraPulseAgent/api/gen/infrapulse/v1"
 	"InfraPulseAgent/internal/model"
 	"google.golang.org/protobuf/proto"
 )
 
-// Phase 3 adds observation fields only to logs. Other payloads stay identical;
-// clearing the additive log fields reproduces the historical v1 wire payload.
+// Removing optional observation/evidence fields reproduces the legacy v1
+// payload. Metadata never changes the numbers or meaning of historical fields.
 func TestCollectorMetadataPreservesV1WireBytes(t *testing.T) {
 	sample := testSample()
 	inputs := map[string]model.Envelope{
@@ -38,16 +39,7 @@ func TestCollectorMetadataPreservesV1WireBytes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if name == "logs" {
-				decoded, err := DecodeEnvelope(after)
-				if err != nil || decoded.Logs.Observation == nil || decoded.Logs.Records[0].Observation == nil {
-					t.Fatal("additive log source/time metadata lost", err)
-				}
-				after.GetLogs().Observation = nil
-				for _, r := range after.GetLogs().Records {
-					r.Observation = nil
-				}
-			}
+			clearOptionalMetadata(after)
 			marshal := proto.MarshalOptions{Deterministic: true}
 			beforeBytes, err := marshal.Marshal(before)
 			if err != nil {
@@ -68,5 +60,69 @@ func TestCollectorMetadataPreservesV1WireBytes(t *testing.T) {
 				t.Fatal("decoder fabricated unavailable source/clock/identity metadata")
 			}
 		})
+	}
+}
+
+func clearOptionalMetadata(p *pb.AgentEnvelope) {
+	clearDevice := func(d *pb.Device) {
+		d.Observation, d.IdentityEvidence = nil, nil
+		d.ExtendedIdentityEvidence = nil
+		for _, c := range d.Components {
+			c.Observation = nil
+		}
+		for _, s := range d.Services {
+			s.Observation = nil
+		}
+		for _, n := range d.Networks {
+			n.Observation = nil
+		}
+		if d.Firewall != nil {
+			d.Firewall.Observation = nil
+		}
+	}
+	if h := p.GetHello(); h != nil {
+		clearDevice(h.Device)
+	}
+	if u := p.GetInventory(); u != nil {
+		u.Observation = nil
+		for _, d := range u.Devices {
+			clearDevice(d)
+		}
+	}
+	if b := p.GetTelemetry(); b != nil {
+		for _, s := range b.Samples {
+			s.Observation, s.IdentityEvidence = nil, nil
+			s.ExtendedIdentityEvidence = nil
+		}
+	}
+	if u := p.GetTopology(); u != nil {
+		u.Observation = nil
+		for _, n := range u.Observations {
+			n.Observation, n.IdentityEvidence = nil, nil
+			n.ObservationId, n.Kind = "", ""
+			n.LocalInterfaceIndex = nil
+			n.LocalInterfaceMac, n.LocalInterfaceDescription, n.LocalInterfaceAlias = "", "", ""
+			n.RemoteManagementAddresses = nil
+			n.RemoteSystemDescription, n.RemotePlatform, n.RemoteModel, n.RemoteSoftwareVersion = "", "", "", ""
+			n.RemoteCapabilitiesSupported, n.RemoteCapabilitiesEnabled = nil, nil
+			n.AgeSeconds = nil
+		}
+	}
+	if b := p.GetLogs(); b != nil {
+		b.Observation = nil
+		for _, r := range b.Records {
+			r.Observation = nil
+		}
+	}
+	if u := p.GetTelephony(); u != nil {
+		u.Observation = nil
+		for _, h := range u.Targets {
+			h.Observation = nil
+		}
+	}
+	if b := p.GetEvents(); b != nil {
+		for _, e := range b.Events {
+			e.Observation = nil
+		}
 	}
 }

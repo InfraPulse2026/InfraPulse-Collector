@@ -299,7 +299,17 @@ func (a *Agent) push(e model.Envelope) error {
 	if err != nil {
 		return err
 	}
-	return a.queue.Push((sanitize.KnownSecrets{Values: a.secretValues()}).Sanitize(e))
+	sanitizer := sanitize.KnownSecrets{Values: a.secretValues()}
+	e = sanitizer.Sanitize(e)
+	if err := sanitizer.ValidateIdentitySources(e); err != nil {
+		return err
+	}
+	if validator, ok := a.transport.(transport.EnvelopeValidator); ok {
+		if err := validator.ValidateEnvelope(e); err != nil {
+			return fmt.Errorf("observation admission: %w", err)
+		}
+	}
+	return a.queue.Push(e)
 }
 
 func (a *Agent) event(kind, severity, message string) {

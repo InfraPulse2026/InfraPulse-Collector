@@ -140,6 +140,8 @@ func (d *Driver) Inventory(ctx context.Context) (model.Device, error) {
 		d.mark("interfaces.read", e == nil)
 		if e == nil {
 			addressErr := d.addAddresses(ctx, interfaces)
+			ref := model.SourceRef{Type: model.SourceRouterOS, TargetID: "remote:" + d.opts.ID, Protocol: "https", Provenance: model.ProvenanceReal}
+			device.IdentityEvidence = model.InterfaceIdentityEvidence(interfaces, ref, nil)
 			if addressErr == nil {
 				d.mu.Lock()
 				d.addressCache = interfaces

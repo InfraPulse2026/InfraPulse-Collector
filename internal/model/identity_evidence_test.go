@@ -56,7 +56,7 @@ func TestTopologyEvidencePreservesRawChassisAndUnknownSubtype(t *testing.T) {
 	}
 	value := got.Observations[0].IdentityEvidence[0]
 	if value.Type != IdentityLLDPChassisID || !bytes.Equal(value.RawValue, raw) || value.Value != base64.StdEncoding.EncodeToString(raw) ||
-		value.Subtype == nil || *value.Subtype != 4 || value.SubjectID != "" {
+		value.Subtype == nil || *value.Subtype != 4 || value.SubjectID != "neighbor:"+got.Observations[0].ObservationID || value.SubjectKind != "remote_neighbor" {
 		t.Fatal("neighbor evidence fabricated local ownership or erased raw identity", value)
 	}
 	if err := value.Validate(); err != nil {

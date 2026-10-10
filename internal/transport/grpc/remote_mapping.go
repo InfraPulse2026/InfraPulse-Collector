@@ -3,6 +3,8 @@ package grpc
 import (
 	"errors"
 	"math"
+	"slices"
+	"unicode"
 
 	pb "InfraPulseAgent/api/gen/infrapulse/v1"
 	"InfraPulseAgent/internal/model"
@@ -35,6 +37,16 @@ func validateEvidence(items []model.Evidence) error {
 		if item.Source == "" || len(item.Source) > 128 || len(item.Value) > 4096 || !validConfidence(item.Confidence) {
 			return errors.New("invalid evidence source, value or confidence")
 		}
+		if err := observationStringsBound(4096, item.Source, item.Value); err != nil {
+			return err
+		}
+		for _, value := range []string{item.Source, item.Value} {
+			for _, ch := range value {
+				if unicode.IsControl(ch) {
+					return errors.New("evidence contains control characters")
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -62,6 +74,9 @@ func evidenceFromProto(items []*pb.Evidence) ([]model.Evidence, error) {
 }
 
 func validateTopology(update model.TopologyUpdate) error {
+	if err := validateObservation(update.Observation); err != nil {
+		return err
+	}
 	if update.DeviceID == "" || update.Source == "" || len(update.Source) > 128 {
 		return errors.New("topology device ID and source are required")
 	}
@@ -78,6 +93,15 @@ func validateTopology(update model.TopologyUpdate) error {
 		return err
 	}
 	for _, item := range update.Observations {
+		if err := model.ValidateNeighborEnrichment(item); err != nil {
+			return err
+		}
+		if err := validateObservation(item.Observation); err != nil {
+			return err
+		}
+		if err := validateIdentityEvidence(item.IdentityEvidence); err != nil {
+			return err
+		}
 		if item.LocalDeviceID != update.DeviceID || item.Source == "" || len(item.Source) > 128 {
 			return errors.New("neighbor local device or source is invalid")
 		}
@@ -110,9 +134,9 @@ func validateTopology(update model.TopologyUpdate) error {
 
 func topologyToProto(update model.TopologyUpdate) *pb.TopologyUpdate {
 	result := &pb.TopologyUpdate{DeviceId: update.DeviceID, ObservedAt: timestamp(update.ObservedAt), CollectedAt: timestamp(update.CollectedAt),
-		Source: update.Source, Completeness: snapshotCompleteness[update.Completeness], TtlSeconds: update.TTLSeconds, ExpiryAssumption: update.ExpiryAssumption}
+		Source: update.Source, Completeness: snapshotCompleteness[update.Completeness], TtlSeconds: update.TTLSeconds, ExpiryAssumption: update.ExpiryAssumption, Observation: observationToProto(update.Observation)}
 	for _, item := range update.Observations {
-		result.Observations = append(result.Observations, &pb.Neighbor{
+		n := &pb.Neighbor{
 			LocalDeviceId: item.LocalDeviceID, LocalInterfaceId: item.LocalInterfaceID, LocalInterfaceName: item.LocalInterfaceName,
 			LocalPortNumber: item.LocalPortNumber, LocalPortId: append([]byte(nil), item.LocalPortID...), LocalPortSubtype: item.LocalPortSubtype,
 			RemoteChassisId: append([]byte(nil), item.RemoteChassisID...), RemoteChassisSubtype: item.RemoteChassisSubtype,
@@ -120,7 +144,16 @@ func topologyToProto(update model.TopologyUpdate) *pb.TopologyUpdate {
 			RemoteSystemName: item.RemoteSystemName, RemotePortDescription: item.RemotePortDescription,
 			Protocol: discoveryProtocols[item.Protocol], Source: item.Source, ObservedAt: timestamp(item.ObservedAt),
 			ExpiresAt: optionalTimestamp(item.ExpiresAt), Evidence: evidenceToProto(item.Evidence), Confidence: item.Confidence,
-		})
+			Observation: observationToProto(item.Observation), IdentityEvidence: identityToProto(item.IdentityEvidence),
+			ObservationId: item.ObservationID, Kind: item.Kind, LocalInterfaceIndex: cloneUint32(item.LocalInterfaceIndex),
+			LocalInterfaceMac: item.LocalInterfaceMAC, LocalInterfaceDescription: item.LocalInterfaceDescription, LocalInterfaceAlias: item.LocalInterfaceAlias,
+			RemoteSystemDescription: item.RemoteSystemDescription, RemotePlatform: item.RemotePlatform, RemoteModel: item.RemoteModel, RemoteSoftwareVersion: item.RemoteSoftwareVersion,
+			RemoteCapabilitiesSupported: slices.Clone(item.RemoteCapabilitiesSupported), RemoteCapabilitiesEnabled: slices.Clone(item.RemoteCapabilitiesEnabled), AgeSeconds: cloneUint32(item.AgeSeconds),
+		}
+		for _, a := range item.RemoteManagementAddresses {
+			n.RemoteManagementAddresses = append(n.RemoteManagementAddresses, &pb.ManagementAddress{AddressFamily: a.AddressFamily, Address: a.Address, RawAddress: slices.Clone(a.RawAddress), InterfaceSubtype: cloneUint32(a.InterfaceSubtype), InterfaceId: cloneUint32(a.InterfaceID)})
+		}
+		result.Observations = append(result.Observations, n)
 	}
 	return result
 }
@@ -143,6 +176,10 @@ func topologyFromProto(update *pb.TopologyUpdate) (model.TopologyUpdate, error) 
 	}
 	result := model.TopologyUpdate{DeviceID: update.DeviceId, ObservedAt: observed, CollectedAt: collected,
 		Source: update.Source, Completeness: completeness, TTLSeconds: update.TtlSeconds, ExpiryAssumption: update.ExpiryAssumption}
+	result.Observation, err = observationFromProto(update.Observation)
+	if err != nil {
+		return result, err
+	}
 	for _, item := range update.Observations {
 		if item == nil {
 			return model.TopologyUpdate{}, errors.New("neighbor is nil")
@@ -163,14 +200,36 @@ func topologyFromProto(update *pb.TopologyUpdate) (model.TopologyUpdate, error) 
 		if err != nil {
 			return model.TopologyUpdate{}, err
 		}
-		result.Observations = append(result.Observations, model.Neighbor{
+		o, err := observationFromProto(item.Observation)
+		if err != nil {
+			return result, err
+		}
+		identity, err := identityFromProto(item.IdentityEvidence)
+		if err != nil {
+			return result, err
+		}
+		n := model.Neighbor{
 			LocalDeviceID: item.LocalDeviceId, LocalInterfaceID: item.LocalInterfaceId, LocalInterfaceName: item.LocalInterfaceName,
 			LocalPortNumber: item.LocalPortNumber, LocalPortID: append([]byte(nil), item.LocalPortId...), LocalPortSubtype: item.LocalPortSubtype,
 			RemoteChassisID: append([]byte(nil), item.RemoteChassisId...), RemoteChassisSubtype: item.RemoteChassisSubtype,
 			RemotePortID: append([]byte(nil), item.RemotePortId...), RemotePortSubtype: item.RemotePortSubtype,
 			RemoteSystemName: item.RemoteSystemName, RemotePortDescription: item.RemotePortDescription,
 			Protocol: protocol, Source: item.Source, ObservedAt: observed, ExpiresAt: expires, Evidence: evidence, Confidence: item.Confidence,
-		})
+			Observation: o, IdentityEvidence: identity, ObservationID: item.ObservationId, Kind: item.Kind, LocalInterfaceIndex: cloneUint32(item.LocalInterfaceIndex),
+			LocalInterfaceMAC: item.LocalInterfaceMac, LocalInterfaceDescription: item.LocalInterfaceDescription, LocalInterfaceAlias: item.LocalInterfaceAlias,
+			RemoteSystemDescription: item.RemoteSystemDescription, RemotePlatform: item.RemotePlatform, RemoteModel: item.RemoteModel, RemoteSoftwareVersion: item.RemoteSoftwareVersion,
+			RemoteCapabilitiesSupported: slices.Clone(item.RemoteCapabilitiesSupported), RemoteCapabilitiesEnabled: slices.Clone(item.RemoteCapabilitiesEnabled), AgeSeconds: cloneUint32(item.AgeSeconds),
+		}
+		if len(item.RemoteManagementAddresses) > 16 {
+			return result, errors.New("neighbor management address limit exceeded")
+		}
+		for _, a := range item.RemoteManagementAddresses {
+			if a == nil {
+				return result, errors.New("nil neighbor management address")
+			}
+			n.RemoteManagementAddresses = append(n.RemoteManagementAddresses, model.ManagementAddress{AddressFamily: a.AddressFamily, Address: a.Address, RawAddress: slices.Clone(a.RawAddress), InterfaceSubtype: cloneUint32(a.InterfaceSubtype), InterfaceID: cloneUint32(a.InterfaceId)})
+		}
+		result.Observations = append(result.Observations, n)
 	}
 	return result, validateTopology(result)
 }

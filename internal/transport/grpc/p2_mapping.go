@@ -124,6 +124,9 @@ func logsFromProto(p *pb.LogBatch) (model.LogBatch, error) {
 	return b, validateLogs(b)
 }
 func validateTelephony(u model.TelephonyUpdate) error {
+	if err := validateObservation(u.Observation); err != nil {
+		return err
+	}
 	if u.Source == "" || len(u.Source) > 128 || len(u.Targets) == 0 || len(u.Targets) > 256 {
 		return errors.New("invalid telephony source or count")
 	}
@@ -131,6 +134,9 @@ func validateTelephony(u model.TelephonyUpdate) error {
 		return err
 	}
 	for _, h := range u.Targets {
+		if err := validateObservation(h.Observation); err != nil {
+			return err
+		}
 		if h.TargetID == "" || h.Address == "" || h.Source == "" || h.Transport != "udp" && h.Transport != "tcp" && h.Transport != "tls" {
 			return errors.New("invalid telephony target or transport")
 		}
@@ -158,9 +164,9 @@ func validateTelephony(u model.TelephonyUpdate) error {
 	return nil
 }
 func telephonyToProto(u model.TelephonyUpdate) *pb.TelephonyUpdate {
-	p := &pb.TelephonyUpdate{ObservedAt: timestamp(u.ObservedAt), Source: u.Source}
+	p := &pb.TelephonyUpdate{ObservedAt: timestamp(u.ObservedAt), Source: u.Source, Observation: observationToProto(u.Observation)}
 	for _, h := range u.Targets {
-		p.Targets = append(p.Targets, &pb.TelephonyHealth{TargetId: h.TargetID, Address: h.Address, Transport: h.Transport, Reachable: h.Reachable, ResponseCode: h.ResponseCode, LatencyMs: h.LatencyMillis, ObservedAt: timestamp(h.ObservedAt), ConsecutiveFailures: h.ConsecutiveFailures, State: h.State, ErrorCategory: h.ErrorCategory, Source: h.Source})
+		p.Targets = append(p.Targets, &pb.TelephonyHealth{TargetId: h.TargetID, Address: h.Address, Transport: h.Transport, Reachable: h.Reachable, ResponseCode: h.ResponseCode, LatencyMs: h.LatencyMillis, ObservedAt: timestamp(h.ObservedAt), ConsecutiveFailures: h.ConsecutiveFailures, State: h.State, ErrorCategory: h.ErrorCategory, Source: h.Source, Observation: observationToProto(h.Observation)})
 	}
 	return p
 }
@@ -173,6 +179,10 @@ func telephonyFromProto(p *pb.TelephonyUpdate) (model.TelephonyUpdate, error) {
 		return model.TelephonyUpdate{}, err
 	}
 	u := model.TelephonyUpdate{ObservedAt: at, Source: p.Source}
+	u.Observation, err = observationFromProto(p.Observation)
+	if err != nil {
+		return u, err
+	}
 	for _, h := range p.Targets {
 		if h == nil {
 			return u, errors.New("nil telephony target")
@@ -181,7 +191,11 @@ func telephonyFromProto(p *pb.TelephonyUpdate) (model.TelephonyUpdate, error) {
 		if err != nil {
 			return u, err
 		}
-		u.Targets = append(u.Targets, model.TelephonyHealth{TargetID: h.TargetId, Address: h.Address, Transport: h.Transport, Reachable: h.Reachable, ResponseCode: h.ResponseCode, LatencyMillis: h.LatencyMs, ObservedAt: at, ConsecutiveFailures: h.ConsecutiveFailures, State: h.State, ErrorCategory: h.ErrorCategory, Source: h.Source})
+		o, err := observationFromProto(h.Observation)
+		if err != nil {
+			return u, err
+		}
+		u.Targets = append(u.Targets, model.TelephonyHealth{TargetID: h.TargetId, Address: h.Address, Transport: h.Transport, Reachable: h.Reachable, ResponseCode: h.ResponseCode, LatencyMillis: h.LatencyMs, ObservedAt: at, ConsecutiveFailures: h.ConsecutiveFailures, State: h.State, ErrorCategory: h.ErrorCategory, Source: h.Source, Observation: o})
 	}
 	return u, validateTelephony(u)
 }
@@ -197,17 +211,17 @@ func ruleFromProto(r *pb.FirewallRule) (model.FirewallRule, error) {
 func p2DeviceToProto(d model.Device, p *pb.Device) {
 	p.Source, p.BoardName, p.PlatformEvidence = d.Source, d.BoardName, evidenceToProto(d.PlatformEvidence)
 	for _, s := range d.Services {
-		v := &pb.Service{Name: s.Name, State: s.State, Enabled: s.Enabled, ObservedAt: timestamp(s.ObservedAt), Source: s.Source}
+		v := &pb.Service{Name: s.Name, State: s.State, Enabled: s.Enabled, ObservedAt: timestamp(s.ObservedAt), Source: s.Source, Observation: observationToProto(s.Observation)}
 		for _, i := range s.Instances {
 			v.Instances = append(v.Instances, &pb.ServiceInstance{Name: i.Name, Running: i.Running, Pid: i.PID})
 		}
 		p.Services = append(p.Services, v)
 	}
 	for _, n := range d.Networks {
-		p.Networks = append(p.Networks, &pb.NetworkState{Name: n.Name, Device: n.Device, Protocol: n.Protocol, Up: n.Up, Pending: n.Pending, Addresses: append([]string(nil), n.Addresses...), Source: n.Source, ObservedAt: timestamp(n.ObservedAt)})
+		p.Networks = append(p.Networks, &pb.NetworkState{Name: n.Name, Device: n.Device, Protocol: n.Protocol, Up: n.Up, Pending: n.Pending, Addresses: append([]string(nil), n.Addresses...), Source: n.Source, ObservedAt: timestamp(n.ObservedAt), Observation: observationToProto(n.Observation)})
 	}
 	if f := d.Firewall; f != nil {
-		v := &pb.FirewallSnapshot{ObservedAt: timestamp(f.ObservedAt), Source: f.Source, Completeness: f.Completeness, Enabled: f.Enabled}
+		v := &pb.FirewallSnapshot{ObservedAt: timestamp(f.ObservedAt), Source: f.Source, Completeness: f.Completeness, Enabled: f.Enabled, Observation: observationToProto(f.Observation)}
 		for _, z := range f.Zones {
 			v.Zones = append(v.Zones, &pb.FirewallZone{Id: z.ID, Name: z.Name, Networks: append([]string(nil), z.Networks...), Input: z.Input, Output: z.Output, Forward: z.Forward, Enabled: z.Enabled})
 		}
@@ -242,6 +256,10 @@ func p2DeviceFromProto(p *pb.Device, d *model.Device) error {
 			return err
 		}
 		v := model.Service{Name: s.Name, State: s.State, Enabled: s.Enabled, ObservedAt: at, Source: s.Source}
+		v.Observation, err = observationFromProto(s.Observation)
+		if err != nil {
+			return err
+		}
 		for _, i := range s.Instances {
 			if i == nil {
 				return errors.New("nil service instance")
@@ -258,7 +276,11 @@ func p2DeviceFromProto(p *pb.Device, d *model.Device) error {
 		if err != nil {
 			return err
 		}
-		d.Networks = append(d.Networks, model.NetworkState{Name: n.Name, Device: n.Device, Protocol: n.Protocol, Up: n.Up, Pending: n.Pending, Addresses: append([]string(nil), n.Addresses...), Source: n.Source, ObservedAt: at})
+		o, err := observationFromProto(n.Observation)
+		if err != nil {
+			return err
+		}
+		d.Networks = append(d.Networks, model.NetworkState{Name: n.Name, Device: n.Device, Protocol: n.Protocol, Up: n.Up, Pending: n.Pending, Addresses: append([]string(nil), n.Addresses...), Source: n.Source, ObservedAt: at, Observation: o})
 	}
 	if f := p.Firewall; f != nil {
 		if len(f.Zones)+len(f.Forwardings)+len(f.Rules)+len(f.Redirects) > maxP2Entries {
@@ -269,6 +291,10 @@ func p2DeviceFromProto(p *pb.Device, d *model.Device) error {
 			return err
 		}
 		v := &model.FirewallSnapshot{ObservedAt: at, Source: f.Source, Completeness: f.Completeness, Enabled: f.Enabled}
+		v.Observation, err = observationFromProto(f.Observation)
+		if err != nil {
+			return err
+		}
 		for _, z := range f.Zones {
 			if z == nil {
 				return errors.New("nil firewall zone")
@@ -313,6 +339,9 @@ func validateP2Device(d model.Device) error {
 		return errors.New("OpenWrt inventory limit exceeded")
 	}
 	for _, s := range d.Services {
+		if err := validateObservation(s.Observation); err != nil {
+			return err
+		}
 		if s.Name == "" || s.Source == "" || (s.State != "running" && s.State != "stopped" && s.State != "unknown") || len(s.Instances) > maxP2Entries {
 			return errors.New("invalid service")
 		}
@@ -329,6 +358,9 @@ func validateP2Device(d model.Device) error {
 		}
 	}
 	for _, n := range d.Networks {
+		if err := validateObservation(n.Observation); err != nil {
+			return err
+		}
 		if n.Name == "" || n.Source == "" || len(n.Addresses) > maxP2Entries {
 			return errors.New("invalid logical network")
 		}
@@ -343,6 +375,9 @@ func validateP2Device(d model.Device) error {
 		}
 	}
 	if f := d.Firewall; f != nil {
+		if err := validateObservation(f.Observation); err != nil {
+			return err
+		}
 		if f.Source == "" || len(f.Source) > 128 || (f.Completeness != "complete" && f.Completeness != "partial" && f.Completeness != "failed") || len(f.Zones)+len(f.Forwardings)+len(f.Rules)+len(f.Redirects) > maxP2Entries {
 			return errors.New("invalid firewall snapshot")
 		}

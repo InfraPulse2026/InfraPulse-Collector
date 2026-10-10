@@ -81,40 +81,109 @@ func hardwareFromProto(p *pb.HardwareInventory) (*model.HardwareInventory, error
 func identityToProto(values []model.IdentityEvidence) []*pb.IdentityEvidence {
 	var result []*pb.IdentityEvidence
 	for _, e := range values {
-		s := observationToProto(&model.ObservationMetadata{Source: e.Source}).Source
-		result = append(result, &pb.IdentityEvidence{Type: string(e.Type), Value: e.Value, RawValue: slices.Clone(e.RawValue), Subtype: e.Subtype, Source: s, Confidence: e.Confidence, SubjectId: e.SubjectID})
+		result = append(result, identityFactToProto(e))
 	}
 	return result
 }
-func identityFromProto(values []*pb.IdentityEvidence) ([]model.IdentityEvidence, error) {
+
+func identityFactToProto(e model.IdentityEvidence) *pb.IdentityEvidence {
+	return &pb.IdentityEvidence{Type: string(e.Type), Value: e.Value, RawValue: slices.Clone(e.RawValue), Subtype: cloneUint32(e.Subtype), Source: sourceToProto(e.Source), Confidence: e.Confidence, SubjectId: e.SubjectID, SubjectKind: e.SubjectKind, OriginalValue: e.OriginalValue, Origin: e.Origin, Time: observationTimeToProto(e.Time), Normalization: e.Normalization}
+}
+
+// Legacy peers validate Type against the Phase5 vocabulary, and cannot see the
+// Phase6 Normalization marker. Never expose a new type or an unusable diagnostic
+// as a legacy identifier. This is a wire partition of one domain evidence set.
+func identityToCompatibleProto(values []model.IdentityEvidence) (legacy, extended []*pb.IdentityEvidence) {
+	for _, e := range values {
+		p := identityFactToProto(e)
+		if legacyIdentityType(e.Type) && e.Normalization != "invalid" && e.Normalization != "rejected" {
+			legacy = append(legacy, p)
+		} else {
+			extended = append(extended, p)
+		}
+	}
+	return legacy, extended
+}
+
+func legacyIdentityType(kind model.IdentityEvidenceType) bool {
+	switch kind {
+	case model.IdentitySerial, model.IdentityHardwareUUID, model.IdentityMAC,
+		model.IdentityChassisID, model.IdentityLLDPChassisID, model.IdentityManagementIP,
+		model.IdentityHostname, model.IdentitySysName, model.IdentitySysObjectID,
+		model.IdentityManufacturer, model.IdentityModel:
+		return true
+	default:
+		return false
+	}
+}
+
+func identityFromProto(groups ...[]*pb.IdentityEvidence) ([]model.IdentityEvidence, error) {
+	total := 0
+	for _, group := range groups {
+		if len(group) > 4096-total {
+			return nil, errors.New("identity evidence limit exceeded")
+		}
+		total += len(group)
+	}
+	if total == 0 {
+		return nil, nil
+	}
+	result := make([]model.IdentityEvidence, 0, total)
+	for _, values := range groups {
+		for _, p := range values {
+			if p == nil || p.Source == nil {
+				return nil, errors.New("missing identity evidence source")
+			}
+			at, err := observationTimeFromProto(p.Time)
+			if err != nil {
+				return nil, err
+			}
+			e := model.IdentityEvidence{Type: model.IdentityEvidenceType(p.Type), Value: p.Value, RawValue: slices.Clone(p.RawValue), Subtype: cloneUint32(p.Subtype), Source: sourceFromProto(p.Source), Confidence: p.Confidence, SubjectID: p.SubjectId, SubjectKind: p.SubjectKind, OriginalValue: p.OriginalValue, Origin: p.Origin, Time: at, Normalization: p.Normalization}
+			if err := e.Validate(); err != nil {
+				return nil, err
+			}
+			result = append(result, e)
+		}
+	}
+	return result, validateIdentityEvidence(result)
+}
+
+func cloneUint32(value *uint32) *uint32 {
+	if value == nil {
+		return nil
+	}
+	v := *value
+	return &v
+}
+
+func validateIdentityEvidence(values []model.IdentityEvidence) error {
 	if len(values) > 4096 {
-		return nil, errors.New("identity evidence limit exceeded")
+		return errors.New("identity evidence limit exceeded")
 	}
-	var result []model.IdentityEvidence
-	for _, p := range values {
-		if p == nil || p.Source == nil {
-			return nil, errors.New("missing identity evidence source")
-		}
-		s := p.Source
-		e := model.IdentityEvidence{Type: model.IdentityEvidenceType(p.Type), Value: p.Value, RawValue: slices.Clone(p.RawValue), Subtype: p.Subtype, Source: model.SourceRef{Type: model.SourceType(s.Type), CollectorID: s.CollectorId, TargetID: s.TargetId, Protocol: s.Protocol, InstanceID: s.InstanceId, Provenance: model.Provenance(s.Provenance), ResourceID: s.ResourceId}, Confidence: p.Confidence, SubjectID: p.SubjectId}
+	type subject struct {
+		source   model.SourceRef
+		id, kind string
+	}
+	counts := make(map[subject]int)
+	for _, e := range values {
 		if err := e.Validate(); err != nil {
-			return nil, err
+			return err
 		}
-		result = append(result, e)
+		key := subject{e.Source, e.SubjectID, e.SubjectKind}
+		counts[key]++
+		if counts[key] > 64 {
+			return errors.New("identity evidence per-subject limit exceeded")
+		}
 	}
-	return result, nil
+	return nil
 }
 func hardwareDeviceToProto(d model.Device, p *pb.Device) {
 	p.Hardware = hardwareToProto(d.Hardware)
-	if d.Hardware != nil {
-		p.Observation = observationToProto(d.Observation)
-		p.IdentityEvidence = identityToProto(d.IdentityEvidence)
-	}
+	p.Observation = observationToProto(d.Observation)
+	p.IdentityEvidence, p.ExtendedIdentityEvidence = identityToCompatibleProto(d.IdentityEvidence)
 	for i, c := range d.Components {
 		p.Components[i].Hardware = hardwareToProto(c.Hardware)
-		if c.Hardware != nil {
-			p.Components[i].Observation = observationToProto(c.Observation)
-		}
+		p.Components[i].Observation = observationToProto(c.Observation)
 	}
 }
 func hardwareDeviceFromProto(p *pb.Device, d *model.Device) error {
@@ -127,7 +196,7 @@ func hardwareDeviceFromProto(p *pb.Device, d *model.Device) error {
 	if err != nil {
 		return err
 	}
-	d.IdentityEvidence, err = identityFromProto(p.IdentityEvidence)
+	d.IdentityEvidence, err = identityFromProto(p.IdentityEvidence, p.ExtendedIdentityEvidence)
 	if err != nil {
 		return err
 	}
@@ -144,10 +213,8 @@ func hardwareDeviceFromProto(p *pb.Device, d *model.Device) error {
 	return nil
 }
 func hardwareSampleToProto(s model.TelemetrySample, p *pb.TelemetrySample) {
-	if len(s.HardwareHealth) > 0 || s.Observation != nil && (s.Observation.Source.Type == model.SourceRedfish || s.Observation.Source.Type == model.SourceIPMI) {
-		p.Observation = observationToProto(s.Observation)
-		p.IdentityEvidence = identityToProto(s.IdentityEvidence)
-	}
+	p.Observation = observationToProto(s.Observation)
+	p.IdentityEvidence, p.ExtendedIdentityEvidence = identityToCompatibleProto(s.IdentityEvidence)
 	for i, m := range s.Metrics {
 		p.Metrics[i].ResourceId = m.ResourceID
 		p.Metrics[i].ComponentId = m.ComponentID
@@ -166,7 +233,7 @@ func hardwareSampleFromProto(p *pb.TelemetrySample, s *model.TelemetrySample) er
 	if err != nil {
 		return err
 	}
-	s.IdentityEvidence, err = identityFromProto(p.IdentityEvidence)
+	s.IdentityEvidence, err = identityFromProto(p.IdentityEvidence, p.ExtendedIdentityEvidence)
 	if err != nil {
 		return err
 	}
@@ -201,10 +268,11 @@ func validateHardwareSample(s model.TelemetrySample) error {
 	if len(s.HardwareHealth) > 4096 || len(s.Metrics) > 16384 {
 		return errors.New("hardware sample limit exceeded")
 	}
-	if s.Observation != nil && (s.Observation.Source.Type == model.SourceRedfish || s.Observation.Source.Type == model.SourceIPMI) {
-		if err := validateObservation(s.Observation); err != nil {
-			return err
-		}
+	if err := validateObservation(s.Observation); err != nil {
+		return err
+	}
+	if err := validateIdentityEvidence(s.IdentityEvidence); err != nil {
+		return err
 	}
 	for _, m := range s.Metrics {
 		if m.Status != nil {

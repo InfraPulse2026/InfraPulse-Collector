@@ -20,6 +20,7 @@ import (
 	grpcgo "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 )
 
 const DefaultMaxMessageBytes = 4 << 20
@@ -59,6 +60,24 @@ func New(options Options) (transport.Transport, error) {
 		creds = credentials.NewTLS(config)
 	}
 	return &client{options: options, creds: creds}, nil
+}
+
+// ValidateEnvelope checks the same mapping used by Send before durable
+// admission. Invalid identifiers or an oversized protobuf cannot poison replay.
+func (c *client) ValidateEnvelope(envelope model.Envelope) error {
+	message, err := Encode(envelope)
+	if err != nil {
+		return fmt.Errorf("validate agent message: %w", err)
+	}
+	if proto.Size(message) > c.options.MaxMessageBytes {
+		return errors.New("encoded agent message exceeds transport size limit")
+	}
+	// Size does not validate UTF-8 strings. Verify serialization as well so a
+	// legacy free-text field cannot repeatedly fail during retained delivery.
+	if _, err := proto.Marshal(message); err != nil {
+		return errors.New("agent message cannot be serialized as protobuf")
+	}
+	return nil
 }
 
 func (c *client) Connect(ctx context.Context) (transport.Session, error) {

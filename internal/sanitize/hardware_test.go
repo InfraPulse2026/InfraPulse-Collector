@@ -17,7 +17,7 @@ func TestHardwareSecretRedactionAndOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), password) || clean.Inventory.Devices[0].SerialNumber != "" || clean.Inventory.Devices[0].Hardware.HardwareUUID != "" || len(clean.Inventory.Devices[0].IdentityEvidence) > 0 {
+	if strings.Contains(string(data), password) || clean.Inventory.Devices[0].SerialNumber != "" || clean.Inventory.Devices[0].Hardware.HardwareUUID != "" || len(clean.Inventory.Devices[0].IdentityEvidence) != 1 || clean.Inventory.Devices[0].IdentityEvidence[0].Normalization != "rejected" {
 		t.Fatal("hardware secret survived")
 	}
 	if e.Inventory.Devices[0].SerialNumber != password || d.Hardware.NetworkAddresses[0] != password {

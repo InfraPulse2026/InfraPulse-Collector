@@ -78,10 +78,7 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 		}}
 	case envelope.Inventory != nil:
 		i := envelope.Inventory
-		update := &pb.InventoryUpdate{ObservedAt: timestamp(i.ObservedAt), Completeness: snapshotCompleteness[i.Completeness]}
-		if i.Completeness != "" {
-			update.Observation = observationToProto(i.Observation)
-		}
+		update := &pb.InventoryUpdate{ObservedAt: timestamp(i.ObservedAt), Completeness: snapshotCompleteness[i.Completeness], Observation: observationToProto(i.Observation)}
 		for _, device := range i.Devices {
 			update.Devices = append(update.Devices, deviceToProto(device))
 		}
@@ -94,7 +91,7 @@ func Encode(envelope model.Envelope) (*pb.AgentEnvelope, error) {
 			batch.Events = append(batch.Events, &pb.Event{
 				Id: event.ID, Type: event.Type, DeviceId: event.DeviceID,
 				Timestamp: timestamp(event.Timestamp), Severity: event.Severity,
-				Message: event.Message, Source: event.Source,
+				Message: event.Message, Source: event.Source, Observation: observationToProto(event.Observation),
 			})
 		}
 		message.Payload = &pb.AgentEnvelope_Events{Events: batch}
@@ -242,9 +239,13 @@ func DecodeEnvelope(message *pb.AgentEnvelope) (model.Envelope, error) {
 			if err != nil {
 				return e, err
 			}
+			o, err := observationFromProto(event.Observation)
+			if err != nil {
+				return e, err
+			}
 			e.Events = append(e.Events, model.Event{
 				ID: event.Id, Type: event.Type, DeviceID: event.DeviceId,
-				Timestamp: at, Severity: event.Severity, Message: event.Message, Source: event.Source,
+				Timestamp: at, Severity: event.Severity, Message: event.Message, Source: event.Source, Observation: o,
 			})
 		}
 	case *pb.AgentEnvelope_Topology:
@@ -522,9 +523,9 @@ func validateEnvelope(e model.Envelope) error {
 			if _, ok := snapshotCompleteness[e.Inventory.Completeness]; !ok {
 				return errors.New("invalid inventory completeness")
 			}
-			if err := validateObservation(e.Inventory.Observation); err != nil {
-				return err
-			}
+		}
+		if err := validateObservation(e.Inventory.Observation); err != nil {
+			return err
 		}
 		if len(e.Inventory.Devices) > maxRemoteEntries {
 			return errors.New("inventory device limit exceeded")
@@ -541,6 +542,9 @@ func validateEnvelope(e model.Envelope) error {
 		return validateTopology(*e.Topology)
 	case len(e.Events) > 0:
 		for _, event := range e.Events {
+			if err := validateObservation(event.Observation); err != nil {
+				return err
+			}
 			if err := validateTime(event.Timestamp, "event.timestamp"); err != nil {
 				return err
 			}
@@ -574,18 +578,11 @@ func validateDevice(device model.Device) error {
 	if err := validateHardware(device.Hardware); err != nil {
 		return err
 	}
-	if device.Hardware != nil {
-		if err := validateObservation(device.Observation); err != nil {
-			return err
-		}
-		if len(device.IdentityEvidence) > 4096 {
-			return errors.New("identity evidence limit exceeded")
-		}
-		for _, e := range device.IdentityEvidence {
-			if err := e.Validate(); err != nil {
-				return err
-			}
-		}
+	if err := validateObservation(device.Observation); err != nil {
+		return err
+	}
+	if err := validateIdentityEvidence(device.IdentityEvidence); err != nil {
+		return err
 	}
 	if err := validateP2Device(device); err != nil {
 		return err
@@ -614,10 +611,8 @@ func validateDevice(device model.Device) error {
 		if err := validateHardware(component.Hardware); err != nil {
 			return err
 		}
-		if component.Hardware != nil {
-			if err := validateObservation(component.Observation); err != nil {
-				return err
-			}
+		if err := validateObservation(component.Observation); err != nil {
+			return err
 		}
 		if component.ID == "" {
 			return errors.New("inventory component ID is required")

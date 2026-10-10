@@ -109,7 +109,7 @@ func (c *Client) IPv6Addresses(ctx context.Context) ([]Record, error) {
 	return c.list(ctx, "ipv6/address", "address,interface,disabled,invalid", nil)
 }
 func (c *Client) Neighbors(ctx context.Context) ([]Record, error) {
-	return c.list(ctx, "ip/neighbor", "interface,mac-address,identity,interface-name,discovered-by,age", nil)
+	return c.list(ctx, "ip/neighbor", "interface,mac-address,identity,interface-name,discovered-by,age,address,address4,address6,platform,board,version,system-description,system-caps,system-caps-enabled", nil)
 }
 func (c *Client) BridgePorts(ctx context.Context) ([]Record, error) {
 	return c.list(ctx, "interface/bridge/port", "interface,bridge", nil)

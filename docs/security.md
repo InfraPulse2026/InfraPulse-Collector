@@ -1,5 +1,40 @@
 # Безопасность InfraPulse Agent
 
+## Identity/topology Phase 6
+
+Protocol identifiers являются недоверенными данными. Normalization проверяет
+UTF-8, control characters, размеры и MAC/UUID/IP syntax; invalid/rejected evidence
+не становится matching key. Не генерируются отсутствующие serial/UUID, не
+удаляются ведущие нули serial и не объединяются разные subjects по hostname/IP.
+Facts ограничены суммарно 4096 legacy+extended на owner и 64 на сочетание полного
+SourceRef/SubjectID/SubjectKind; management
+addresses — 16/neighbor, capabilities — 16/list, raw discovery IDs — 255 bytes в
+adapters (legacy wire limit 1024), management raw address — 31 bytes.
+Точные bounds и diagnostic semantics — [Phase 6](identity-topology.md).
+
+Advertised identifiers не интерпретируются как paths, shell, SQL или URLs для
+запросов. LLDP/CDP/MNDP management addresses не создают Targets, credentials или
+подключения: опрос возможен только для явно configured Target. Hardware
+containment/management relationship не становится физическим network cable;
+Collector не выполняет global Asset merge или cross-collector resolution.
+
+Sanitizer переводит redacted identity value в `rejected` diagnostic. Если known
+secret встречается в source/subject/resource key, envelope отклоняется с безопасной
+ошибкой до outbox, поскольку переписывание ключа исказило бы identity. Это проверка
+configured values и известных patterns, а не гарантия обнаружения любого secret.
+Для source resource/relationship URI также проверяется стандартное percent-decoded
+значение; сам resource key не переписывается и не используется для нового запроса.
+Типы `ip`/`interface_name` и invalid/rejected diagnostics передаются только в
+новых Device/Telemetry `extended_identity_evidence`; old Backend не получает их
+в legacy matching lists. Backend Phase 6 должен сохранить оба typed списка.
+
+Wire validation, protobuf encoding и message-size check выполняются до durable
+admission. Malformed/oversized envelope получает diagnostic и не блокирует
+delivery retained records. Automatic topology batch splitting отсутствует;
+действуют existing queue limits (default 1 MiB), ACK/replay и PKI. Simulated
+provenance сохраняется явно; TLS peer identity Syslog остаётся отдельно от
+заявленного HOSTNAME. [Backend contract](backend-identity-topology-contract.md).
+
 ## IPMI fallback Phase 5
 
 IPMI target выбирается явно: Redfish TLS/authentication failure не запускает

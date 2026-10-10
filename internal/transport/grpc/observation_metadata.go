@@ -36,7 +36,23 @@ func observationToProto(o *model.ObservationMetadata) *pb.ObservationMetadata {
 	if o == nil {
 		return nil
 	}
-	s, at := o.Source, o.Time
+	return &pb.ObservationMetadata{Source: sourceToProto(o.Source), Time: observationTimeToProto(&o.Time)}
+}
+
+func sourceToProto(s model.SourceRef) *pb.SourceRef {
+	return &pb.SourceRef{Type: string(s.Type), CollectorId: s.CollectorID,
+		TargetId: s.TargetID, Protocol: s.Protocol, InstanceId: s.InstanceID, Provenance: string(s.Provenance), ResourceId: s.ResourceID}
+}
+
+func sourceFromProto(s *pb.SourceRef) model.SourceRef {
+	return model.SourceRef{Type: model.SourceType(s.Type), CollectorID: s.CollectorId,
+		TargetID: s.TargetId, Protocol: s.Protocol, InstanceID: s.InstanceId, Provenance: model.Provenance(s.Provenance), ResourceID: s.ResourceId}
+}
+
+func observationTimeToProto(at *model.ObservationTime) *pb.ObservationTime {
+	if at == nil {
+		return nil
+	}
 	t := &pb.ObservationTime{ObservedAt: timestamp(at.ObservedAt), CollectedAt: timestamp(at.CollectedAt), ClockQuality: string(at.Quality)}
 	if at.SourceTimestamp != nil {
 		t.SourceTimestamp = timestamp(*at.SourceTimestamp)
@@ -47,8 +63,7 @@ func observationToProto(o *model.ObservationMetadata) *pb.ObservationMetadata {
 	if at.Uncertainty != nil {
 		t.Uncertainty = durationpb.New(*at.Uncertainty)
 	}
-	return &pb.ObservationMetadata{Source: &pb.SourceRef{Type: string(s.Type), CollectorId: s.CollectorID,
-		TargetId: s.TargetID, Protocol: s.Protocol, InstanceId: s.InstanceID, Provenance: string(s.Provenance), ResourceId: s.ResourceID}, Time: t}
+	return t
 }
 
 func observationFromProto(p *pb.ObservationMetadata) (*model.ObservationMetadata, error) {
@@ -58,16 +73,25 @@ func observationFromProto(p *pb.ObservationMetadata) (*model.ObservationMetadata
 	if p.Source == nil || p.Time == nil {
 		return nil, errors.New("incomplete observation metadata")
 	}
-	s, at := p.Source, p.Time
-	o := &model.ObservationMetadata{Source: model.SourceRef{Type: model.SourceType(s.Type), CollectorID: s.CollectorId,
-		TargetID: s.TargetId, Protocol: s.Protocol, InstanceID: s.InstanceId, Provenance: model.Provenance(s.Provenance), ResourceID: s.ResourceId},
-		Time: model.ObservationTime{Quality: model.ClockQuality(at.ClockQuality)}}
-	var err error
-	o.Time.ObservedAt, err = requiredTime(at.ObservedAt, "observation.observed_at")
+	at, err := observationTimeFromProto(p.Time)
 	if err != nil {
 		return nil, err
 	}
-	o.Time.CollectedAt, err = requiredTime(at.CollectedAt, "observation.collected_at")
+	o := &model.ObservationMetadata{Source: sourceFromProto(p.Source), Time: *at}
+	return o, validateObservation(o)
+}
+
+func observationTimeFromProto(at *pb.ObservationTime) (*model.ObservationTime, error) {
+	if at == nil {
+		return nil, nil
+	}
+	t := &model.ObservationTime{Quality: model.ClockQuality(at.ClockQuality)}
+	var err error
+	t.ObservedAt, err = requiredTime(at.ObservedAt, "observation.observed_at")
+	if err != nil {
+		return nil, err
+	}
+	t.CollectedAt, err = requiredTime(at.CollectedAt, "observation.collected_at")
 	if err != nil {
 		return nil, err
 	}
@@ -76,17 +100,17 @@ func observationFromProto(p *pb.ObservationMetadata) (*model.ObservationMetadata
 		if err != nil {
 			return nil, err
 		}
-		o.Time.SourceTimestamp = &value
+		t.SourceTimestamp = &value
 	}
-	o.Time.ClockOffset, err = observationDurationFromProto(at.ClockOffset)
+	t.ClockOffset, err = observationDurationFromProto(at.ClockOffset)
 	if err != nil {
 		return nil, err
 	}
-	o.Time.Uncertainty, err = observationDurationFromProto(at.Uncertainty)
+	t.Uncertainty, err = observationDurationFromProto(at.Uncertainty)
 	if err != nil {
 		return nil, err
 	}
-	return o, validateObservation(o)
+	return t, t.Validate()
 }
 
 func observationDurationFromProto(p *durationpb.Duration) (*time.Duration, error) {

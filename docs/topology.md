@@ -4,6 +4,9 @@ Collector собирает LLDP-MIB через Generic SNMP и RouterOS neighbor
 нормализует observations и передаёт `TopologyUpdate` через outbound gRPC.
 Mock Controller показывает их в JSON. Global reconciliation графа, история
 и Web UI остаются Backend responsibilities.
+Phase 6 уточняет observations как направленные `observed_l2_neighbor`:
+объявленное L2 соседство не доказывает прямой физический кабель. Две стороны
+или два Collectors передают независимые observations.
 
 ## Реальный pipeline
 
@@ -35,11 +38,15 @@ complete/partial/failed, collector TTL seconds, expiry assumption и observation
 
 | Поле | Смысл |
 |---|---|
-| Local device/interface ID/name | Configured device и доказанный canonical interface; пустой interface допустим |
+| Local device/interface ID/name | Наблюдаемый device configured target и доказанный canonical interface; пустой interface допустим |
+| Local ifIndex/MAC/description/alias | Доступные признаки конкретного local interface; ifIndex может меняться после reboot |
 | Local port number/ID/subtype | Исходные LLDP local port сведения; number не ifIndex |
 | Remote chassis bytes/subtype | Исходный advertised identifier; RouterOS MAC имеет unknown subtype |
 | Remote port bytes/subtype | Advertised port identifier, если protocol/API его реально предоставляет |
 | Remote system name/port description | Необязательные данные соседа |
+| Management addresses / capabilities | Bounded advertised addresses с IANA family/raw bytes и supported/enabled capabilities |
+| System description / platform/model/version | Реальные optional LLDP/RouterOS fields, с protocol distinctions |
+| Observation ID / kind / SourceRef | Stable source-scoped key и `observed_l2_neighbor`; не глобальный Asset/Link ID |
 | Protocol/source | LLDP, CDP, MNDP или unknown и фактический collector |
 | ObservedAt/ExpiresAt | Время наблюдения и expiry по явно указанному предположению |
 | Evidence/confidence | Основание mapping и high/medium/low/unresolved |
@@ -52,6 +59,15 @@ assigned identifier имеют разные значения. Remote hostname н
 
 Driver читает local port table и remote table стандартной
 [IEEE LLDP-MIB](https://www.ieee802.org/1/files/public/MIBs/LLDP-MIB-200505060000Z.mib).
+Уже прочитанные remote columns sysDescr/capabilities сохраняются. Optional
+bounded walk `lldpRemManAddrTable` выполняется в том же slow topology job;
+полный interface/ENTITY-MIB inventory poll не повторяется при каждом update,
+если interface cache доступен. Management addresses соединяются по полному
+remote row index, сохраняют IPv4/IPv6/unknown address family и raw octets,
+LLDP interface numbering. Не более 16 адресов на neighbor; unsupported optional
+table оставляет адреса unknown, transport/parser failure даёт partial и
+не удаляет остальные observations. Advertised адреса не вызывают probes,
+создание Targets или credentials.
 Remote rows индексируются полным `timeMark.localPortNum.remIndex`, поэтому
 несколько neighbors на одном port не объединяются случайно. `lldpStatsRemTablesLastChangeTime`
 проверяется до/после collection; изменившаяся таблица даёт partial.
@@ -68,6 +84,9 @@ Remote rows индексируются полным `timeMark.localPortNum.remIn
 Mapping принимается только при единственном candidate. Коллизия, отсутствие
 подходящего subtype/ID или metadata оставляют LocalInterfaceID пустым и
 confidence=unresolved. Raw evidence сохраняется, interface не придумывается.
+При корректном mapping передаются доступные ifIndex/MAC/ifDescr/ifAlias;
+malformed cached interface identity оставляет neighbor unresolved с partial
+diagnostic, сохраняя raw remote evidence.
 Complete empty snapshot требует доказательства доступной LLDP-MIB: local ports
 или доступного last-change scalar. Отсутствие MIB не превращается в complete
 empty graph. Missing/malformed identifiers и прерванный walk сохраняют partial
@@ -78,6 +97,11 @@ empty graph. Missing/malformed identifiers и прерванный walk сохр
 Fixed GET `/rest/ip/neighbor` сохраняет `discovered-by` для LLDP/CDP/MNDP;
 при отсутствии/неизвестном protocol применяется unknown. Несколько protocols
 дают отдельные observations. `age` корректирует observed time, если доступен.
+`AgeSeconds` сохраняет reported age отдельно от collector TTL. Тот же fixed GET
+с расширенной `.proplist` получает address/address4/address6, platform/board/version,
+system-description и system-caps/system-caps-enabled. Description/capabilities,
+документированные как LLDP, сохраняются только на LLDP observation. Generic API
+identity не объявляется raw CDP Device-ID; native Cisco CDP reader отсутствует.
 Unique interface name связывается с canonical RouterOS `.id`; неоднозначный
 master/slave string остаётся unresolved.
 
@@ -87,7 +111,8 @@ Neighbor `mac-address` не гарантированно LLDP chassis ID: raw MA
 LLDP/MNDP port ID остаётся отсутствующим. LLDP/CDP mapped observations получают
 medium confidence, MNDP — low: discovery на общем segment/bridge не доказывает
 один point-to-point кабель. Details —
-[RouterOS Neighbor discovery](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery).
+[RouterOS Neighbor discovery](https://manual.mikrotik.com/docs/system-information-and-utilities/neighbor-discovery/),
+[Neighbor field reference](https://manual.mikrotik.com/docs/cli-reference/ip/neighbor/).
 
 ARP/ND/FDB не являются источниками P1 physical observations и не кодируются
 как discovery protocols. Они не доказывают прямой физический кабель.
@@ -106,6 +131,8 @@ LLDP-MIB не предоставляет received neighbor TTL. `remote.topology
 LLDP TTL. RouterOS observation age и collector TTL также не подтверждают
 remote protocol lifetime. Backend учитывает source/completeness/expiry
 и выполняет global reconciliation.
+Received protocol TTL и explicit withdrawal текущие readers не предоставляют;
+TTL=0 collector assumption не является protocol shutdown packet.
 
 Registry выдаёт `topology.link.observed` при появлении нового observation;
 `topology.link.expired` — лишь когда complete snapshot не содержит ранее
@@ -136,8 +163,20 @@ unknown; RouterOS neighbor MAC не становится hardware UUID или п
 LLDP chassis ID. Local Target ID и observed local Device ID раздельны;
 remote chassis evidence не выполняет Asset merge. ClockOffset/Uncertainty
 по умолчанию отсутствуют; observed/collected times сохраняют прежние значения.
-Полная новая metadata пока internal-only; существующие topology wire fields
-остаются совместимыми. [Collector Core](collector-core.md), [wire gaps](protocol.md).
+Phase 6 доставляет batch/neighbor ObservationMetadata и IdentityEvidence через
+additive protobuf fields. Stable observation ID учитывает Collector/Target,
+carrier/discovery source, local и remote endpoint evidence/subtypes; time,
+age и poll-specific LLDP timeMark/remIndex в key не входят. Runtime binding
+пересчитывает key при появлении Collector ID. Raw discovery IDs ограничены 255
+bytes в adapters, legacy wire сохраняет предел 1024; names255/descriptions4096,
+management addresses16 и capabilities16 на neighbor.
+Collection-time names limits не ужесточают historical legacy wire rules при
+чтении старых durable envelopes. Unknown AF остаётся raw
+evidence, без выдуманного IP. Snapshot size ограничивается existing admission
+budget (default 1MiB), automatic topology splitting отсутствует.
+[Collector Core](collector-core.md), [protocol](protocol.md),
+[Identity/topology Phase 6](identity-topology.md),
+[Backend handoff contract](backend-identity-topology-contract.md).
 
 ## Проверка и ограничения
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // SourceType describes the observation domain, independently of the vendor or
@@ -255,7 +256,7 @@ func observationInstant(t time.Time) bool {
 }
 
 func boundedText(s string, max int) bool {
-	if len(s) > max {
+	if len(s) > max || !utf8.ValidString(s) {
 		return false
 	}
 	for _, ch := range s {

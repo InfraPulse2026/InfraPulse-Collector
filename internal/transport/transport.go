@@ -9,6 +9,12 @@ import (
 type Transport interface {
 	Connect(context.Context) (Session, error)
 }
+
+// EnvelopeValidator prevents an unsendable normalized observation from entering
+// a durable outbox. Protocol-specific encoding and size checks stay in transport.
+type EnvelopeValidator interface {
+	ValidateEnvelope(model.Envelope) error
+}
 type Session interface {
 	Send(model.Envelope) error
 	Receive() (model.ControllerMessage, error)

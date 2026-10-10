@@ -199,7 +199,7 @@ func documents() map[string]any {
 		"/redfish/v1/Chassis/D/Thermal":                                 map[string]any{"Temperatures": []any{map[string]any{"MemberId": "T1", "Name": "legacy temp", "ReadingCelsius": 38}}, "Fans": []any{map[string]any{"MemberId": "F1", "Name": "legacy RPM", "Reading": 900, "ReadingUnits": "RPM"}, map[string]any{"MemberId": "F2", "Name": "legacy percent", "Reading": 30, "ReadingUnits": "Percent"}}},
 		"/redfish/v1/Chassis/D/Power":                                   map[string]any{"PowerSupplies": []any{map[string]any{"MemberId": "P1", "Name": "health only PSU", "Status": warning}}, "PowerControl": []any{map[string]any{"MemberId": "PC", "PowerConsumedWatts": 90}}},
 		"/redfish/v1/Managers":                                          collection("/redfish/v1/Managers/M", "/redfish/v1/Managers/N"),
-		"/redfish/v1/Managers/M":                                        map[string]any{"Name": "BMC M", "ManagerType": "BMC", "Model": "BMC", "FirmwareVersion": "BMC 3", "UUID": "BMC-UUID", "Status": ok, "Links": map[string]any{"ManagerForServers": []any{ref("/redfish/v1/Systems/A")}, "ManagerForChassis": []any{ref("/redfish/v1/Chassis/C")}}},
+		"/redfish/v1/Managers/M":                                        map[string]any{"Name": "BMC M", "ManagerType": "BMC", "Model": "BMC", "FirmwareVersion": "BMC 3", "UUID": "e88f4ad5-3db8-4d63-a145-d29b6ef1f490", "Status": ok, "Links": map[string]any{"ManagerForServers": []any{ref("/redfish/v1/Systems/A")}, "ManagerForChassis": []any{ref("/redfish/v1/Chassis/C")}}},
 		"/redfish/v1/Managers/N":                                        map[string]any{"Name": "BMC N", "ManagerType": "BMC"},
 	}
 }

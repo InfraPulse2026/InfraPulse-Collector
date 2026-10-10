@@ -7,10 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"net/netip"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"InfraPulseAgent/internal/driver"
 	"InfraPulseAgent/internal/model"
@@ -198,9 +199,15 @@ func (a *Adapter) hardware(ctx context.Context) ([]model.TelemetrySample, error)
 			}
 			continue
 		}
+		original, originalUUID := base, h.HardwareUUID
 		d.boundResource(&base, h)
 		at := time.Now().UTC()
 		observation := p.observation(uri, at, nil)
+		subject := stableID(a.opts.ID, node.kind, uri)
+		if node.top {
+			subject = ""
+		}
+		d.resourceIdentity(&sample.IdentityEvidence, original, originalUUID, node.kind, subject, observation, h)
 		if node.top {
 			sample.Observation = observation
 			sample.ObservedAt = at
@@ -334,12 +341,24 @@ func (d *discovery) boundResource(b *baseResource, h *model.HardwareInventory) {
 		&h.HardwareUUID, &h.SKU, &h.PartNumber, &h.BIOSVersion, &h.PowerState, &h.ChassisType,
 		&h.ManagerType, &h.AssetTag, &h.PhysicalSecurity, &h.DeviceLocation, &h.MemoryType,
 		&h.ErrorCorrection, &h.Protocol, &h.MediaType} {
-		if len(*value) > 1024 {
+		if !safeResourceText(*value, 1024) {
 			*value = ""
 			d.record(driver.ErrMalformed)
 		}
 	}
 	d.boundStatus(&h.Status)
+}
+
+func safeResourceText(value string, limit int) bool {
+	if len(value) > limit || !utf8.ValidString(value) {
+		return false
+	}
+	for _, ch := range value {
+		if unicode.IsControl(ch) {
+			return false
+		}
+	}
+	return true
 }
 
 func (d *discovery) boundStatus(st *model.HardwareStatus) {
@@ -386,6 +405,7 @@ func resource(body json.RawMessage, kind string) (baseResource, *model.HardwareI
 	case "Chassis":
 		var v schemas.Chassis
 		err = json.Unmarshal(body, &v)
+		h.HardwareUUID = v.UUID
 		h.PartNumber = v.PartNumber
 		h.ChassisType = string(v.ChassisType)
 		h.AssetTag = v.AssetTag
@@ -393,6 +413,7 @@ func resource(body json.RawMessage, kind string) (baseResource, *model.HardwareI
 	case "Manager":
 		var v schemas.Manager
 		err = json.Unmarshal(body, &v)
+		h.HardwareUUID = v.UUID
 		h.ManagerType = string(v.ManagerType)
 	case "Processor":
 		var v schemas.Processor
@@ -496,6 +517,7 @@ func (d *discovery) device(uri, kind string) (model.Device, model.TelemetrySampl
 	if err != nil {
 		return model.Device{}, model.TelemetrySample{}, err
 	}
+	original, originalUUID := b, h.HardwareUUID
 	d.boundResource(&b, h)
 	at := time.Now().UTC()
 	observation := d.p.observation(uri, at, nil)
@@ -506,7 +528,7 @@ func (d *discovery) device(uri, kind string) (model.Device, model.TelemetrySampl
 	if kind == "ComputerSystem" {
 		device.FirmwareVersion = ""
 	} // BIOS lives in the explicitly named field.
-	device.IdentityEvidence = model.DeviceIdentityEvidence(device, observation.Source)
+	d.resourceIdentity(&device.IdentityEvidence, original, originalUUID, kind, "", observation, h)
 	device.Observation.Time.CollectedAt = time.Now().UTC()
 	sample := model.TelemetrySample{DeviceID: device.ID, ObservedAt: at, CollectedAt: at, Source: d.p.source(), Observation: model.CloneObservation(observation), UptimeAvailable: &available}
 	d.addHealth(&sample, device.ID, uri, b.Name, h.Status, observation)
@@ -532,8 +554,95 @@ func (d *discovery) device(uri, kind string) (model.Device, model.TelemetrySampl
 		}
 	}
 	sort.Slice(device.Components, func(i, j int) bool { return device.Components[i].ID < device.Components[j].ID })
-	device.IdentityEvidence = model.DeviceIdentityEvidence(device, observation.Source)
+	device.IdentityEvidence = model.MergeIdentityEvidence(device.IdentityEvidence, model.DeviceIdentityEvidence(device, observation.Source))
 	return device, sample, nil
+}
+
+func resourceSubject(kind string) string {
+	switch kind {
+	case "ComputerSystem":
+		return "computer_system"
+	case "Chassis":
+		return "chassis"
+	case "Manager":
+		return "manager"
+	case "EthernetInterface":
+		return "network_interface"
+	default:
+		return "component"
+	}
+}
+
+// Explicit resource facts preserve the original protocol property and subject.
+// Invalid optional values remain bounded diagnostics, never fabricated IDs.
+func (d *discovery) identity(values *[]model.IdentityEvidence, kind model.IdentityEvidenceType, value, subject, subjectKind, origin string, observation *model.ObservationMetadata) *model.IdentityEvidence {
+	if value == "" {
+		return nil
+	}
+	fact, err := model.NewIdentityFact(kind, value, observation.Source, "medium", subject, subjectKind, origin, &observation.Time)
+	if kind == model.IdentitySerial || kind == model.IdentityHardwareUUID {
+		fact.Confidence = "high"
+	} else if kind == model.IdentityIP {
+		fact.Confidence = "low"
+	}
+	if err != nil {
+		fact.Confidence = "unresolved"
+		d.record(driver.ErrMalformed)
+	}
+	if fact.Validate() != nil {
+		return nil
+	}
+	if !d.identityBudget(*values, subject, observation.Source.ResourceID) {
+		d.record(driver.ErrLimit)
+		return nil
+	}
+	*values = append(*values, fact)
+	return &(*values)[len(*values)-1]
+}
+
+func (d *discovery) identityBudget(values []model.IdentityEvidence, subject, resource string) bool {
+	if len(values) >= model.MaxIdentityEvidence {
+		return false
+	}
+	count := 0
+	for _, fact := range values {
+		if fact.SubjectID == subject && fact.Source.ResourceID == resource {
+			count++
+		}
+	}
+	return count < model.MaxIdentityPerSubject
+}
+
+func (d *discovery) rejectedIdentity(values *[]model.IdentityEvidence, subject, kind string, observation *model.ObservationMetadata) {
+	rejections := d.p.rejectedIdentity[observation.Source.ResourceID]
+	sort.Slice(rejections, func(i, j int) bool { return rejections[i].origin < rejections[j].origin })
+	for _, rejection := range rejections {
+		if !d.identityBudget(*values, subject, observation.Source.ResourceID) {
+			d.record(driver.ErrLimit)
+			return
+		}
+		// A fixed hostile input asks the common normalizer for its bounded
+		// rejected marker. The original value has already been discarded.
+		fact, _ := model.NewIdentityFact(rejection.kind, "\x00", observation.Source, "unresolved", subject, resourceSubject(kind), rejection.origin, &observation.Time)
+		if fact.Validate() == nil {
+			*values = append(*values, fact)
+		}
+	}
+}
+
+func (d *discovery) resourceIdentity(values *[]model.IdentityEvidence, b baseResource, uuid, kind, subject string, observation *model.ObservationMetadata, h *model.HardwareInventory) {
+	for _, field := range []struct {
+		kind          model.IdentityEvidenceType
+		value, origin string
+	}{{model.IdentitySerial, b.SerialNumber, "redfish.SerialNumber"}, {model.IdentityManufacturer, b.Manufacturer, "redfish.Manufacturer"}, {model.IdentityModel, b.Model, "redfish.Model"}} {
+		d.identity(values, field.kind, field.value, subject, resourceSubject(kind), field.origin, observation)
+	}
+	if fact := d.identity(values, model.IdentityHardwareUUID, uuid, subject, resourceSubject(kind), "redfish.UUID", observation); fact != nil && fact.Normalization != "invalid" && fact.Normalization != "rejected" {
+		h.HardwareUUID = fact.Value
+	} else if uuid != "" {
+		h.HardwareUUID = ""
+	}
+	d.rejectedIdentity(values, subject, kind, observation)
 }
 
 func (d *discovery) relations(fields map[string]json.RawMessage, h *model.HardwareInventory) {
@@ -613,24 +722,62 @@ func (d *discovery) component(device *model.Device, sample *model.TelemetrySampl
 			d.record(driver.ErrMalformed)
 			return
 		}
-		for _, address := range v.IPv4Addresses {
-			if len(device.Hardware.NetworkAddresses) >= 64 {
+		id := stableID(d.p.a.opts.ID, kind, uri)
+		for _, existing := range device.Components {
+			if existing.ID == id {
+				return
+			}
+		}
+		if d.p.emitted >= d.p.a.limits.MaxResources {
+			d.record(driver.ErrLimit)
+			return
+		}
+		d.p.emitted++
+		at := time.Now().UTC()
+		observation := d.p.observation(uri, at, nil)
+		h := &model.HardwareInventory{ResourceType: kind, Status: status(v.Status)}
+		b := baseResource{Name: v.Name}
+		d.boundResource(&b, h)
+		component := model.InventoryComponent{ID: id, ParentID: parent, Class: kind, Name: b.Name, Hardware: h, Observation: observation}
+		for _, field := range []struct{ value, origin string }{{v.MACAddress, "redfish.MACAddress"}, {v.PermanentMACAddress, "redfish.PermanentMACAddress"}} {
+			d.identity(&device.IdentityEvidence, model.IdentityMAC, field.value, id, "network_interface", field.origin, observation)
+		}
+		d.rejectedIdentity(&device.IdentityEvidence, id, kind, observation)
+		addAddress := func(address, origin string) {
+			if len(h.NetworkAddresses) >= 64 {
+				d.record(driver.ErrLimit)
+				return
+			}
+			fact := d.identity(&device.IdentityEvidence, model.IdentityIP, address, id, "network_interface", origin, observation)
+			if fact == nil || fact.Normalization == "invalid" || fact.Normalization == "rejected" {
+				return
+			}
+			h.NetworkAddresses = append(h.NetworkAddresses, fact.Value)
+			if len(device.Hardware.NetworkAddresses) < 64 {
+				// The parent aggregate remains available for legacy consumers;
+				// resource-scoped addresses and evidence live on the interface.
+				device.Hardware.NetworkAddresses = append(device.Hardware.NetworkAddresses, fact.Value)
+			} else {
+				d.record(driver.ErrLimit)
+			}
+		}
+		for i, address := range v.IPv4Addresses {
+			if i >= 64 {
 				d.record(driver.ErrLimit)
 				break
 			}
-			if ip, e := netip.ParseAddr(address.Address); e == nil {
-				device.Hardware.NetworkAddresses = append(device.Hardware.NetworkAddresses, ip.String())
-			}
+			addAddress(address.Address, "redfish.IPv4Addresses.Address")
 		}
-		for _, address := range v.IPv6Addresses {
-			if len(device.Hardware.NetworkAddresses) >= 64 {
+		for i, address := range v.IPv6Addresses {
+			if i >= 64 || len(h.NetworkAddresses) >= 64 {
 				d.record(driver.ErrLimit)
 				break
 			}
-			if ip, e := netip.ParseAddr(address.Address); e == nil {
-				device.Hardware.NetworkAddresses = append(device.Hardware.NetworkAddresses, ip.String())
-			}
+			addAddress(address.Address, "redfish.IPv6Addresses.Address")
 		}
+		device.Components = append(device.Components, component)
+		// Interface inventory is already fetched above. Do not add this URI to
+		// the hardware polling plan or create another network inventory poll.
 		return
 	}
 	b, h, err := resource(body, kind)
@@ -638,6 +785,7 @@ func (d *discovery) component(device *model.Device, sample *model.TelemetrySampl
 		d.record(err)
 		return
 	}
+	original, originalUUID := b, h.HardwareUUID
 	d.boundResource(&b, h)
 	id := stableID(d.p.a.opts.ID, kind, uri)
 	at := time.Now().UTC()
@@ -653,6 +801,7 @@ func (d *discovery) component(device *model.Device, sample *model.TelemetrySampl
 		return
 	}
 	d.p.emitted++
+	d.resourceIdentity(&device.IdentityEvidence, original, originalUUID, kind, id, observation, h)
 	device.Components = append(device.Components, component)
 	d.remember(uri, kind, device.ID, parent, false)
 	d.addHealth(sample, id, uri, b.Name, h.Status, observation)
