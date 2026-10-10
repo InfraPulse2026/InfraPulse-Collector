@@ -2,7 +2,7 @@
 
 InfraPulse Collector — Go-компонент NetOps Control Plane InfraPulse для работы
 в management/local network. Он опрашивает сетевые устройства через SNMP v2c/v3
-и RouterOS HTTPS REST, опрашивает hardware через Redfish HTTPS,
+и RouterOS HTTPS REST, опрашивает hardware через Redfish HTTPS и IPMI LANplus,
 собирает LLDP/CDP/MNDP observations и SIP health,
 передаёт telemetry, inventory, topology, logs и события в Controller/Backend.
 Установка Collector на каждый server не требуется: один gateway может
@@ -34,11 +34,15 @@ AI и историческое хранилище находятся вне эт
 - Redfish read-only: несколько ComputerSystems/Chassis/Managers на BMC,
   hardware inventory/health и modern/legacy temperature/fan/PSU metrics;
   verified HTTPS, session auth и bounded polling через existing durable delivery.
+- IPMI v2.0 LANplus read-only для явно заданных legacy BMC: Get Device ID,
+  FRU, SDR Full/Compact sensors, temperature/fan/voltage/current/power и chassis
+  status через те же hardware models и delivery. UDP/623, cipher 17 либо явно 3.
 - RouterOS HTTPS REST: identity/resource/routerboard, interfaces и IP-адреса,
   neighbor discovery с фактическим LLDP/CDP/MNDP source.
 - Ограниченный remote polling, offline после трёх последовательных ошибок связи
   и события переходов состояния.
-- Настраиваемый интервал оперативной telemetry, по умолчанию 3 секунды.
+- Настраиваемый интервал оперативной local/SNMP/RouterOS telemetry,
+  по умолчанию 3 секунды; hardware polling использует отдельные интервалы.
 - Исходящее bidirectional gRPC-соединение, production mTLS и reconnect.
 - Memory или bounded durable outbox со stable IDs, negotiated application ACK,
   restart/replay и diagnostics. Durable delivery — at-least-once для retained
@@ -224,7 +228,7 @@ devices: []
 | `logging` | Уровень логирования: debug, info, warn, error |
 | `location` | Физическое расположение, заданное оператором |
 | `commands` | Включение typed actions и protected resources |
-| `devices` | Стабильные ID, адреса, SNMP/RouterOS/Redfish driver и настройки опроса |
+| `devices` | Стабильные ID, адреса, SNMP/RouterOS/Redfish/IPMI driver и настройки опроса |
 | `credentials` | Именованные ссылки на environment variables с credentials |
 | `remote` | Concurrency, лимиты responses/rows и срок актуальности topology |
 | `logs` | Configured file sources, read/line/batch limits и polling |
@@ -248,6 +252,8 @@ devices: []
   production Agent-side enrollment с bootstrap CA и token environment reference.
 - [config.time-sync.example.yaml](configs/config.time-sync.example.yaml) —
   corporate NTP и отдельный deployment apply без локального сбора.
+- [config.ipmi.example.yaml](configs/config.ipmi.example.yaml) — explicit IPMI
+  LANplus target с provider credentials, USER privilege и durable delivery.
 
 Для production замените адрес и параметры безопасности:
 
@@ -341,7 +347,7 @@ CA именно этого устройства; если поле отсутс�
 verification не поддерживаются даже при development-соединении с Controller.
 
 Настройки `polling.fast_interval`, `medium_interval`, `inventory_interval`,
-`topology_interval` и `timeout` переопределяют общие интервалы для устройства.
+`topology_interval` и `timeout` переопределяют общие интервалы SNMP/RouterOS.
 По умолчанию fast — 3s, medium — 30s, inventory/topology — 5m. Полные inventory
 и neighbor tables опрашиваются отдельно от fast counters. Общий лимит
 одновременных remote jobs задаётся `remote.concurrency` (default 4), лимиты
@@ -351,6 +357,12 @@ SNMP limit применяется также к числу varbind/table cells, 
 После первого bounded interface baseline SNMP fast polling использует Get
 по известным indexes. Новые interfaces обнаруживаются на следующем inventory
 refresh; исчезнувшие известные indexes удаляются при недоступном ifIndex.
+
+Redfish и IPMI используют `medium_interval` для hardware health/metrics и
+`inventory_interval` для inventory; отдельного fast/topology polling у них нет.
+IPMI выбирается только явно через `driver: ipmi`, с username/password references,
+host/IP в `address` и отдельным UDP port. Конфигурация и security policy —
+[Redfish](docs/redfish.md), [IPMI](docs/ipmi.md).
 
 Перед запуском можно выполнить ограниченный read-only probe:
 
@@ -629,6 +641,9 @@ sudo systemctl status infrapulse-agent
   Backend. Шесть detection profiles используют подтверждённые prefixes;
   product-specific health mappings отсутствуют. SNMPv3 расширяет security mode
   существующего adapter; mappings остаются общими. [SNMPv3 config](docs/snmpv3.md).
+- **Hardware BMC:** Redfish HTTPS и explicit IPMI LANplus используют общие
+  hardware contracts. Реальные BMC/vendor firmware пока не проверены;
+  границы fixtures и validation — [Redfish](docs/redfish.md), [IPMI](docs/ipmi.md).
 
 Подробная [матрица платформ, vendors и capabilities](docs/vendor-support.md).
 
@@ -684,6 +699,10 @@ sh scripts/generate-proto.sh
 ## Документация
 
 - [Архитектура](docs/architecture.md) — компоненты, модели и внутренние pipelines.
+- [IPMI fallback](docs/ipmi.md) — LANplus, cipher policy, FRU/SDR и hardware
+  mapping, ограничения legacy BMC и результаты проверки Phase 5.
+- [Phase 5 report](docs/phase-5-report.md) — baseline, protocol/security fixtures,
+  shared hardware pipeline, resource measurements и фактические ограничения.
 - [Collector Core](docs/collector-core.md) — Target/Source, identity evidence,
   temporal semantics и границы совместимости Phase 1.
 - [Корпоративный NTP](docs/time-sync.md) — конфигурация chrony/timesyncd,
@@ -717,7 +736,9 @@ Remote Syslog/Audit Receiver принимает TLS/TCP через existing dura
 UDP/RELP и Backend log storage/search отсутствуют. Redfish hardware adapter
 реализован; actual BMC/vendor hardware и production Backend storage ещё не
 проверены. Настройка, fields и limits — [Redfish](docs/redfish.md).
-IPMI остаётся отдельной Phase 5 и не реализован.
+IPMI Phase 5 использует общий hardware pipeline; автоматического перехода с
+Redfish, IPMI v1.5, IPMB bridging, OEM conversion и power control нет.
+Реальные BMC и OpenWrt RAM/flash пока не проверены; [границы](docs/ipmi.md).
 Collector ↔ Backend clock offset estimation также отложен; unknown offset
 не считается нулём. Phase 2 передаёт corporate servers стандартной службе ОС
 через отдельный deployment helper. Collector использует системное время,

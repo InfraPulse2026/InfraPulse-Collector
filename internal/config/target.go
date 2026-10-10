@@ -10,7 +10,7 @@ import (
 // A Target ID identifies the connection; it is not an observed Device ID.
 func (d Device) Target(defaults Polling) model.Target {
 	poll := d.Polling
-	if d.Driver == "redfish" {
+	if d.Driver == "redfish" || d.Driver == "ipmi" {
 		// Hardware BMCs use their own slow polling budget. In particular, the
 		// existing 3s/2s telemetry defaults are unsuitable for full discovery.
 		poll.FastInterval, poll.TopologyInterval = 0, 0

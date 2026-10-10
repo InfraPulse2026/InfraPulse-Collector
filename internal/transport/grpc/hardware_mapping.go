@@ -144,7 +144,7 @@ func hardwareDeviceFromProto(p *pb.Device, d *model.Device) error {
 	return nil
 }
 func hardwareSampleToProto(s model.TelemetrySample, p *pb.TelemetrySample) {
-	if len(s.HardwareHealth) > 0 || s.Observation != nil && s.Observation.Source.Type == model.SourceRedfish {
+	if len(s.HardwareHealth) > 0 || s.Observation != nil && (s.Observation.Source.Type == model.SourceRedfish || s.Observation.Source.Type == model.SourceIPMI) {
 		p.Observation = observationToProto(s.Observation)
 		p.IdentityEvidence = identityToProto(s.IdentityEvidence)
 	}
@@ -201,7 +201,7 @@ func validateHardwareSample(s model.TelemetrySample) error {
 	if len(s.HardwareHealth) > 4096 || len(s.Metrics) > 16384 {
 		return errors.New("hardware sample limit exceeded")
 	}
-	if s.Observation != nil && s.Observation.Source.Type == model.SourceRedfish {
+	if s.Observation != nil && (s.Observation.Source.Type == model.SourceRedfish || s.Observation.Source.Type == model.SourceIPMI) {
 		if err := validateObservation(s.Observation); err != nil {
 			return err
 		}

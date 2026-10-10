@@ -3,6 +3,7 @@ module InfraPulseAgent
 go 1.27
 
 require (
+	github.com/bougou/go-ipmi v0.9.2-0.20261009051248-b3670df57943
 	github.com/google/uuid v1.6.0
 	github.com/gosnmp/gosnmp v1.45.0
 	github.com/stmcginnis/gofish v0.27.0
@@ -14,7 +15,20 @@ require (
 )
 
 require (
+	github.com/fatih/color v1.15.0 // indirect
+	github.com/go-ole/go-ole v1.3.0 // indirect
+	github.com/kr/pretty v0.3.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/olekukonko/errors v1.1.0 // indirect
+	github.com/olekukonko/ll v0.0.9 // indirect
+	github.com/olekukonko/tablewriter v1.0.9 // indirect
+	github.com/rivo/uniseg v0.2.0 // indirect
+	github.com/rogpeppe/go-internal v1.6.1 // indirect
 	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 )

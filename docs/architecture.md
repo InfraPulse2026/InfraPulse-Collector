@@ -24,7 +24,7 @@ Domain boundaries и архитектурный freeze Phase 1 описаны в
 | Host Time Setup | Trusted local `time_sync`, выбор стандартной NTP-службы ОС, opt-in deployment apply и read-only status; не создаёт clock model или remote-device command |
 | Remote Registry | Configured targets, lifecycle adapters, bounded polling, per-target exclusion, last successful observation, connectivity failures и state events |
 | Remote Driver | Нормализация данных источника и динамические capabilities; не читает YAML или protobuf и не выполняет глобальный Asset merge |
-| Protocol Adapter | SNMP v2c/v3 USM/UDP или RouterOS HTTPS REST, authentication, deadlines, cancellation, response limits и безопасные категории ошибок |
+| Protocol Adapter | SNMP v2c/v3 USM/UDP, RouterOS/Redfish HTTPS или IPMI LANplus UDP, authentication, deadlines, cancellation, response limits и безопасные категории ошибок |
 | CredentialProvider | Получение credentials по именованной ссылке из environment; заменяемый interface |
 | Observation Pipeline | Общие normalized payloads, SourceRef/provenance, identity evidence, temporal metadata, presence, counters, безопасные deltas/rates и outbox |
 | Command Pipeline | Typed validation → admission/journal → target/capability/policy/protection → persistent snapshot/executing → mutation → verification → persistent result/ACK |
@@ -38,7 +38,8 @@ Domain boundaries и архитектурный freeze Phase 1 описаны в
 | Telephony | Fixed SIP OPTIONS UDP/TCP/TLS, verified CA/SAN/SNI, latency/response/error semantics и отдельные state transitions |
 | Simulator | Deterministic development scenarios с simulated source через настоящий transport |
 
-Core не знает OID, RouterOS endpoints и concrete protobuf types. Cross-platform
+Core не знает OID, RouterOS/Redfish endpoints, IPMI commands/SDR layouts и
+concrete protobuf types. Cross-platform
 описывает ОС запуска Agent; multi-vendor — удалённые устройства. На Windows
 доступен collector hosting с `local.enabled: false`; Windows LocalPlatform
 не реализован и сознательно перенесён в post-MVP/backlog; готовность P3 от него
@@ -55,6 +56,7 @@ internal/driver/             Adapter, optional readers, compile-time Registry и
 internal/driver/snmp/        SYSTEM/ENTITY/IF/IF-X/LLDP normalization
 internal/driver/routeros/    REST normalization, dependency resolution и verification
 internal/driver/redfish/     bounded gofish HTTPS/session adapter и hardware normalization
+internal/driver/ipmi/        bounded LANplus/session gate, FRU/SDR и hardware normalization
 internal/protocol/snmp/      read-only GoSNMP adapter
 internal/protocol/routeros/  fixed HTTPS REST operations
 internal/model/              Target, SourceRef, observations, time и identity evidence
@@ -96,9 +98,26 @@ Standalone `probe-device` использует тот же registered driver и 
 source-bound Device/identity evidence, без запуска runtime/transport.
 Collector ID в этом read отсутствует, поскольку persistent identity не загружается.
 
+IPMI Phase 5 реализует те же `InventoryBatchReader`/`HardwareReader` в
+`internal/driver/ipmi`. Фабрика выбирает только явно заданный `driver: ipmi`;
+это fallback compatibility, без network scanning или переключения после
+Redfish ошибок. Pure-Go typed client и проверка входящих RMCP+ пакетов изолированы
+в adapter; Collector Core не знает IPMI commands/SDR layout/library types.
+FRU areas остаются scoped components, BMC Manager и chassis имеют независимые
+IDs; имя sensor не является его ключом. Sensor owner/channel/LUN/number и
+entity IDs формируют стабильный source-relative identity. Shared IP одинаковых
+Redfish/IPMI targets не вызывает merge. Глобальный Entity Resolution — Backend.
+
+Один poll использует одну LANplus session для последовательных reads и закрывает
+её в bounded cleanup. SDR cache ограничен records/bytes/TTL; repository changes
+и BMC identity invalidation требуют refresh. Existing registry gate и scheduler
+ограничивают target concurrency, timeout и cooldown/backoff; fast network
+telemetry не меняется. Нормализованные results проходят `Agent.push`/Sanitizer,
+тот же durable outbox и gRPC/application ACK. [IPMI mapping и gaps](ipmi.md).
+
 ## Configuration и registry
 
-`devices` содержит stable ID, name, driver (`snmp`/`routeros`/`redfish`), address,
+`devices` содержит stable ID, name, driver (`snmp`/`routeros`/`redfish`/`ipmi`), address,
 credential reference, optional vendor hint/location, polling overrides и
 protocol options. Target ID не выводится из management IP и не меняется при rename.
 `local:` namespace зарезервирован для локального устройства. Legacy
@@ -128,13 +147,15 @@ Remote registry использует отдельный экземпляр су�
 | Группа | Default interval | Работа |
 |---|---|---|
 | Fast | 3s | Interfaces/state/counters и доступные resource values |
-| Medium | 30s | Device probe |
+| Medium | 30s | Device probe для SNMP/RouterOS; hardware health/metrics для Redfish/IPMI |
 | Inventory | 5m | Inventory/components и медленно меняющиеся адреса |
 | Topology | 5m | LLDP/neighbor tables |
 
-Каждый probe имеет собственный timeout, у job общий предел — четыре probe
-timeouts. Scheduler запрещает overlapping runs job; gate устройства также
-сериализует polling с commands. Отмена закрывает SNMP connections и HTTP I/O.
+Fast/Topology groups используются только при наличии соответствующих readers;
+Redfish/IPMI выполняют только Medium и Inventory. Каждый probe имеет собственный
+timeout, у job общий предел — четыре probe timeouts. Scheduler запрещает
+overlapping runs job; gate устройства также сериализует polling с commands.
+Отмена закрывает SNMP/IPMI connections и HTTP I/O.
 Tables и response bytes ограничены adapter и driver. Missed runs пропускаются,
 а не накапливаются в неограниченной очереди.
 
@@ -280,8 +301,9 @@ identity evidence и временную модель. Phase 2 используе
 NTP через отдельный deployment apply. Local Platform collection interface,
 observation clocks и Backend не меняются. Phase 3 добавляет opt-in Syslog/Audit
 network source и additive logs metadata на gRPC. Phase 4 добавляет read-only
-Redfish inventory/health/telemetry в тот же runtime/outbox. IPMI и Collector ↔
-Backend clock offset estimation отсутствуют. [Architecture freeze](collector-core.md).
+Redfish inventory/health/telemetry в тот же runtime/outbox. Phase 5 добавляет
+explicit IPMI LANplus targets через те же hardware contracts; Collector ↔
+Backend clock offset estimation отсутствует. [Architecture freeze](collector-core.md).
 Windows LocalPlatform относится к post-MVP/backlog. NETCONF/gNMI deferred:
 без подтверждённого typed use case новый protocol не добавляется.
 Фактически выполненные проверки находятся в [validation](validation.md).

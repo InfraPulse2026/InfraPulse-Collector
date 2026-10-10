@@ -1,5 +1,35 @@
 # Безопасность InfraPulse Agent
 
+## IPMI fallback Phase 5
+
+IPMI target выбирается явно: Redfish TLS/authentication failure не запускает
+другой протокол. Используется только IPMI v2.0 LANplus по исходящему UDP/623
+(порт configurable), без management listener. Cipher 17 default, cipher 3
+допускается только explicit; оба требуют RAKP authentication, session HMAC и
+AES-CBC-128. Cipher 0, null/no-auth/no-integrity/no-encryption, автоматический
+downgrade и IPMI v1.5 sessions запрещены. Стандартный unauthenticated capability
+preflight в legacy framing не активирует v1.5 session. USER default,
+OPERATOR — explicit escalation;
+ADMINISTRATOR не предлагается. BMC account должен иметь права чтения.
+
+Pinned pure-Go go-ipmi используется только внутри adapter. Из-за отсутствующих
+receive checks upstream добавлен ограниченный gate: exact algorithms/session
+IDs, RAKP/HMAC, encrypted/authenticated flags, inbound sequence/correlation,
+AES/IPMB framing и checksums проверяются до library decoder. Library crypto и
+packet construction переиспользуются; собственный IPMI stack не создаётся.
+Повторы/посторонние responses имеют конечный discard budget. Credentials,
+RAKP transcript и session keys никогда не включаются в diagnostics/payloads.
+
+Read-only typed methods исключают arbitrary raw IPMI, power/chassis controls,
+user/LAN/FRU/SDR/threshold writes, SEL clear и firmware update. Создание/закрытие
+собственной сессии, session privilege и SDR read reservation — protocol lifecycle.
+Размеры/число records, session/poll durations, packets/retries и cache ограничены;
+частичное повреждение optional inventory/sensor сохраняет валидные observations.
+IPMI security не заменяет изолированную management network: RAKP позволяет
+offline password guessing, поэтому нужны отдельные сильные credentials и ACL.
+Nonzero/отдельный BMC `Kg`, IPMB bridging и OEM commands не поддержаны.
+[Полный contract и состояние проверок](ipmi.md).
+
 ## Redfish hardware collection
 
 Redfish Phase 4 разрешает только GET/HEAD и фиксированный lifecycle собственной

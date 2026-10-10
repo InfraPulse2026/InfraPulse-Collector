@@ -86,6 +86,69 @@ func TestOfflineTransitionsIgnoreUnsupported(t *testing.T) {
 		t.Fatal(kinds)
 	}
 }
+
+func TestHardwareLifecycleEventsPreserveConfiguredProvenance(t *testing.T) {
+	for _, protocol := range []string{"redfish", "ipmi"} {
+		for _, provenance := range []string{"", "real", "simulated"} {
+			t.Run(protocol+"/"+provenance, func(t *testing.T) {
+				cfg := config.Defaults()
+				cfg.Security.Mode = "development"
+				device := config.Device{ID: "hardware", Driver: protocol, Address: "127.0.0.1"}
+				if protocol == "redfish" {
+					device.Address = "https://127.0.0.1"
+					device.Redfish.Provenance = provenance
+				} else {
+					device.IPMI.Provenance = provenance
+				}
+				cfg.Devices = []config.Device{device}
+				var events []model.Event
+				r, err := NewAdapters(cfg, func(config.Device) (driver.Adapter, error) { return &batchFixtureAdapter{}, nil }, func(e model.Envelope) error {
+					events = append(events, e.Events...)
+					return nil
+				}, WithCollectorID("collector-test"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer r.Close()
+				e := r.entries["hardware"]
+				at := time.Now().UTC()
+				r.batchConnectivity(e, nil, at)
+				_ = r.collectionResult(e, driver.ErrUnavailable, at)
+				for range 3 {
+					r.batchConnectivity(e, driver.ErrConnectivity, at)
+				}
+				r.batchConnectivity(e, nil, at)
+				wantProvenance := model.Provenance(provenance)
+				if provenance == "" {
+					wantProvenance = model.ProvenanceReal
+				}
+				wantKinds := []string{"target.online", "collector.error", "target.offline", "target.online"}
+				if len(events) != len(wantKinds) {
+					t.Fatalf("lifecycle events missing: %v", events)
+				}
+				for i, event := range events {
+					if event.Type != wantKinds[i] || event.Observation == nil {
+						t.Fatalf("unexpected lifecycle event: %+v", event)
+					}
+					ref := event.Observation.Source
+					if ref.Type != model.SourceType(protocol) || ref.Protocol != protocol || ref.TargetID != "remote:hardware" || ref.CollectorID != "collector-test" || ref.Provenance != wantProvenance {
+						t.Fatalf("lifecycle event source changed: %+v", ref)
+					}
+					wantSource := protocol
+					if event.Type == "collector.error" {
+						wantSource = "remote"
+					}
+					if wantProvenance == model.ProvenanceSimulated {
+						wantSource = "simulated"
+					}
+					if event.Source != wantSource {
+						t.Fatalf("lifecycle event lost legacy provenance: source=%q want=%q", event.Source, wantSource)
+					}
+				}
+			})
+		}
+	}
+}
 func TestTopologyPartialDoesNotExpire(t *testing.T) {
 	var observed, expired int
 	r := registryForTest(t, &fixtureDriver{}, func(e model.Envelope) error {

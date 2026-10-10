@@ -339,7 +339,20 @@ syslog не имеет нашего per-record application ACK. Duplicate sender
 заявляются. Read в socket не означает durable admission.
 [Receiver contract](syslog-receiver.md).
 
-## Equipment hardware observations — Phase 4
+## Equipment hardware observations — Phase 4/5
+
+Phase 5 IPMI переиспользует эти же messages/field numbers. SourceRef содержит
+`type=ipmi`, `protocol=ipmi` и `/ipmi/...` resource identifiers; Target ID
+по-прежнему `remote:<configured-id>`. BMC Manager, chassis и FRU areas не
+сливаются с Redfish по адресу или serial. Numeric Device/Manufacturer/Product
+IDs сохраняются как ограниченные existing Evidence fields, FRU identity —
+scoped IdentityEvidence. SourceTimestamp отсутствует без source evidence.
+Новые IPMI-specific messages, RPC и schema fields не добавлены; Syslog/NTP
+contract и application ACK/replay не меняются. Backend gaps для сохранения
+hardware metadata Phase 4 остаются актуальными. [Exact IPMI mapping](ipmi.md).
+Connectivity/error events для configured simulated IPMI/Redfish сохраняют
+legacy `Event.Source=simulated`. Полная event Observation/SourceRef metadata
+остаётся normalized/JSON-only; Phase 5 не добавляет её в Event protobuf.
 
 Redfish использует existing InventoryUpdate/TelemetrySample/Device/Metric,
 без sensor-specific Redfish protobuf messages или нового delivery service.
@@ -360,7 +373,8 @@ ResourceRelationship. ComponentHealth передаёт health без fabricated 
 IdentityEvidence и ObservationMetadata сохраняют source/resource scope и
 optional timestamps. Health, HealthRollup, State и PowerState различаются.
 
-Один Target может передавать несколько Devices с устойчивыми URI-derived IDs:
+Один Target может передавать несколько Devices с устойчивыми IDs из source
+resource path:
 System/Chassis/Manager не объединяются внутри Collector. Их wire DeviceType
 использует существующий UNKNOWN; role задаёт HardwareInventory.resource_type.
 Новые DeviceType enums не нужны старому strict decoder. Optional metadata
@@ -373,7 +387,7 @@ Old peer может принять прежние fields и игнорирова
 semantics или dedup в production Backend. Backend требует отдельной additive
 ingest/storage поддержки; PostgreSQL/REST/Asset resolution в этой фазе не
 изменялись и не проверялись. Partial inventory не означает deletion.
-[Redfish mapping и validation](redfish.md).
+[Redfish mapping и validation](redfish.md), [IPMI mapping и границы](ipmi.md).
 
 ## TelephonyUpdate
 

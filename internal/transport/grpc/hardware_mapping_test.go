@@ -65,3 +65,28 @@ func TestHardwareWireValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestIPMIMetricOnlyHardwareWireMetadata(t *testing.T) {
+	ref := model.SourceRef{Type: model.SourceIPMI, Protocol: "ipmi", CollectorID: "collector", TargetID: "remote:legacy", ResourceID: "/ipmi/sensors/32/0/0/7/3/1", Provenance: model.ProvenanceSimulated}
+	o := model.NewObservation(ref, "simulated", testTime, testTime, nil)
+	status := model.HardwareStatus{Health: "unknown", HealthRollup: "unknown", State: "Enabled"}
+	sample := model.TelemetrySample{DeviceID: "ipmi-scoped-device", Source: "simulated", ObservedAt: testTime, CollectedAt: testTime, Observation: o, Metrics: []model.Metric{{Name: "hardware.temperature.celsius", Value: 42, Unit: "Cel", ResourceID: ref.ResourceID, ComponentID: "sensor", Status: &status, Observation: o}}}
+	e := model.Envelope{AgentID: "collector", SessionID: "session", MessageID: "message", Sequence: 1, SentAt: testTime, Telemetry: &sample}
+	p, err := Encode(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := DecodeEnvelope(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(back.Telemetry, e.Telemetry) {
+		t.Fatal("IPMI hardware metadata was lost", back.Telemetry)
+	}
+	invalid := model.CloneObservation(o)
+	invalid.Time.CollectedAt = invalid.Time.CollectedAt.AddDate(10000, 0, 0)
+	sample.Observation = invalid
+	if err := validateHardwareSample(sample); err == nil {
+		t.Fatal("IPMI sample time was not validated")
+	}
+}

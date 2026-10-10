@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"slices"
 	"sync"
 	"time"
 )
@@ -173,11 +174,29 @@ func (r *Registry) Targets() []model.Target {
 }
 
 func (r *Registry) source(e *entry) model.SourceRef {
-	return model.SourceRef{Type: e.target.Type, CollectorID: r.collectorID, TargetID: e.target.ID, Protocol: e.target.Protocol}
+	ref := model.SourceRef{Type: e.target.Type, CollectorID: r.collectorID, TargetID: e.target.ID, Protocol: e.target.Protocol}
+	// Registry-generated lifecycle/error events need the same configured
+	// provenance as hardware observations populated by their adapters.
+	switch e.cfg.Driver {
+	case "redfish":
+		ref.Provenance = model.Provenance(e.cfg.Redfish.WithDefaults().Provenance)
+	case "ipmi":
+		ref.Provenance = model.Provenance(e.cfg.IPMI.WithDefaults().Provenance)
+	}
+	return ref
 }
 
 func (r *Registry) observation(e *entry, envelope model.Envelope) error {
-	return r.emit(model.ObserveEnvelope(envelope, r.source(e), time.Now().UTC()))
+	ref := r.source(e)
+	if ref.Provenance == model.ProvenanceSimulated && (ref.Type == model.SourceRedfish || ref.Type == model.SourceIPMI) {
+		// Event's legacy wire contract carries only Source, so preserve the
+		// simulated marker there as well as the internal typed SourceRef.
+		envelope.Events = slices.Clone(envelope.Events)
+		for i := range envelope.Events {
+			envelope.Events[i].Source = "simulated"
+		}
+	}
+	return r.emit(model.ObserveEnvelope(envelope, ref, time.Now().UTC()))
 }
 
 // Commands keep the legacy exact route. A configured Target ID is not an alias

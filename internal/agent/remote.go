@@ -4,6 +4,7 @@ import (
 	"InfraPulseAgent/internal/config"
 	"InfraPulseAgent/internal/credentials"
 	"InfraPulseAgent/internal/driver"
+	driveripmi "InfraPulseAgent/internal/driver/ipmi"
 	driverredfish "InfraPulseAgent/internal/driver/redfish"
 	driverrouteros "InfraPulseAgent/internal/driver/routeros"
 	driversnmp "InfraPulseAgent/internal/driver/snmp"
@@ -83,7 +84,21 @@ func RemoteAdapterFactory(cfg config.Config, provider credentials.Provider) remo
 			MaxResponseBytes: opts.MaxResponseBytes, Provenance: model.Provenance(rf.Provenance),
 		})
 	})
-	registrationErr := errors.Join(snmpRegistration, routerosRegistration, redfishRegistration)
+	ipmiRegistration := registry.Register("ipmi", func(dc config.Device) (driver.Adapter, error) {
+		opts, _ := options(dc)
+		target := dc.Target(config.Polling{})
+		i := dc.IPMI.WithDefaults()
+		return driveripmi.New(opts, provider, dc.CredentialRef, driveripmi.Options{
+			Port: *i.Port, CipherSuite: *i.CipherSuite, Privilege: i.Privilege, Retries: i.Retries,
+			Timeout: target.Polling.Timeout, RequestTimeout: i.RequestTimeout,
+			MaxSessionDuration: i.MaxSessionDuration, MaxOperations: i.MaxOperations,
+			MaxSDRRecords: i.MaxSDRRecords, MaxSDRBytes: i.MaxSDRBytes,
+			MaxFRURecords: i.MaxFRURecords, MaxFRUBytes: i.MaxFRUBytes,
+			MaxPollBytes: i.MaxPollBytes, SDRCacheTTL: i.SDRCacheTTL,
+			MaxResponseBytes: min(opts.MaxResponseBytes, 4096), Provenance: model.Provenance(i.Provenance),
+		})
+	})
+	registrationErr := errors.Join(snmpRegistration, routerosRegistration, redfishRegistration, ipmiRegistration)
 	return func(dc config.Device) (driver.Adapter, error) {
 		if registrationErr != nil {
 			return nil, registrationErr
@@ -155,6 +170,9 @@ func ProbeDevice(ctx context.Context, cfg config.Config, id string) (model.Devic
 			timeout := dc.Polling.Timeout
 			if timeout == 0 {
 				timeout = cfg.Telemetry.CollectTimeout
+			}
+			if dc.Driver == "ipmi" {
+				timeout = dc.Target(config.Polling{}).Polling.Timeout
 			}
 			ctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()

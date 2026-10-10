@@ -23,8 +23,7 @@ const (
 	SourceSyslog   SourceType = "syslog"
 	SourceAuditd   SourceType = "auditd"
 	SourceRedfish  SourceType = "redfish"
-	// IPMI reserves vocabulary; it is not an implemented capability.
-	SourceIPMI SourceType = "ipmi"
+	SourceIPMI     SourceType = "ipmi"
 )
 
 func (s SourceType) Valid() bool {

@@ -1,0 +1,46 @@
+# Explicit legacy BMC fallback. IPMI is never selected after a Redfish error.
+agent:
+  name: hardware-collector
+  state_dir: ../state
+controller:
+  address: controller.example.net:9443
+security:
+  mode: production
+  ca_file: /etc/infrapulse/certs/controller-ca.pem
+  cert_file: /etc/infrapulse/certs/collector.pem
+  key_file: /etc/infrapulse/certs/collector-key.pem
+  server_name: controller.example.net
+local:
+  enabled: false
+queue:
+  mode: durable
+  ack_fallback: reject
+commands:
+  enabled: false
+credentials:
+  legacy-bmc:
+    username_env: INFRAPULSE_IPMI_USER
+    password_env: INFRAPULSE_IPMI_PASSWORD
+devices:
+  - id: legacy-server-bmc-01
+    driver: ipmi
+    address: 10.10.20.31
+    credential_ref: legacy-bmc
+    polling:
+      medium_interval: 30s
+      inventory_interval: 5m
+      timeout: 30s
+    ipmi:
+      port: 623
+      cipher_suite: 17
+      privilege: user
+      retries: 0
+      request_timeout: 2s
+      max_session_duration: 30s
+      max_operations: 1024
+      max_sdr_records: 128
+      max_sdr_bytes: 131072
+      max_fru_records: 16
+      max_fru_bytes: 65536
+      max_poll_bytes: 1048576
+      sdr_cache_ttl: 5m

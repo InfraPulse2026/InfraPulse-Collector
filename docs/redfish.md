@@ -3,7 +3,9 @@
 Phase 4 добавляет read-only DMTF Redfish adapter для существующего HTTPS API
 BMC. Collector опрашивает серверное оборудование без установки своего агента
 на сервер или внутрь BMC. Используются стандартные schemas, без обязательных
-Dell/HPE OEM extensions. IPMI и управление питанием здесь не реализованы.
+Dell/HPE OEM extensions. Управление питанием здесь не реализовано. Явный legacy
+IPMI target добавлен в [Phase 5](ipmi.md); Redfish остаётся предпочтительным
+протоколом, автоматического переключения между ними нет.
 
 Нужен BMC с Redfish ServiceRoot, доступный по verified HTTPS, и отдельная
 monitoring account с правами чтения inventory/status/sensors. Для session auth
@@ -286,4 +288,4 @@ Primary references: [DMTF Redfish](https://redfish.dmtf.org/),
 Реальные BMC, Dell/HPE hardware, OpenWrt RAM/flash и Backend/PostgreSQL не
 проверялись. MemoryMetrics ECC/error counters, OEM extensions и complete firmware
 UpdateService enumeration не реализованы. Production sizing и vendor-specific differences требуют отдельной
-hardware validation. Phase 5 IPMI fallback не реализован.
+hardware validation. Explicit IPMI fallback описан отдельно в [Phase 5](ipmi.md).

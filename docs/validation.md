@@ -1182,3 +1182,180 @@ hardware/source fields для полного хранения multi-resource obs
 at-least-once delivery/ACK/replay сохранена; exactly-once не заявляется.
 Phase 5 IPMI fallback не начиналась. Configuration/mapping/security details —
 [redfish.md](redfish.md).
+
+## Phase 5 — IPMI LANplus hardware monitoring, 2026-10-10
+
+Работа выполнена в ветке `feat/phase-5-ipmi` исходного workspace над
+`d456fea`, содержащим завершённую Phase 4. Linked worktree не создавался;
+commit/push/merge/переписывание истории не выполнялись. IPMI target задаётся
+явно: Redfish failures не запускают новый протокол. Phase 5 использует
+существующие hardware models, scheduler/registry, sanitizer, durable outbox
+и gRPC/application ACK. [Полный отчёт](phase-5-report.md),
+[configuration/mapping/security contract](ipmi.md).
+
+### Baseline и промежуточные findings
+
+Baseline выполнен 2026-10-09 на чистом `main`, `d456fea`; SHA256 226 Go
+sources после проверки не изменились. `gofmt -l`, `go build ./...`,
+`go vet ./...`, `go test -count=1 ./...`, `go test -race -count=1 ./...`
+и `go mod verify` — PASS. Pinned protobuf scratch/hash comparison,
+native/cross builds, 10 YAML examples и 17 compiled Linux suites — PASS.
+
+Baseline `go test -count=1 -p=1 -tags=integration ./...` завершился FAIL:
+Windows TempDir RemoveAll cleanup в existing
+`TestReceiverDurableRestartReplayAndApplicationACK`. Targeted повтор test
+прошёл без code fix; исходный полный FAIL этим не превращён в PASS.
+Исходный output — `.cache/phase5-baseline/integration-windows.log`,
+baseline summary/commands — `report.md`, `status.log`, `extras-status.log`.
+
+Промежуточный IPMI Agent fixture запуск обнаружил missing admitted observations
+и equivalent sensor. После исправления test fixture targeted повтор прошёл;
+outputs сохранены в `.cache/phase5-final/initial/root-e2e{,-fixed}.log`.
+Mixed E2E assertion сначала ожидал full event Observation после protobuf;
+test приведён к existing legacy wire `Event.Source=simulated`, без новых fields.
+Review сверил Intel E6 Table 42-2/42-3: generic presence получает Present,
+generic enabled — Enabled; docs discrete masks синхронизированы с кодом.
+Значение health для sensor-specific states — conservative Collector policy,
+а не заявленная универсальная severity всех BMC.
+
+### Финальные команды и среда
+
+SDK — `go1.27.1 windows/amd64`, local caches — `.cache/gopath`,
+`.cache/modules`, `.cache/build`. Production builds — `CGO_ENABLED=0`.
+Windows race — `CGO_ENABLED=1`, `GOOS=windows`, `GOARCH=amd64`, portable
+`.tools/llvm-mingw-20260922-ucrt-x86_64/bin/x86_64-w64-mingw32-gcc.exe`.
+Mandatory и extras full Windows suites выполнялись последовательно после
+Go code freeze; измерения выполнялись после regression/builds.
+
+| Фактически выполненная проверка | Результат |
+|---|---|
+| `gofmt -l` api/cmd/internal, raw и LF scratch copy | PASS, пустой список |
+| `go build ./...` | PASS, 2,472 s |
+| `go vet ./...` | PASS, 2,564 s |
+| `go test -count=1 ./...` | PASS, 14,805 s |
+| `go test -race -count=1 ./...` | PASS, 44,899 s |
+| `go mod verify` | PASS |
+| `go test -count=1 -p=1 -tags=integration ./...` | PASS, 73,046 s, все packages |
+| `scripts/build.ps1 -GoPath <verified SDK>` | PASS, native tools |
+| `scripts/build.ps1 -Cross -GoPath <verified SDK>` | PASS |
+| Pinned protoc 33.5 / protoc-gen-go 1.36.12 / protoc-gen-go-grpc 1.6.0 scratch generation | PASS, SHA256 обоих generated files unchanged |
+| `bin/infrapulse-agent.exe validate-config --config <каждый configs/*.yaml>` | PASS, 11 examples, включая IPMI |
+| 18 compiled Linux suites в WSL | PASS |
+| Go source hash verification после suites | PASS, 242 files, 0 mismatches |
+
+Exact scripts — `.cache/phase5-final/{mandatory,extras,performance}.ps1`;
+Итоговые статусы/outputs — `status.log`, `extras-status.log`, `performance-status.log`
+и individual logs. Все 46 extras checks и 4 performance checks имеют exit 0.
+Final serial Windows integration прошёл с `-p=1`; устойчивый default
+package-parallel Windows integration отдельным запуском не заявляется.
+
+### Protocol, mapping и Collector E2E
+
+Native LANplus suites 17/3 выполнены с pinned upstream reference BMC. Test-only
+`ipmitest` добавляет FRU/SDR byte fixtures, custom sensor handler и
+response-framing shim для upstream requester-address/LUN defect. Production
+receive validation не ослабляется. Эти tests не являются неизменённой
+reference-server interoperability или hardware firmware validation.
+
+Unit/protocol coverage: config policy USER/OPERATOR, native LANplus USER,
+correct/wrong credentials, отказ insufficient privilege, unsupported suite/no
+downgrade, RAKP/HMAC/algorithm/session validation,
+encrypted/authenticated flags, sequence/replay/request correlation,
+AES/IPMB framing/checksums, discard/datagram/operation/byte budgets, read-only
+wire command gate, cancellation и session/socket cleanup. Lost authenticated
+response при `retries=0` дал bounded failure; `retries=1` восстановил чтение.
+Production session sequence rewrite не вводился.
+Успешная native OPERATOR session отдельно не проверялась; поддержка explicit
+OPERATOR реализована и проверена на уровне config policy.
+
+Normalization fixtures: Device ID/firmware/IPMI version, chassis power/health,
+multiple FRU areas, partial preservation, byte/word/chunk addressing,
+text encodings/checksums/offsets, Full/Compact/shared SDR, duplicate names,
+cyclic/malformed/oversized traversal, cache TTL/repository/BMC invalidation,
+signed M/B/exponents/linearization, Celsius/RPM/percent/volts/amps/watts,
+threshold/discrete/presence/unknown/OEM/unavailable semantics. Unsupported
+conversion и missing readings не создают numeric zero.
+
+Agent fixture E2E: simulated IPMI → admitted durable records при offline
+Controller → Collector restart → replay тех же message IDs → Mock ACK.
+Linux output: 2 inventory devices, 4 metrics, suite 17/USER, active BMC sessions 0.
+Equivalent Redfish/IPMI sensor semantics и metric-only wire metadata проверены
+через общие hardware contracts. Mixed Redfish/IPMI/offline-IPMI на одном
+loopback address с двумя workers прошёл targeted `-count=3`, затем full suites:
+distinct targets/assets, isolated offline threshold, продолжение Redfish polls,
+Mock ACK и simulated marker lifecycle events.
+
+Configured default/real/simulated provenance сохраняется у lifecycle events
+IPMI/Redfish. Normalized SourceRef остаётся IPMI/Redfish; legacy wire Event.Source
+для fixtures равен simulated. Полная event Observation metadata остаётся
+normalized/JSON-only. Phase 5 protobuf fields/RPC не добавлены; hashes generated
+sources совпадают. Fixture/Mock ACK не подтверждает production Backend persist.
+
+### Linux runtime и cross-build
+
+WSL `docker-desktop`, Linux amd64: каждый package собран командой
+`go test -c -tags=integration -o <binary> ./internal/<package>` с
+`CGO_ENABLED=0 GOOS=linux GOARCH=amd64`, затем выполнен в WSL с
+`-test.v=true -test.count=1 -test.timeout=120s`.
+Все 18 suites PASS: platform/linux, logs, queue, commands, protocol/snmp,
+driver/snmp, driver/routeros, driver/redfish, driver/ipmi, pki, platform/openwrt,
+agent, simulator, telephony, transport/grpc, config, platform, syslogreceiver.
+
+Real Linux proc/sys/file I/O выполнен; Agent telemetry intervals —
+3,000669536 s и 3,000129639 s. IPMI/Redfish/SNMP/RouterOS/SIP и OpenWrt
+schemas остаются fixtures. External DMTF service E2E skipped без endpoint
+environment; новые официальные DMTF server процессы в этом этапе не запускались.
+Linux `time-sync-status --config configs/config.time-sync.example.yaml`:
+`exit=0`, `available=false`, systemctl unavailable; live synchronization не подтверждена.
+
+Cross-builds CGO0: Collector Linux amd64/arm64/arm/mips/mipsle; ARM `GOARM=7`,
+MIPS hardfloat. Mock Controller, Simulator и Mock Enrollment — Linux amd64/arm64.
+Cross-build подтверждает компиляцию; OpenWrt firmware/RAM/flash/runtime не проверены.
+
+### Измерения ресурсов и binary cost
+
+Matched Linux amd64 CGO0 builds с `-trimpath -buildvcs=false`:
+
+| Build | Phase 4 baseline bytes | Phase 5 bytes | Рост |
+|---|---:|---:|---:|
+| Unstripped | 35 372 897 | 38 257 990 | 2 885 093 / 8,16% |
+| `-ldflags='-s -w'` | 23 855 264 | 25 948 320 | 2 093 056 / 8,77% |
+
+`TestResourceUsageBoundedNativePolling` — PASS: 50 health polls, 78,7598 ms,
+retained heap +156 920 bytes, TotalAlloc 24 355 264 bytes, goroutine delta 0,
+socket peak 1, 51 opened/51 closed sockets, 0 active BMC sessions.
+Writes/reads 749/749; maximum session 49 writes / 7105 bytes, datagram 100 bytes.
+Inventory JSON 11 703 bytes; largest sample 6071 bytes / 4 metrics / 6 health items;
+cache 5 sensors / 1 FRU ID, configured poll budget 64 KiB.
+
+`BenchmarkHardwareCachedFixture`: 7782 ns/op, 11 383 B/op, 107 allocs/op.
+`BenchmarkHardwareNativeReferenceBMC`: 1 387 179 ns/op, 443 202 B/op,
+4343 allocs/op. Native UDP probe/benchmark выполняет reference BMC/helper
+в том же process: heap/TotalAlloc/allocs включают обе стороны, latency включает
+loopback/server execution. Это не изолированные Collector RSS/latency и не
+production throughput. Single-host samples не дают statistical verdict.
+
+`go tool nm -size` name-scoped raw symbol sums: adapter 79 924 bytes,
+go-ipmi 750 760 bytes, новые formatting/terminal helpers 35 668 bytes. Symbols
+baseline этих групп отсутствовали. Sums/aliases/shared metadata не атрибутируют
+полный binary cost; exact outputs — `symbol-size-summary.json`,
+`binary-size-comparison.json`, `dependency-tree.log`.
+
+Existing Redfish 50-poll probe — PASS: 243,2513 ms, heap +98 112 bytes,
+goroutine 0, request peak 1, resource plan 23, inventory 19 750 bytes,
+sample maximum 11 338 bytes / 9 metrics. Тот же synthetic registry workload 32 fake
+SNMP targets / 4 workers сохранил active peak 4, goroutines 1→6→1, queue peak 32
+messages / 31 000 bytes, post-shutdown heap 640 416 bytes, TotalAlloc 2 783 864 bytes.
+`BenchmarkObserveTelemetry`: baseline 502,4 → final 445,2 ns/op, оба 1152 B/op / 8 allocs.
+Measurements подтверждают выполненный bounded workload, не production sizing.
+
+### Фактические ограничения
+
+Реальные BMC/vendor firmware, production Backend/PostgreSQL, OpenWrt RAM/flash
+и runtime других architectures не проверены. Read-only BMC role/session budget
+и management firewall требуют отдельной hardware/deployment validation.
+IPMI v1.5, nonzero Kg, IPMB bridging, OEM inventory/conversion, SEL/SOL,
+detailed CPU/RAM/storage parity и hardware writes отсутствуют. Auto Redfish
+fallback и global Asset Resolution не добавлены. RAKP offline guessing и
+server-side expiry при недоступном logout сохраняются. Delivery остаётся
+retained at-least-once; exactly-once и production Backend persistence не заявляются.
