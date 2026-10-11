@@ -1,5 +1,10 @@
 # Deployment Collector / Edge Gateway
 
+Phase 8: [least-privilege Linux/systemd и OpenWrt/procd deployment](production-deployment.md),
+[release checklist](release-checklist.md), [Backend E2E handoff](collector-backend-e2e.md)
+и [manual hardware validation](real-hardware-validation.md). Актуальные measured
+limits и автоматические результаты — [Phase 8 report](phase-8-report.md).
+
 Linux installation с отдельным service user и существующим systemd unit
 описана в [README](../README.md#установка-на-linux). Collector-only mode
 `local.enabled: false` обслуживает SNMP/RouterOS/SIP/remote topology и opt-in

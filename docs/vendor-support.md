@@ -1,5 +1,10 @@
 # Поддержка платформ и производителей
 
+Phase 8 hardening не добавляет новых protocol/vendor claims. Security, concurrency,
+durability, mixed fixture stress и resource measurements — [отчёт](phase-8-report.md).
+Непроверенные hardware/firmware и production Backend проходят отдельную
+[manual validation](real-hardware-validation.md).
+
 Матрица отражает текущую реализацию и фактически выполненные проверки.
 Cross-platform описывает ОС запуска Collector; multi-vendor — удалённые устройства,
 опрашиваемые через protocol drivers. Наличие profile, config hint или action

@@ -20,6 +20,16 @@ AI и историческое хранилище находятся вне эт
 Исторические module path `InfraPulseAgent`, binary `infrapulse-agent`, YAML
 секция `agent` и protocol names `Agent*` сохранены для совместимости.
 
+## Проверки и развёртывание Phase 8
+
+Phase 8 сохраняет Phase 0–7 и добавляет reliability/security regression,
+opt-in mixed-protocol stress, измерения ресурсов и локальную release procedure.
+Фактические результаты и ограничения — [Phase 8 report](docs/phase-8-report.md).
+Fixtures и cross-build не подтверждают работу настоящего BMC/OpenWrt или
+production Backend. Инструкции: [deployment](docs/production-deployment.md),
+[real hardware validation](docs/real-hardware-validation.md),
+[Backend E2E](docs/collector-backend-e2e.md), [release checklist](docs/release-checklist.md).
+
 ## Возможности
 
 - Локальная системная информация Linux: hostname, ОС, kernel, architecture,

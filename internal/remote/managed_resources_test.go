@@ -117,6 +117,47 @@ func BenchmarkManagedPrepare32Targets(b *testing.B) {
 	}
 }
 
+func TestHundredManagedLifecycleChangesReleaseResources(t *testing.T) {
+	runtime.GC()
+	before := runtime.NumGoroutine()
+	var opened, closed, calls atomic.Int64
+	factory := func(config.Device) (driver.Adapter, error) {
+		opened.Add(1)
+		return &resourceAdapter{calls: &calls, closed: &closed}, nil
+	}
+	r, err := NewAdapters(config.Defaults(), factory, func(model.Envelope) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := managedRun(t, r)
+	defer func() {
+		if stop != nil {
+			stop()
+		}
+	}()
+	at := time.Now()
+	for cycle := range 100 {
+		d := managedDevice("snmp")
+		d.ID = fmt.Sprintf("lifecycle-%03d", cycle)
+		d.Polling.FastInterval = time.Hour
+		previous := calls.Load()
+		managedApply(t, r, []config.Device{d}, factory)
+		managedWait(t, func() bool { return calls.Load() > previous })
+		managedApply(t, r, nil, factory)
+		if len(r.Targets()) != 0 || len(r.Stats()) != 0 || opened.Load() != closed.Load() {
+			t.Fatalf("cycle %d retained targets/jobs/adapters: opened=%d closed=%d", cycle, opened.Load(), closed.Load())
+		}
+	}
+	stop()
+	stop = nil
+	runtime.GC()
+	after := runtime.NumGoroutine()
+	if after > before {
+		t.Fatalf("goroutines did not stabilize after 100 lifecycle changes: %d -> %d", before, after)
+	}
+	t.Logf("100 add/poll/remove cycles elapsed=%s opened=%d closed=%d polls=%d goroutines=%d->%d", time.Since(at), opened.Load(), closed.Load(), calls.Load(), before, after)
+}
+
 func BenchmarkManagedLiveAddRemove32Targets(b *testing.B) {
 	cfg := config.Defaults()
 	factory := func(config.Device) (driver.Adapter, error) { return &managedNetwork{&managedCounts{}}, nil }

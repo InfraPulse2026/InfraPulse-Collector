@@ -9,6 +9,7 @@ User=infrapulse
 Group=infrapulse
 StateDirectory=infrapulse-agent
 StateDirectoryMode=0700
+WorkingDirectory=/var/lib/infrapulse-agent
 ExecStart=/usr/local/bin/infrapulse-agent run --config /etc/infrapulse/config.yaml
 Restart=on-failure
 RestartSec=5s
@@ -17,6 +18,11 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
 UMask=0077
 
 [Install]

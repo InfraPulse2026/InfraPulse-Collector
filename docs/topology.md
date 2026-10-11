@@ -174,6 +174,13 @@ Collection-time names limits не ужесточают historical legacy wire ru
 чтении старых durable envelopes. Unknown AF остаётся raw
 evidence, без выдуманного IP. Snapshot size ограничивается existing admission
 budget (default 1MiB), automatic topology splitting отсутствует.
+Phase 8 fixture с typical LLDP/identity evidence измерил JSON/protobuf:
+48 observations ≈162KiB/83KiB, 256 ≈862KiB/442KiB — PASS;
+512 ≈1.68MiB/883KiB — explicit rejection при default1MiB, PASS при2MiB.
+Это пример, а не universal neighbor limit: long descriptions/additional facts
+увеличивают payload. Измеряйте обе representations и согласуйте envelope,
+queue/storage и Backend message budgets; silent truncation нет.
+[Команда и exact bytes](phase-8-report.md#15-identitytopology).
 [Collector Core](collector-core.md), [protocol](protocol.md),
 [Identity/topology Phase 6](identity-topology.md),
 [Backend handoff contract](backend-identity-topology-contract.md).

@@ -1,5 +1,10 @@
 # Native OpenWrt
 
+Phase 8 добавляет [nonroot procd init](../deployments/openwrt/infrapulse-agent.init)
+и [deployment guide](production-deployment.md). Shell syntax и CGO0 cross-build
+проверены; actual firmware/procd/reboot/RAM/flash остаются NOT EXECUTED.
+[Ручные критерии](real-hardware-validation.md) отделены от Linux WSL fixtures.
+
 Phase 7 hot reload remote monitoring Targets работает в существующем portable
 Collector core и не добавляет обязательный CGO, новый database server или
 management listener. Для OpenWrt remote management остаётся disabled by default;

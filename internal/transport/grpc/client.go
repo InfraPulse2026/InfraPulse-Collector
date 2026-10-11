@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -25,6 +26,10 @@ import (
 )
 
 const DefaultMaxMessageBytes = 4 << 20
+
+// Local trust material is separate from the network message budget. A large
+// administrator CA bundle remains allowed, while reads are bounded to 1 MiB.
+const maxTLSFileBytes = 1 << 20
 
 type Options struct {
 	// TLSConfigProvider supplies an immutable verified client TLS snapshot for
@@ -266,7 +271,7 @@ func TLSConfig(options Options, server bool) (*tls.Config, error) {
 	if options.CAFile == "" || options.CertFile == "" || options.KeyFile == "" {
 		return nil, errors.New("production requires CA, certificate, and private key files")
 	}
-	caPEM, err := os.ReadFile(options.CAFile)
+	caPEM, err := readTLSMaterial(options.CAFile)
 	if err != nil {
 		return nil, fmt.Errorf("read TLS CA: %w", err)
 	}
@@ -274,7 +279,12 @@ func TLSConfig(options Options, server bool) (*tls.Config, error) {
 	if !pool.AppendCertsFromPEM(caPEM) {
 		return nil, errors.New("TLS CA contains no valid certificates")
 	}
-	certificate, err := tls.LoadX509KeyPair(options.CertFile, options.KeyFile)
+	certPEM, certErr := readTLSMaterial(options.CertFile)
+	keyPEM, keyErr := readTLSMaterial(options.KeyFile)
+	if certErr != nil || keyErr != nil {
+		return nil, errors.New("TLS certificate or key unavailable")
+	}
+	certificate, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("load TLS certificate and key: %w", err)
 	}
@@ -290,6 +300,30 @@ func TLSConfig(options Options, server bool) (*tls.Config, error) {
 		config.ServerName = options.ServerName
 	}
 	return config, nil
+}
+
+func readTLSMaterial(path string) ([]byte, error) {
+	// Opening a FIFO waits for a writer before a gRPC context can protect the
+	// handshake. Follow administrator CA/certificate symlinks, requiring the
+	// final bounded regular file before opening it and rechecking the handle.
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxTLSFileBytes {
+		return nil, errors.New("TLS material is unavailable, nonregular or oversized")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, errors.New("TLS material unavailable")
+	}
+	defer f.Close()
+	info, err = f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("TLS material is not a regular file")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxTLSFileBytes+1))
+	if err != nil || len(data) > maxTLSFileBytes {
+		return nil, errors.New("TLS material read failed or exceeds limit")
+	}
+	return data, nil
 }
 
 func validateOptions(options *Options) error {

@@ -317,12 +317,22 @@ func loadRoots(path string) (*x509.CertPool, error) {
 	return pool, nil
 }
 func readBounded(path string) ([]byte, error) {
+	// Reject special trust/bundle files before Open, which otherwise waits
+	// indefinitely for a FIFO writer outside enrollment's HTTP timeout.
+	// Local administrator CA symlinks may still resolve to regular files.
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxPKIBytes {
+		return nil, errors.New("invalid certificate file")
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
+	info, err = f.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("invalid certificate file")
 	}

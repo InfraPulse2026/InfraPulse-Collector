@@ -1,5 +1,15 @@
 # Безопасность InfraPulse Agent
 
+## Phase 8: bounded trust files и regression
+
+TLS/PKI readers отклоняют FIFO/device/directory и oversized material до Open,
+проверяют открытый regular handle и ограничивают чтение. Administrator symlink
+к regular file разрешён. Это сохраняет CA/SAN/mTLS/UUID verification; Stat/Open
+не защищён атомарно от замены пути владельцем каталога. Trust/state directories
+должны иметь защищённые локальные права. Secrets и raw Syslog в diagnostics
+не добавлены. Failure injection, finite fuzz campaigns и границы доказательств —
+[Phase 8 report](phase-8-report.md); [deployment](production-deployment.md).
+
 ## Backend-managed configuration Phase 7
 
 Remote management disabled по умолчанию; opt-in требует production mTLS,

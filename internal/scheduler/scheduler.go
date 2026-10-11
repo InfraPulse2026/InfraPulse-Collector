@@ -29,6 +29,7 @@ type scheduledJob struct {
 	job          Job
 	state        State
 	next         time.Time
+	pending      bool
 	paused       bool
 	resumeOnDone bool
 	cancel       context.CancelFunc
@@ -44,6 +45,7 @@ type Scheduler struct {
 	running     bool
 	changed     chan struct{}
 	change      *Change
+	nextJob     int
 }
 
 // New uses at least one worker. Add validates each job before Run starts.
@@ -74,6 +76,8 @@ func (s *Scheduler) Add(job Job) error {
 
 // Run starts jobs immediately, then at their fixed intervals. A queued or running
 // job never overlaps itself; missed runs are skipped instead of accumulating.
+// A full work channel retains one coalesced attempt in the existing job, so
+// startup saturation does not postpone a hardware poll for its entire interval.
 // Cancellation is a successful shutdown. Collect must respect its context:
 // Go cannot forcibly terminate a collector that ignores cancellation.
 func (s *Scheduler) Run(ctx context.Context) error {
@@ -99,6 +103,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		s.mu.Lock()
 		s.running = false
 		for _, job := range s.jobs {
+			job.pending = false
 			s.completeLocked(job)
 		}
 		s.mu.Unlock()
@@ -115,26 +120,40 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		now = time.Now()
 		s.mu.Lock()
 		var next time.Time
-		for _, job := range s.jobs {
+		start := 0
+		if len(s.jobs) != 0 {
+			start = s.nextJob % len(s.jobs)
+		}
+		for offset := range len(s.jobs) {
+			index := (start + offset) % len(s.jobs)
+			job := s.jobs[index]
 			if job.paused {
 				continue
 			}
 			if !job.next.After(now) {
 				periods := uint64(now.Sub(job.next)/job.job.Interval) + 1
 				job.next = job.next.Add(time.Duration(periods) * job.job.Interval)
-				if job.state.Running {
+				if job.state.Running || job.pending {
 					job.state.Skipped += periods
 				} else {
 					job.state.Skipped += periods - 1
-					job.state.Running = true
-					job.ctx, job.cancel = context.WithCancel(ctx)
-					job.done = make(chan struct{})
-					select {
-					case work <- job:
-					default:
-						s.completeLocked(job)
-						job.state.Skipped++
-					}
+					job.pending = true
+				}
+			}
+			if job.pending && !job.state.Running {
+				job.state.Running = true
+				job.ctx, job.cancel = context.WithCancel(ctx)
+				job.done = make(chan struct{})
+				select {
+				case work <- job:
+					job.pending = false
+					// The next available worker serves the targets after the last
+					// admitted one, including already deferred long-period jobs.
+					s.nextJob = (index + 1) % len(s.jobs)
+				default:
+					// Keep exactly one pending attempt without another queue,
+					// timer or goroutine. Worker completion wakes the dispatcher.
+					s.completeLocked(job)
 				}
 			}
 			if next.IsZero() || job.next.Before(next) {
@@ -177,6 +196,7 @@ func (s *Scheduler) worker(ctx context.Context, work <-chan *scheduledJob) {
 			s.mu.Lock()
 			if job.paused || job.ctx.Err() != nil {
 				s.completeLocked(job)
+				s.signalLocked()
 				s.mu.Unlock()
 				continue
 			}
@@ -192,6 +212,7 @@ func (s *Scheduler) worker(ctx context.Context, work <-chan *scheduledJob) {
 			job.state.Runs++
 			transitionCancelled := job.paused || job.resumeOnDone
 			s.completeLocked(job)
+			s.signalLocked()
 			if err != nil && !transitionCancelled {
 				message := err.Error()
 				if len(message) > 1024 {

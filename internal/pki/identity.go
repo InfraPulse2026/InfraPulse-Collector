@@ -27,7 +27,12 @@ func VerifyIdentity(cert *x509.Certificate, agentID string) error {
 }
 
 func VerifyCertificateFile(certFile, keyFile, agentID string) error {
-	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	certPEM, certErr := readBounded(certFile)
+	keyPEM, keyErr := readBounded(keyFile)
+	if certErr != nil || keyErr != nil {
+		return errors.New("client certificate unavailable")
+	}
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil || len(pair.Certificate) == 0 {
 		return errors.New("client certificate unavailable")
 	}

@@ -4,6 +4,7 @@ package queue
 
 import (
 	"InfraPulseAgent/internal/model"
+	"InfraPulseAgent/internal/testutil"
 	"context"
 	"errors"
 	"os"
@@ -51,7 +52,7 @@ func TestDurableSubprocessCrashRecovery(t *testing.T) {
 	}
 	for _, phase := range []string{"enqueue", "send", "ack"} {
 		t.Run(phase, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "outbox.db")
+			path := filepath.Join(testutil.TempDir(t), "outbox.db")
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, executable, "-test.run=^TestDurableCrashWorker$")

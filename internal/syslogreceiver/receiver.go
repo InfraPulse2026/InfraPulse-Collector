@@ -110,11 +110,25 @@ func LoadTLS(settings TLS) (*tls.Config, error) {
 }
 
 func readPEM(path string) ([]byte, error) {
+	// Check the final file before Open: opening a FIFO can block without a
+	// writer, outside the listener's network deadlines. Administrator-managed
+	// symlinks to regular certificate files remain supported.
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 1<<20 {
+		return nil, errors.New("syslog_tls_invalid_file")
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	info, err = f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("syslog_tls_invalid_file")
+	}
 	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 {
 		return nil, errors.New("syslog_tls_file_exceeds_limit")

@@ -419,11 +419,22 @@ func (e Endpoint) tlsConfig() (*tls.Config, error) {
 	if e.TLS.CAFile == "" {
 		return c, nil
 	}
+	// A special file can block in Open/Read before the network context has
+	// any socket to cancel. Follow local CA symlinks, but require a regular
+	// bounded final file before opening it.
+	info, err := os.Stat(e.TLS.CAFile)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
+		return nil, errors.New("SIP CA unavailable or exceeds limit")
+	}
 	f, err := os.Open(e.TLS.CAFile)
 	if err != nil {
 		return nil, errors.New("SIP CA unavailable")
 	}
 	defer f.Close()
+	info, err = f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("SIP CA unavailable")
+	}
 	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 {
 		return nil, errors.New("SIP CA unavailable or exceeds limit")

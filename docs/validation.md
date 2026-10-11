@@ -1604,3 +1604,62 @@ status/capability/diagnostics и [Backend B9 contract](backend-managed-config-co
 Syslog/outbox ownership, patch/failover engine не добавлены. Production Backend B9,
 настоящее оборудование/vendor firmware и OpenWrt deployment требуют отдельных
 проверок. Collector готов к следующей отдельной Phase8; она не выполнялась.
+
+## Collector Phase 8 — final hardening, deployment и validation (2026-10-11)
+
+Фактическая база: clean main, Phase7 commit727c6e5. От него создана
+feat/phase-8-hardening. Phase0–7 сохранены; Git add/commit/push/merge/rebase/tag
+не выполнялись. [Полный отчёт](phase-8-report.md) содержит baseline, карту аудита,
+failing-before/passing-after scenarios, exact commands, A–R matrix, ресурсы,
+Linux suite timings и разделённые acceptance statuses.
+
+Исправлены два подтверждённых P1: startup starvation existing scheduler и
+blocking FIFO/special-file reads TLS/PKI. Production queue/protocol/managed
+configuration formats и dependencies не менялись. Добавлены deterministic
+ACK commit failure/replay/crash/backpressure, rapid config/storage rollback,
+network cancellation/lifecycle, admission/provenance и finite fuzz tests.
+Windows cleanup harness переиспользует bounded common helper; реальные locked
+handles по-прежнему дают ошибку. Промежуточные cleanup/argv/fixture/packaging
+FAIL сохранены. Sharing violation managed cleanup расследован200повторами и
+15,000atomic saves/Win32 file-handle audit; owner не установлен, file leak
+не подтверждён, sharing retry не расширен.
+
+Финальные проверки Windows Go1.27.1:
+
+- gofmt LF-normalized copies PASS1.180s; build PASS2.017s; vet PASS0.670s.
+- `go test -count=1 ./...` PASS17.374s после investigation.
+- `go test -race -count=1 ./...` PASS56.924s, portable LLVM-MinGW/CGO1.
+- `go test -count=1 -p=1 -tags=integration ./...` PASS94.210s.
+- `go mod verify` PASS0.448s; protobuf pinned regeneration exactLF PASS1.363s.
+- Native tools PASS6.517s; Collector five CGO0 architectures и development
+  Mock/Simulator/Enrollment amd64/arm64 cross-build PASS21.578s.
+- 12example configs PASS0.788s; 24Linux integration suites исполнены в WSL PASS.
+- Markdown local links/anchors и git diff --check PASS.
+
+Opt-in mixed fixture stress:10/50/100targets ×65s, allfive actual protocol
+adapters, continuous Syslog source with bounded reconnect, initial Backend
+outage→verified mTLS Mock→ACK, rapid revisions2–5. Linux PASS195.44s;
+peak RSS50,417,664/61,681,664/83,251,200bytes, shutdown22.11/18.02/29.99ms.
+Counters включают same-process fixtures, не production capacity claim.
+Low-resource50targets/GOMEMLIMIT32MiB/GOMAXPROCS2/fd128 PASS65.15s:
+peak heap18,106,360/RSS54,128,640bytes, shutdown19.90ms; soft limit≠RSS ceiling.
+Windows stress10targets under race PASS67.413s. Ten finite fuzz/property campaigns
+PASS; отсутствие всех vulnerabilities не доказано.
+
+Linux amd64 stripped26,366,112→26,374,304bytes (+8,192/+0.031%).
+Release procedure создаёт only local dirty review packages с fixedHEADtimestamp,
+version/commit/Go/target/source hashes и LF SHA256SUMS. Actual Linux checksum/
+extraction/version/12packaged-config checks PASS; binary SHA256 одинаков для
+пяти повторных builds. Nonroot systemd/procd guides и read-only real-hardware/
+Backend/PostgreSQL/REST/B9 checklists подготовлены. No install/publish/tag.
+
+Phase8B PARTIAL: Linuxamd64 WSL runtime PASS. Настоящие OpenWrt/procd/systemd
+installation, SNMP/RouterOS/SIP devices, BMC, rsyslog/auditd/corporate NTP и
+production Backend/PostgreSQL/REST/B9 NOT AVAILABLE/NOT EXECUTED.
+Production readiness не заявляется. RemainingP2: JSON allocation/CPU overhead,
+dense topology sizing безautomatic splitting, acceptedHello→EOF initial backoff
+reset; внешние physicalstorage/PKIrevocation/Backend validation gaps.
+
+Phase8A COMPLETE: automated acceptance и independent final review PASS;
+Phase8B PARTIAL и real Backend integration NOT AVAILABLE. Итоговые локальные
+review artifacts: .cache/phase8-release-final (dirty marker), SHA256SUMS рядом.
